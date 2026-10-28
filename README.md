@@ -1,10 +1,17 @@
 # TinyGame
+**Tiny screen. Twisty knobs. Real games, built by you.**
 
-Small limits, big ideas!
+TinyGame is a pocket-sized game console you build and an AI agent setup you use to create your own games. Boot up your favourite coding agent, describe the game you want, push it to the platform, play it, tweak it, share it.
 
-A pocket game console you program by talking to a coding agent, powered by an ESP32-S3.
+No D-pad, no buttons, no shortcuts, and no internet: TinyGame has two clicky knobs, a motion sensor, and a tiny screen. Designed by a tech educator and parent as a platform for kids (and growns) to learn how to build engaging gameplay within constraints that boost creativity.
 
-Two smoothly turny and clicky knobs with clicks, a motion sensor, AI-powered game development, and your imagination. What TinyGames will you build next?
+- Describe the game you want
+- Explore how twists, clicks, and tilts add to the gameplay
+- Turn your idea into a real playable game and share it with the world
+
+Powered by an ESP32-S3, fueled by your imagination. What will you build first?
+
+What TinyGame will you build?
 
 <p align="right">
   <img src="docs/device/tinygame-device.jpg" width="240" alt="TinyGame in its external case with a game active">
