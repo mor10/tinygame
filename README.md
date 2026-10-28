@@ -13,6 +13,18 @@ It has one screen (320×172), two smoothly turning knobs with click switches, an
 
 The knobs turn continuously (the detents were removed). Firmware measures electrical movement: nominally 80 steps per turn, with four per menu item. Games steer with the main knob using the shared `tg::Steer` + `tg::glide` controls, and a click on either knob is the action button.
 
+### Screenshots
+
+The launcher and the three games currently included:
+
+| Launcher | Brick Breaker |
+|---|---|
+| ![TinyGame game launcher](docs/screenshots/launcher.png) | ![Brick Breaker in play](docs/screenshots/brickbreaker.png) |
+
+| Maze | Rock Rain |
+|---|---|
+| ![Maze gameplay](docs/screenshots/maze.png) | ![Rock Rain gameplay](docs/screenshots/rockrain.png) |
+
 ## Testing the controls
 
 With the board connected, flash it and drive Diagnostics from the computer. The first `send` opens Diagnostics from the welcome screen without touching a knob (HANDEDNESS = RIGHT; with LEFT, use `turn left` in it):
