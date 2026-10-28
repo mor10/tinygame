@@ -1,8 +1,15 @@
 # TinyGame
 
-A pocket game console you program by talking to a coding agent.
+Small limits, big ideas!
 
-It has one screen (320×172), two smoothly turning knobs with click switches, and a motion sensor. No third button. Small limits, big ideas.
+A pocket game console you program by talking to a coding agent, powered by an ESP32-S3.
+
+Two smoothly turny and clicky knobs with clicks, a motion sensor, AI-powered game development, and your imagination. What TinyGames will you build next?
+
+<p align="right">
+  <img src="docs/device/tinygame-device.jpg" width="240" alt="TinyGame in its external case with a game active">
+  <img src="docs/device/tinygame-hardware.jpg" width="240" alt="TinyGame internals showing the ESP32, rotary encoders, battery, and wiring">
+</p>
 
 ## Playing
 
