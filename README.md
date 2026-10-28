@@ -120,3 +120,7 @@ On Windows, enable symlinks (for example Developer Mode and Git's `core.symlinks
   - `src/os/` holds the menus, the style library, the game registry and the dev tools.
   - `src/games/` holds the games. Each game registers itself with `TINYGAME(...)`.
   - Input decoding, sleep safety gates, menu logic and game simulations are plain C++ with host unit tests (`python3 tools/tg.py test`).
+
+## License
+
+TinyGame is licensed under the [MIT License](LICENSE).
