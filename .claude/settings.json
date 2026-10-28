@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 tools/tg.py:*)",
+      "Bash(python3 -m platformio run:*)",
+      "Bash(python3 -m platformio device list:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)"
+    ]
+  }
+}
