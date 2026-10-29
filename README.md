@@ -25,7 +25,7 @@ What TinyGame will you build?
 - **System** (the last item in the game list) has Settings (screen and LED brightness, handedness), Diagnostics (live knob, switch and tilt readings), the Style preview and Sleep. On Diagnostics, clicks stay on the page so you can inspect them; **hold either knob** to exit.
 - **Sleep:** System > Sleep, or 3 minutes without knob activity (even in a game), enters deep sleep. Click either knob to wake to the welcome screen. That restarts the console, not the previous game. Saved scores and confirmed settings stay saved.
 
-The knobs turn continuously (the detents were removed). Firmware measures electrical movement: nominally 80 steps per turn, with four per menu item. Games steer with the main knob using the shared `tg::Steer` + `tg::glide` controls, and a click on either knob is the action button.
+The knobs turn continuously without detents. Firmware measures electrical movement: nominally 80 steps per turn, with four per menu item. Games steer with the main knob using the shared `tg::Steer` + `tg::glide` controls, and a click on either knob is the action button.
 
 ### Screenshots
 

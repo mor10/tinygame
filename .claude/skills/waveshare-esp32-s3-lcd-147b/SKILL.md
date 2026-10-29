@@ -16,9 +16,9 @@ The sources of truth are `src/hal/board_config.h` (pins) and `src/hal/display_co
 
 Onboard pins are verified. External controls follow `docs/wiring.md`; verify their encoder polarity and pulse count on the physical assembly.
 
-Left/right mean physical positions when holding the assembled console normally.
-The final assembly swaps the original encoder positions with wiring unchanged;
-the side mapping belongs in `board_config.h`, not in handedness or game logic.
+Left/right mean physical positions when holding the console normally. The pin
+assignments below match those positions. `board_config.h` is the source of
+truth for the physical mapping; handedness selects the main encoder.
 
 | Function | GPIO | Notes |
 |---|---|---|
@@ -32,13 +32,22 @@ the side mapping belongs in `board_config.h`, not in handedness or game logic.
 
 Never put more than 3.3 V on any GPIO or ADC pin.
 
-GPIO2/GPIO3 are no longer pot/action inputs; GPIO10 is unused. EC11 detents have been removed, so decoding must not assume a mechanical resting position. Nominal 20-pulse encoders give 80 electrical transitions per revolution. ISR capture uses both A/B edges with atomic snapshots; never apply the 25 ms switch debounce to encoder A/B.
+GPIO2, GPIO3, and GPIO10 are unused. The EC11 encoders rotate continuously
+without detents, so decoding must not assume a mechanical resting position.
+Nominal 20-pulse encoders give 80 electrical transitions per revolution. ISR
+capture uses both A/B edges with atomic snapshots; never apply the 25 ms switch
+debounce to encoder A/B.
 
-The main encoder (right by default; left when Settings > HANDEDNESS = LEFT) navigates menus (four transitions/step, clamped). A click on either encoder selects, and a 650 ms hold on either pauses/goes back. Both clicks remain on Diagnostics; either hold exits. Games get `tg::Input::main/left/right` transition deltas plus merged button state, without long-press or sleep events. There is no pot.
+The main encoder (right by default; left when Settings > HANDEDNESS = LEFT) navigates menus (four transitions/step, clamped). A click on either encoder selects, and a 650 ms hold on either pauses/goes back. Both clicks remain on Diagnostics; either hold exits. Games get `tg::Input::main/left/right` transition deltas plus merged button state, without long-press or sleep events.
 
 ## Deep sleep
 
-System > Sleep or 3 minutes without encoder activity requests deep sleep. Either encoder click (GPIO6/7) wakes to startup via ext1 `ESP_EXT1_WAKEUP_ANY_LOW`. RTC pull-ups remain powered; restore both switch GPIOs with `rtc_gpio_deinit()` before normal input setup. Wait nonblockingly for both switches to release before shutdown and ignore all input until both release stably on boot, so the wake press cannot select anything. GPIO10 and the third button are removed.
+System > Sleep or 3 minutes without encoder activity requests deep sleep.
+Either encoder click (GPIO6/7) wakes to startup via ext1
+`ESP_EXT1_WAKEUP_ANY_LOW`. RTC pull-ups remain powered; restore both switch
+GPIOs with `rtc_gpio_deinit()` before normal input setup. Wait nonblockingly for
+both switches to release before shutdown and ignore all input until both
+release stably on boot, so the wake press cannot select anything.
 
 The OS validates wake setup before shutdown, disables IMU sensors, turns off RGB/backlight, holds the backlight low, sends panel sleep commands, and waits 120 ms nonblockingly before deep sleep. Do not copy a `while (pressed) delay(...)` release loop. Turns, clicks, switch events and holds on either encoder reset idle time, including injected events; IMU motion and serial monitoring do not. Confirmed settings/scores persist, but RAM/game state and encoder counters reset. USB CDC can disconnect; serial and encoder rotation cannot wake the board, only a physical switch press. Measure whole-board current if power consumption matters.
 

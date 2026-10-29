@@ -5,14 +5,14 @@ TinyGame is a tiny handheld game console: an ESP32-S3 with a 320×172 screen, tw
 ## Hard rules
 
 - **Say "knobs" to players** ("left knob", "right knob", "main knob") in device text, game instructions and player docs. Code and hardware docs may say "encoder".
-- **Inputs** are only the two knobs (turn + click) and the IMU (accelerometer and gyro). The RGB LED is the only extra output. There's no pot, no third button, no sound and no touch.
+- **Inputs** are the two knobs (turn + click) and the IMU (accelerometer and gyro). The RGB LED is the only extra output; there is no sound or touch.
 - **Main knob:** `tg::Input::main` is the right knob, or the left one when Settings > HANDEDNESS = LEFT. `left`/`right` are the physical knobs. Click, press, release and held state merge both knobs, so either click is the action button.
 - **Turning is continuous** (no detents): `delta` counts signed transitions, 80 per turn, clockwise positive. Menus take 4 per step and clamp at their ends. Steer positions with `tg::Steer` + `tg::glide` and choose options with `tg::Picker`, so every game feels the same.
 - **Long press belongs to the OS** (either knob): it opens the pause menu (Resume / Restart / Quit) or goes back in menus. Games never see it.
 - **Sleep:** System > Sleep or 3 idle minutes (turns, clicks and holds count as activity; tilt and serial don't) enters deep sleep, and a knob click wakes it. Game state isn't kept. Never add blocking wait loops; see the `waveshare-esp32-s3-lcd-147b` skill.
 - **Screen:** 320×172 landscape, dark mode only, styled by the style library (`include/tg_style.h`). Use its tokens. Raw hex colours are only for game-specific art inside a game folder.
 - **LVGL 9.6 APIs only.** Many examples online are LVGL 8.
-- **Pins:** never invent or change them. Map left/right only in `src/hal/board_config.h` (the final assembly swapped the physical positions, wiring unchanged), never in games or handedness code. Hardware facts are in the `waveshare-esp32-s3-lcd-147b` skill and `docs/wiring.md`.
+- **Pins:** never invent or change them. Map physical left/right only in `src/hal/board_config.h`, never in games or handedness code. Hardware facts are in the `waveshare-esp32-s3-lcd-147b` skill and `docs/wiring.md`.
 - **Stability:** no `delay()` in the loop, no per-frame allocations, and no creating or deleting LVGL objects every frame.
 - **Timing:** `update()` gets elapsed seconds, not a fixed 60 Hz. Keep fractional time and use fixed steps for physics.
 - **Scope:** reviews and plans only inspect: no edits, scaffolding or flashing until approved. Fixing a game edits that game; don't scaffold another one.

@@ -66,7 +66,7 @@ TINYGAME(mygame::MyGame, "mygame", "MY GAME", tg::color::MINT)
 
 ## Rules (the console depends on them)
 
-- **Inputs:** only the two knobs (via `tg::Input`) and the motion sensor. There is no pot or analog knob. Never call `analogRead`, `digitalRead` or `Wire`.
+- **Inputs:** games receive the two knobs and motion sensor through `tg::Input`. Never add other inputs or call `analogRead`, `digitalRead` or `Wire`.
 - **Long press is the OS pause menu.** Games never see it, so don't design a "hold" action. Use `down`/`held_ms` only for charge-up moves shorter than 0.6 s. After a long-press resume the knob is still held, so start actions from `pressed` or `click`, not `down` alone (see `references/input-recipes.md`).
 - **All mutable game state lives in your class.** Constants may be shared. Restart deletes the object and makes a new one, so there are no globals or `static` variables. Don't delete LVGL objects in the destructor; the OS deletes the screen first. Release separately owned buffers in the destructor.
 - **Create LVGL objects once in `start()`,** then move, hide, recolour or retext them in `update()`. Never create or delete objects every update, never `delay()`, and don't use `new` each update.
