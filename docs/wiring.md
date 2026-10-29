@@ -1,21 +1,20 @@
 # Wiring
 
-TinyGame is controlled by two rotary encoders, each with a click switch. There
-is no third button. The screen, motion sensor and RGB LED are onboard; their
-pins are in `src/hal/board_config.h`.
+TinyGame is controlled by two rotary encoders, each with a click switch. The
+screen, motion sensor, and RGB LED are onboard; their pins are in
+`src/hal/board_config.h`.
 
 Left and right refer to physical positions when holding the assembled console
-normally. The final assembly swaps the original encoder positions without
-changing their wires. The mapping lives in `src/hal/board_config.h`.
-HANDEDNESS = RIGHT (the default) selects the physical right encoder; LEFT selects
-the physical left. Either click switch remains an action button.
+normally. The pin assignments below match those positions, and
+`src/hal/board_config.h` is the source of truth. HANDEDNESS = RIGHT (the
+default) selects the physical right encoder; LEFT selects the physical left.
+Either click switch is an action button.
 
 ## EC11 5-pin rotary encoders with normally open click
 
-The encoders are a nominal 20-pulse incremental device. Their detents have been
-removed, so firmware counts continuous electrical transitions (nominally 80 per
-revolution), not mechanical detents. Verify pulse count and clockwise polarity
-on the physical assembly.
+The encoders are nominal 20-pulse incremental devices with continuous,
+detentless rotation. Firmware counts electrical transitions (nominally 80 per
+revolution). Verify pulse count and clockwise polarity on the device.
 
 | Pin | Left encoder | Right encoder |
 |---|---|---|
@@ -41,6 +40,4 @@ switch GPIOs from RTC mode and suppresses input until both release stably.
 Game state is not restored. USB may disconnect during sleep. Do not replace
 this with blocking `while (pressed) delay(...)` loops.
 
-## Retired parts
-
-The old potentiometer on GPIO2 and action button on GPIO3 are no longer used.
+GPIO2, GPIO3, and GPIO10 are unused.
