@@ -15,6 +15,7 @@ TinyGame is a tiny handheld game console: an ESP32-S3 with a 320×172 screen, tw
 - **Pins:** never invent or change them. Map physical left/right only in `src/hal/board_config.h`, never in games or handedness code. Hardware facts are in the `waveshare-esp32-s3-lcd-147b` skill and `docs/wiring.md`.
 - **Stability:** no `delay()` in the loop, no per-frame allocations, and no creating or deleting LVGL objects every frame.
 - **Timing:** `update()` gets elapsed seconds, not a fixed 60 Hz. Keep fractional time and use fixed steps for physics.
+- **Simulator parity:** games use the same C++ OS, LVGL and game sources on the board and in WebAssembly. Never add a browser-only copy of a game's rules or controls. Keyboard/mouse inputs map to the existing knobs and tilt, not extra game actions.
 - **Scope:** reviews and plans only inspect: no edits, scaffolding or flashing until approved. Fixing a game edits that game; don't scaffold another one.
 - **Be honest:** never report a failed command, build, flash or save as success.
 
@@ -31,6 +32,9 @@ src/os/                 shell (menus), shell_state (pure logic), style, registry
 src/hal/                board drivers: display, input, imu, rgb_led, storage, power, pins
 tests/                  host tests for src/os and tools/tg.py; games keep theirs in src/games/<id>/test/
 tools/tg.py             build / flash / test / monitor / send / shot / new
+tools/sim_build.py      pinned cached Emscripten/LVGL, incremental WASM build
+sim/                   Arduino/HAL replacements, browser UI and loopback server
+.github/extensions/tinygame-simulator/  Copilot canvas; action/setup reference
 docs/wiring.md          encoder wiring and the sleep/wake design
 ```
 
@@ -49,20 +53,57 @@ python3 tools/tg.py sim --build-only   # build WebAssembly without serving
 python3 tools/tg.py bridge             # USB console as simulator controller
 ```
 
-`flash`, `monitor`, `send` and `shot` take `--port <device>`; it's required when several boards are connected.
+`flash`, `monitor`, `send`, `shot` and `bridge` take `--port <device>`; it's required when several boards are connected. For `sim`, `--port` is an HTTP port number, not a serial device.
 
 Dev commands for `send`: `turn <left|right> <signed-transitions>`, `click|hold|down|up [left|right]` (default left), `tilt <x> <y>|off`, `launch <id>`, `info`, `log on|off`, `wait <seconds>`. Simulated input counts as activity for the idle timer but can't wake the board. Release held or injected input when done (a stuck `down` blocks idle sleep and hides that knob's real presses): `send "up left" "up right" "tilt off"`. System > Diagnostics shows live knob readings (see the README).
+
+## Simulator workflow
+
+Use the simulator for visual and interaction checks during game development,
+even without hardware. Read `.github/extensions/tinygame-simulator/README.md`
+for the canonical canvas actions, schemas and setup.
+It needs macOS/Linux (Windows: WSL), Python 3.10+, Git, curl and Node 22+;
+the helper installs pinned Emscripten/LVGL in the user cache. PlatformIO is
+needed for firmware builds, not simulator-only play. If setup is unavailable,
+report that blocked check explicitly rather than claiming a visual verification.
+
+- In Copilot, discover `tinygame-simulator`, open it with optional
+  `{ "game": "<id>" }`, and wait for `get_output` to report `pageReady: true`
+  and `status: "ready"`. Keep the same instance handle for subsequent actions.
+  If the project extension is not discovered, reload extensions or ask the
+  user to reopen the session; do not claim it loaded. `tg.py sim --no-open`
+  plus the Browser canvas is a fallback, not proof of extension RPC routing.
+- Use `launch`, `send`, `screenshot` and `get_output` to exercise the change.
+  `tg.py send/shot` target the physical USB board, not the browser. The normal
+  browser offers a dev command field and Screenshot button instead.
+- Browser shortcuts: left A = counterclockwise, S = click, D = clockwise;
+  right J = counterclockwise, K = click, L = clockwise. Turn taps are four
+  transitions; S/K holds exercise real OS long-press timing. Drag a knob rim
+  or scroll to turn, press its centre to click, and use arrows/screen drag
+  to tilt. Positive dev `turn` remains clockwise on both targets.
+- Source saves trigger rebuild/reload. A compile error leaves the previous
+  firmware visible, so check `buildError` before calling a preview current.
+  Reload resets game state. Saved settings/scores use localStorage for that
+  browser origin, not device storage; a new server port starts separate saves.
+- USB controller mode forwards physical knobs and tilt at about 50 Hz.
+  Disconnect it before any physical `flash/send/shot/monitor`, and reconnect
+  afterward only if the user is playing with the board. Closing the page
+  releases the bridge after its page-heartbeat timeout. Report any deliberately
+  left-running server or controller connection, and don't leave injected holds.
+- The simulator synthesizes acceleration from tilt and has no gyro gestures.
+  USB bridging also sends tilt only. Verify shake/flick, real knob feel,
+  sensor direction, electrical faults and deep-sleep power on the device.
 
 ## Definition of done
 
 1. `tg.py test` and `tg.py build` pass, with no new warnings.
-2. If a board is plugged in, `tg.py flash`, then drive to the change with `send` and check a `shot`.
-   Without a board, build the simulator and check the change there with dev
-   commands and a screenshot. The `tinygame-simulator` canvas has `launch`,
-   `send`, `screenshot` and `get_output` actions; `tg.py sim` has the same
-   screen and a dev command field. Disconnect the USB controller bridge before
-   flashing or using serial tools.
-3. Say clearly what still needs a human to check on the device: feel, knob direction, tilt direction, LED colours. Never claim a screenshot or flash you didn't get.
+2. For game/OS behaviour or visuals, `tg.py sim --build-only` passes; drive the
+   change in the simulator and inspect a saved screenshot. Check interaction,
+   pause/restart and the relevant edge case, not just that it boots.
+3. For firmware/game changes with a board attached, disconnect any controller
+   bridge, run `tg.py flash`, drive the change with `send` and inspect a `shot`.
+   Browser-only UI changes do not need a firmware flash.
+4. Say clearly what still needs a human to check on the device: feel, knob direction, tilt direction, LED colours. Never claim a screenshot, canvas action or flash you didn't get. Documentation-only changes need no firmware build or flash.
 
 ## Skills
 

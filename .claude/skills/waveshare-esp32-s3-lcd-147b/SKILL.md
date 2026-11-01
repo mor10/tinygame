@@ -72,7 +72,35 @@ python3 tools/tg.py send info          # heap, PSRAM, installed games
 python3 tools/tg.py shot               # screenshot -> shot.png
 ```
 
-PlatformIO directly: `python3 -m platformio run [-t upload]`. `pio` is not on PATH. With several boards connected, `tg.py` stops and asks for `--port <device>` (accepted by `flash`, `monitor`, `send` and `shot`).
+PlatformIO directly: `python3 -m platformio run [-t upload]`. `pio` is not on PATH. With several boards connected, `tg.py` stops and asks for `--port <device>` (accepted by `flash`, `monitor`, `send`, `shot` and `bridge`).
+
+## USB simulator controller
+
+The board can control the browser simulator after flashing current firmware
+once. Start `python3 tools/tg.py sim` and enable **Use connected console**, or
+use the canvas `connect_device` action. `python3 tools/tg.py bridge --port
+<device>` runs the underlying bridge directly and prints validated JSON frames.
+See `.github/extensions/tinygame-simulator/README.md` for canvas setup/actions.
+
+- `stream on` pauses local menus/games, shows **CONTROLLING SIMULATOR** and
+  suspends idle sleep. Frames arrive about every 20 ms, also on raw button edges:
+  `IN <Ltotal> <Ldown> <Rtotal> <Rdown> <tilt_x> <tilt_y>`.
+- Physical totals already include the board's direction calibration. Forward
+  differences directly to the simulator; don't apply direction a second time.
+  `input::rawButtonDown(bool left)` supplies physical switch levels before
+  debounce; the simulator runs the shared button debounce/long-press logic.
+- The bridge sends `stream ping` once a second. `stream off`, USB disconnect or
+  3 seconds without a heartbeat returns the board to normal, swallowing held
+  release events rather than accidentally selecting a menu item.
+- Serial is exclusive. Disconnect the bridge before `flash`, `monitor`, `send`
+  or `shot`; reconnect afterward only when needed. Closing the simulator page
+  releases its bridge after the page-heartbeat timeout.
+- USB cannot wake deep sleep. Click a physical knob, wait for boot, then connect.
+  A no-frame error can mean old firmware, a sleeping board or another serial
+  client. Check these before changing pins or drivers.
+- USB streaming forwards knobs and tilt only, not raw accelerometer/gyro.
+  Real sensor gestures, encoder polarity/feel, LED output and sleep current
+  still need hardware checks. A browser screenshot cannot establish them.
 
 ## Expected boot log
 

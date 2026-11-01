@@ -21,14 +21,18 @@ Read `AGENTS.md` first. You're often helping a **kid (around 10)**, so explain t
 3. **Implement and verify:**
    - Use the API below. Load the style guide for screen changes and other references only as needed.
    - `python3 tools/tg.py test`, then `python3 tools/tg.py build`. Fix compile errors before saying anything works.
-   - With a board connected: `python3 tools/tg.py flash`, then `send "launch <id>"`, then `shot` to save `shot.png`. Read the PNG and check it.
+   - Use the simulator for the visual/interaction feedback loop: `python3 tools/tg.py sim`, or the `tinygame-simulator` Copilot canvas. New games are included automatically; source saves rebuild and reload. Inspect the game's screen, play its core action, and check pause/restart. A visible old screen after a compile error is not a successful build.
+   - With a board connected: disconnect any USB controller bridge, run `python3 tools/tg.py flash`, then `send "launch <id>"`, then `shot` to save `shot.png`. Read the PNG and check it. Reconnect the controller only if the player wants to use the board with the simulator.
    - Drive the game with `send "turn right 20" click "tilt 0.5 0" "wait 1"`. `turn` is signed transitions (80 per full turn, clockwise positive). Turn the **right** knob unless Settings says HANDEDNESS = LEFT, because games steer with the main knob.
    - Before finishing, release injected input: `send "up left" "up right" "tilt off"`.
    - Use `--port <device>` when more than one board is connected.
-   - Without a board, also run `python3 tools/tg.py sim` and check the game in the browser. The `tinygame-simulator` Copilot canvas offers `launch`, `send`, `screenshot` and `get_output`; see `.github/extensions/tinygame-simulator/README.md`. Physical knob feel/direction, tilt direction and LED colours still need a board. Disconnect the USB controller bridge before using serial tools. Never claim a screenshot or flash you didn't get.
+   - Without a board, run `python3 tools/tg.py sim --build-only` and check the game in the browser instead of flashing. The canvas offers `launch`, `send`, `screenshot` and `get_output`; see `.github/extensions/tinygame-simulator/README.md` and `references/input-recipes.md`. CLI `send/shot` still target USB, not the simulator.
+   - Say which checks remain physical: knob feel/direction, tilt direction, LED colours and any shake/gyro gesture. Never claim a screenshot, canvas action or flash you didn't get.
 4. **Fill in `README.md`:** how to play, and who made it.
 
-The game appears in the launcher automatically. Don't edit any list or OS file to add it.
+The game appears in both the device and simulator launchers automatically.
+Don't edit any list, OS file or browser code to add it; keep the same game
+rules and `tg::Input` controls on both targets.
 
 ## The API (`include/tinygame.h`, `include/tg_types.h`, `include/tg_style.h`)
 
@@ -91,7 +95,7 @@ Add a regression test for every bug fix. Cover fixed-step timing, pool limits an
 A game is just its folder.
 
 - **To share:** when asked, commit `src/games/<id>/` and use the user's harness-supported pull-request workflow. Prefer its native PR tool when it has one, and use the `gh` CLI only where the harness allows it. Or send the folder to a friend.
-- **Before sharing:** `tg.py build` and `tg.py test` pass, the README says how to play, and the id is unique.
+- **Before sharing:** `tg.py build`, `tg.py test` and `tg.py sim --build-only` pass, the game has been played and visually checked in the simulator, the README says how to play, and the id is unique. Note any real-device checks that remain.
 - **To receive a game:** inspect the folder, copy it into `src/games/`, build and test, then flash if a board is connected. If two games share an id, rename the folder, the namespace and the `TINYGAME(...)` id together. The console holds at most 32 games; a game that can't register is skipped and the boot log says why (`[BOOT] rejected game`).
 
 ## References (read when needed)

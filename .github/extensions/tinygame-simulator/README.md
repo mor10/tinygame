@@ -51,6 +51,23 @@ the page is unavailable, a command fails or the firmware does not acknowledge.
 Keep only one page open per server URL when using agent actions; extra tabs
 are rejected rather than executing a command on multiple firmware instances.
 
+### A useful game-check sequence
+
+Open with `{ "game": "brickbreaker" }`, wait until `get_output` reports
+`status: "ready"` and `pageReady: true`, then:
+
+1. `send` with `{ "commands": ["click", "turn right 20", "wait 1"] }`.
+2. `screenshot` with `{ "label": "brickbreaker-play" }`; inspect the returned PNG.
+3. `send` with `{ "commands": ["hold"] }` and check the pause menu.
+4. Release injected input with
+   `{ "commands": ["up left", "up right", "tilt off"] }`.
+
+Use `get_output`'s `next` value as the next `since` cursor. `hold` injects an OS
+long-press event; a held keyboard/mouse knob tests actual button timing.
+Reload after source edits starts a new run, not the previous game/level.
+Do not call `reload` expecting a source build: it restarts the loaded firmware;
+the file watcher handles recompilation.
+
 ## USB controller
 
 Flash firmware containing `stream on|off` once. Select **Use connected console**
@@ -62,6 +79,10 @@ The serial port is **exclusive**: disconnect the controller before `flash`,
 `send`, `shot` or `monitor`. Closing the canvas stops the bridge. Loss of USB or
 host heartbeat returns the board to normal after a few seconds. With several
 boards connected use the action's explicit `port`.
+The board must be awake; USB cannot wake deep sleep. Click a physical knob
+before connecting. A no-frame error may mean old firmware, a sleeping board
+or a serial port already in use. The bridge forwards tilt only, not raw
+accelerometer/gyro gestures.
 
 ## How it works
 
@@ -78,3 +99,13 @@ the compiler error. Build output is ignored by Git. Settings and best scores
 persist in browser localStorage; game state does not. This is not an electrical
 or timing-accurate emulator: knob feel, tilt direction and LED colours still
 need checks on the real console.
+Saves belong to the browser origin, so another port/browser has separate
+scores and settings; the device's saves are also separate. For a consistent
+standalone-browser origin use the same `tg.py sim --port <number>` each time.
+
+`tg.py test` includes input-mapping and server/bridge tests when Node is
+available. After building WebAssembly, `node sim/arduino/test_engine.mjs`
+checks the real engine's boot, games, framebuffer, inputs, persistence and
+sleep/wake. Changes to this extension additionally need live canvas discovery,
+open and action checks; a working Browser preview alone does not verify the
+extension provider's RPC routing.
