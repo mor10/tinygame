@@ -24,6 +24,8 @@ Capture left{board::PIN_LEFT_A, board::PIN_LEFT_B, board::LEFT_DIRECTION};
 Capture right{board::PIN_RIGHT_A, board::PIN_RIGHT_B, board::RIGHT_DIRECTION};
 portMUX_TYPE capture_mux = portMUX_INITIALIZER_UNLOCKED;
 input::State current;
+bool raw_left_down = false;
+bool raw_right_down = false;
 
 __attribute__((always_inline)) inline std::uint8_t readAB(const Capture& c) {
     const std::uint32_t levels = GPIO.in;
@@ -88,8 +90,10 @@ bool initialize(std::uint32_t now_ms) {
         pinMode(pin, INPUT_PULLUP);
     }
     current = State{};
-    current.left.button.initialize(digitalRead(board::PIN_LEFT_BUTTON) == LOW, now_ms);
-    current.right.button.initialize(digitalRead(board::PIN_RIGHT_BUTTON) == LOW, now_ms);
+    raw_left_down = digitalRead(board::PIN_LEFT_BUTTON) == LOW;
+    raw_right_down = digitalRead(board::PIN_RIGHT_BUTTON) == LOW;
+    current.left.button.initialize(raw_left_down, now_ms);
+    current.right.button.initialize(raw_right_down, now_ms);
     return checked(gpio_install_isr_service(ESP_INTR_FLAG_IRAM)) &&
            startCapture(left) && startCapture(right);
 }
@@ -97,11 +101,14 @@ bool initialize(std::uint32_t now_ms) {
 void update(std::uint32_t now_ms) {
     drain(left, current.left);
     drain(right, current.right);
-    current.left.button.update(digitalRead(board::PIN_LEFT_BUTTON) == LOW, now_ms);
-    current.right.button.update(digitalRead(board::PIN_RIGHT_BUTTON) == LOW, now_ms);
+    raw_left_down = digitalRead(board::PIN_LEFT_BUTTON) == LOW;
+    raw_right_down = digitalRead(board::PIN_RIGHT_BUTTON) == LOW;
+    current.left.button.update(raw_left_down, now_ms);
+    current.right.button.update(raw_right_down, now_ms);
 }
 
 const State& state() { return current; }
+bool rawButtonDown(bool left) { return left ? raw_left_down : raw_right_down; }
 
 const char* eventName(ButtonEvent event) {
     switch (event) {

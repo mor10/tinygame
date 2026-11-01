@@ -25,7 +25,7 @@ Read `AGENTS.md` first. You're often helping a **kid (around 10)**, so explain t
    - Drive the game with `send "turn right 20" click "tilt 0.5 0" "wait 1"`. `turn` is signed transitions (80 per full turn, clockwise positive). Turn the **right** knob unless Settings says HANDEDNESS = LEFT, because games steer with the main knob.
    - Before finishing, release injected input: `send "up left" "up right" "tilt off"`.
    - Use `--port <device>` when more than one board is connected.
-   - Without a board, stop after host and build checks and say which device checks remain (feel, knob direction, tilt, LED). Never claim a screenshot or flash you didn't get.
+   - Without a board, also run `python3 tools/tg.py sim` and check the game in the browser. The `tinygame-simulator` Copilot canvas offers `launch`, `send`, `screenshot` and `get_output`; see `.github/extensions/tinygame-simulator/README.md`. Physical knob feel/direction, tilt direction and LED colours still need a board. Disconnect the USB controller bridge before using serial tools. Never claim a screenshot or flash you didn't get.
 4. **Fill in `README.md`:** how to play, and who made it.
 
 The game appears in the launcher automatically. Don't edit any list or OS file to add it.

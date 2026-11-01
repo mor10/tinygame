@@ -44,6 +44,9 @@ python3 tools/tg.py test                # host unit tests (OS, tools, every game
 python3 tools/tg.py monitor -s 10       # read the serial log
 python3 tools/tg.py send "launch <id>" "turn right 20" click "tilt 0.5 0" "wait 1"
 python3 tools/tg.py shot [out.png]      # screenshot; read it to check your work
+python3 tools/tg.py sim                # real firmware in a local browser/canvas
+python3 tools/tg.py sim --build-only   # build WebAssembly without serving
+python3 tools/tg.py bridge             # USB console as simulator controller
 ```
 
 `flash`, `monitor`, `send` and `shot` take `--port <device>`; it's required when several boards are connected.
@@ -54,6 +57,11 @@ Dev commands for `send`: `turn <left|right> <signed-transitions>`, `click|hold|d
 
 1. `tg.py test` and `tg.py build` pass, with no new warnings.
 2. If a board is plugged in, `tg.py flash`, then drive to the change with `send` and check a `shot`.
+   Without a board, build the simulator and check the change there with dev
+   commands and a screenshot. The `tinygame-simulator` canvas has `launch`,
+   `send`, `screenshot` and `get_output` actions; `tg.py sim` has the same
+   screen and a dev command field. Disconnect the USB controller bridge before
+   flashing or using serial tools.
 3. Say clearly what still needs a human to check on the device: feel, knob direction, tilt direction, LED colours. Never claim a screenshot or flash you didn't get.
 
 ## Skills

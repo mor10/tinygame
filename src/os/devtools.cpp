@@ -15,6 +15,8 @@ namespace {
 
 devtools::Overrides state;
 devtools::LineReader reader;
+controller_stream::State controller;
+bool stream_format_error = false;
 
 constexpr char BASE64[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -72,7 +74,8 @@ void help() {
     Serial.println(
         "[DEV] commands: shot | turn <left|right> <signed-transitions> |\n"
         "[DEV]   click|hold|down|up [left|right] |\n"
-        "[DEV]   tilt <x> <y>|off | launch <id> | info | log on|off");
+        "[DEV]   tilt <x> <y>|off | launch <id> | info | log on|off |\n"
+        "[DEV]   stream on|off|ping");
 }
 
 void run(char* command) {
@@ -80,8 +83,30 @@ void run(char* command) {
     if (arg != nullptr) {
         *arg++ = '\0';
     }
+    if (std::strcmp(command, "stream") == 0) {
+        if (arg != nullptr && std::strcmp(arg, "on") == 0 && Serial) {
+            state = devtools::Overrides{};
+            controller.start(millis());
+            stream_format_error = false;
+        } else if (arg != nullptr && std::strcmp(arg, "off") == 0) {
+            controller.stop();
+        } else if (arg != nullptr && std::strcmp(arg, "ping") == 0 &&
+                   controller.ping(millis())) {
+            // Heartbeats keep the controller session alive without local activity.
+        } else {
+            Serial.println("[DEV] error: use stream on|off|ping (ping needs stream on)");
+            return;
+        }
+        Serial.println("[DEV] ok");
+        return;
+    }
     if (std::strcmp(command, "shot") == 0) {
         screenshot();
+        return;
+    }
+    if (controller.active() && std::strcmp(command, "help") != 0 &&
+        std::strcmp(command, "info") != 0) {
+        Serial.println("[DEV] error: controller mode; use stream off first");
         return;
     }
     const auto result = devtools::inputCommand(command, arg, state);
@@ -119,6 +144,7 @@ void run(char* command) {
 namespace devtools {
 
 void poll() {
+    controller.check(millis(), static_cast<bool>(Serial));
     while (Serial.available() > 0) {
         const auto event = reader.feed(static_cast<char>(Serial.read()));
         if (event == LineReader::Event::None) {
@@ -135,6 +161,27 @@ void poll() {
 
 Overrides& overrides() {
     return state;
+}
+
+bool controlling() {
+    return controller.active();
+}
+
+void streamInput(const controller_stream::Sample& sample, std::uint32_t now) {
+    if (!controller.due(now, sample)) return;
+    char line[128];
+    if (!controller_stream::format(line, sizeof(line), sample)) {
+        if (!stream_format_error)
+            Serial.println("[DEV] error: invalid controller sample (nonfinite tilt or line overflow)");
+        stream_format_error = true;
+        return;
+    }
+    stream_format_error = false;
+    // Avoid blocking the OS when a connected host stops reading.
+    const auto size = std::strlen(line);
+    if (Serial.availableForWrite() < static_cast<int>(size)) return;
+    if (Serial.write(reinterpret_cast<const std::uint8_t*>(line), size) == size)
+        controller.sent(now, sample);
 }
 
 void endFrame() {

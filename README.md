@@ -72,7 +72,7 @@ Open this folder in GitHub Copilot, Claude Code or Codex, and say what you want:
 
 > "Make a game where you tilt the console to roll a marble through a maze, and clicking opens doors."
 
-The agent uses the `make-a-game` skill. It creates `src/games/<your_game>/`, then builds and tests it, and the game appears in the menu automatically. With the console plugged in, it can also flash the game and check screenshots. Without one, you can still develop and run the host tests.
+The agent uses the `make-a-game` skill. It creates `src/games/<your_game>/`, then builds and tests it, and the game appears in the menu automatically. With the console plugged in, it can also flash the game and check screenshots. Without one, use the browser simulator as well as the host tests.
 
 Doing it by hand:
 
@@ -82,6 +82,65 @@ python3 tools/tg.py flash
 ```
 
 Then edit `src/games/marble/game.cpp`.
+
+## Simulator
+
+Play the real firmware in a browser, without a board:
+
+```bash
+python3 tools/tg.py sim                # build, serve locally and open a browser
+python3 tools/tg.py sim --no-open      # print the URL without opening it
+python3 tools/tg.py sim --port 8080    # choose the local HTTP port
+python3 tools/tg.py sim --build-only   # compile WebAssembly only
+```
+
+The simulator build needs macOS or Linux (Windows: use WSL), Python 3.10+,
+Git, curl and Node.js 22+. On first use the helper installs a pinned
+Emscripten SDK in your user cache, outside the repository; it uses LVGL 9.6.0
+from PlatformIO when available, otherwise downloads a pinned cached copy.
+Allow time and disk space for the first download/build. Later builds reuse
+compiled objects. Source edits rebuild and reload automatically, and compile
+errors appear on the page. Nothing is published to the internet.
+
+The simulator draws the screen, two knobs and RGB LED. It runs the same OS,
+menus and games as the console; new game folders work automatically.
+
+| Knob | Clockwise | Click | Counterclockwise |
+|---|---|---|---|
+| Left | A | S | D |
+| Right | J | K | L |
+
+Tap a turn key for one menu step; hold it to repeat. Hold S or K for the
+console's pause/back action. With a mouse, drag a knob's rim or scroll over it
+to turn, and press its centre to click or hold. Drag the screen or use arrow
+keys to tilt; releasing returns to level. Settings and best scores persist in
+browser storage. Sleep wakes to a fresh boot when you click a knob, like the
+real console.
+
+The **TinyGame simulator** canvas is included as a project extension for the
+GitHub Copilot app. Ask your agent to open it; it can launch games, send dev
+commands and save screenshots. See the [canvas guide](.github/extensions/tinygame-simulator/README.md)
+for actions and setup. The normal browser has a serial log, dev command field
+and Screenshot button; standalone screenshots go to `sim/screenshots/`.
+
+### Use the physical console as a controller
+
+After flashing firmware with controller support once, enable **Use connected
+console** on the simulator. Physical knob turns, clicks, holds and accelerometer
+tilt control the browser while the board shows **CONTROLLING SIMULATOR**.
+Its own menus and games are paused and idle sleep is suspended. Browser controls
+still work. Disconnecting or losing the host heartbeat restores normal operation.
+
+The underlying bridge can also run directly:
+
+```bash
+python3 tools/tg.py bridge [--port /dev/cu.usbmodem...]
+```
+
+**The USB port is exclusive. Disconnect the controller before running `flash`,
+`send`, `shot` or `monitor`.** With multiple boards, specify the serial port
+in the canvas `connect_device` action. Browser checks cannot prove physical
+knob feel/direction, tilt direction, LED colours or real deep-sleep current.
 
 ## Sharing a game
 

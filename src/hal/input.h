@@ -22,6 +22,8 @@ struct State {
 bool initialize(std::uint32_t now_ms);
 void update(std::uint32_t now_ms);
 const State& state();
+// Undebounced physical switch snapshot from the latest update (true = left).
+bool rawButtonDown(bool left);
 const char* eventName(ButtonEvent event);
 
 }  // namespace input

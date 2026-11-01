@@ -8,10 +8,12 @@
   python3 tools/tg.py send "turn left 4" click  send dev commands (see below)
   python3 tools/tg.py shot [file.png]       save a screenshot (default shot.png)
   python3 tools/tg.py new <id> "<NAME>"     create src/games/<id>/ from the template
+  python3 tools/tg.py sim                  run the browser simulator
+  python3 tools/tg.py bridge --port <USB>  stream physical controls as JSON lines
 
 Dev commands for `send`: turn <left|right> <signed-transitions> (-1000000..1000000),
 click|hold|down|up [left|right] (default left),
-tilt <x> <y>|off, launch <id>, info, log on|off, wait <seconds>.
+tilt <x> <y>|off, launch <id>, info, log on|off, stream on|off|ping, wait <seconds>.
 System > Sleep or 3 minutes idle sleeps; either knob click wakes.
 USB may reconnect after wake; serial cannot wake the board.
 """
@@ -25,6 +27,7 @@ import math
 import os
 import re
 import shutil
+import signal
 import struct
 import subprocess
 import sys
@@ -106,6 +109,93 @@ def cmd_monitor(args):
         for line in read_lines(port, args.seconds):
             print(line, flush=True)
     return 0
+
+
+def parse_input_line(line):
+    """Decode a physical IN sample, or ignore unrelated serial diagnostics."""
+    fields = line.split()
+    if not fields or fields[0] != "IN":
+        return None
+    if len(fields) != 7:
+        raise ValueError("Invalid controller sample: expected six IN fields.")
+    totals = []
+    for index in (1, 3):
+        if not re.fullmatch(r"-?[0-9]+", fields[index]):
+            raise ValueError("Invalid controller total.")
+        total = int(fields[index])
+        if not -(2**31) <= total < 2**31:
+            raise ValueError("Controller total is outside the signed 32-bit range.")
+        totals.append(total)
+    if fields[2] not in ("0", "1") or fields[4] not in ("0", "1"):
+        raise ValueError("Controller button states must be 0 or 1.")
+    tilt_x, tilt_y = float(fields[5]), float(fields[6])
+    if not math.isfinite(tilt_x) or not math.isfinite(tilt_y):
+        raise ValueError("Controller tilt must be finite.")
+    if not -1 <= tilt_x <= 1 or not -1 <= tilt_y <= 1:
+        raise ValueError("Controller tilt must be within [-1, 1].")
+    return {"leftTotal": totals[0], "leftDown": fields[2] == "1",
+            "rightTotal": totals[1], "rightDown": fields[4] == "1",
+            "tiltX": tilt_x, "tiltY": tilt_y}
+
+
+def cmd_bridge(args):
+    """Keep the USB controller session alive; stdout is machine-readable only."""
+    stopping = False
+
+    def stop(_signum, _frame):
+        nonlocal stopping
+        stopping = True
+
+    previous_handler = signal.signal(signal.SIGTERM, stop)
+    try:
+        with open_serial(args.port) as port:
+            try:
+                port.write(b"stream on\n")
+                now = time.monotonic()
+                last_sample = now
+                next_ping = now + 1
+                buffer = b""
+                while not stopping:
+                    now = time.monotonic()
+                    if now >= next_ping:
+                        port.write(b"stream ping\n")
+                        next_ping = now + 1
+                    buffer += port.read(4096)
+                    if len(buffer) > 16384:
+                        raise RuntimeError("Controller stream exceeded the line limit.")
+                    while b"\n" in buffer:
+                        raw, buffer = buffer.split(b"\n", 1)
+                        line = raw.decode("utf-8", errors="strict").rstrip("\r")
+                        if line.startswith("[DEV] error"):
+                            raise RuntimeError(line)
+                        sample = parse_input_line(line)
+                        if sample is not None:
+                            last_sample = time.monotonic()
+                            print(json.dumps(sample, allow_nan=False, separators=(",", ":")),
+                                  flush=True)
+                    if time.monotonic() - last_sample >= 3:
+                        raise RuntimeError("Controller stream timed out (no IN samples for 3 seconds).")
+            except KeyboardInterrupt:
+                pass
+            finally:
+                try:
+                    port.write(b"stream off\n")
+                except OSError as error:
+                    print(f"Could not stop controller stream: {error}", file=sys.stderr)
+    finally:
+        signal.signal(signal.SIGTERM, previous_handler)
+    return 0
+
+
+def cmd_sim(args):
+    tools_path = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, tools_path)
+    try:
+        from sim_server import cmd_sim as run_sim
+    finally:
+        sys.path.pop(0)
+
+    return run_sim(args)
 
 
 def cmd_send(args):
@@ -249,8 +339,18 @@ def cmd_test(_):
         [sys.executable, "-B", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"],
         cwd=ROOT,
     ) != 0
+    failed += test_simulator() != 0
     print("all tests passed" if failed == 0 else f"{failed} test file(s) failed")
     return 1 if failed else 0
+
+
+def test_simulator():
+    node = shutil.which("node")
+    if node is None:
+        print("SKIP simulator JavaScript tests: Node.js is not installed (firmware tests still run).")
+        return 0
+    return subprocess.call([node, "--test", "sim/web/input.test.mjs", "sim/server.test.mjs"],
+                           cwd=ROOT)
 
 
 def cmd_new(args):
@@ -305,6 +405,14 @@ def main():
     p.add_argument("id")
     p.add_argument("name")
     p.set_defaults(run=cmd_new)
+    p = sub.add_parser("bridge", help="use the USB console as a simulator controller")
+    p.add_argument("--port", help="explicit USB serial device")
+    p.set_defaults(run=cmd_bridge)
+    p = sub.add_parser("sim", help="build and serve the browser simulator")
+    p.add_argument("--build-only", action="store_true")
+    p.add_argument("--port", type=int, default=0)
+    p.add_argument("--no-open", action="store_true")
+    p.set_defaults(run=cmd_sim)
     args = parser.parse_args()
     try:
         result = args.run(args)
