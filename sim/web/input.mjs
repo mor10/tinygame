@@ -1,5 +1,5 @@
 export const KEY_TURNS = Object.freeze({
-  a: [0, 4], d: [0, -4], j: [1, 4], l: [1, -4],
+  a: [0, -4], d: [0, 4], j: [1, -4], l: [1, 4],
 });
 export const KEY_BUTTONS = Object.freeze({ s: 0, k: 1 });
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { KEY_TURNS, KEY_BUTTONS, angleDelta, Rotation, arrowTilt, DeviceInput } from "./input.mjs";
 
 test("requested shortcuts use clockwise positive and four transitions", () => {
-  assert.deepEqual(KEY_TURNS, { a: [0, 4], d: [0, -4], j: [1, 4], l: [1, -4] });
+  assert.deepEqual(KEY_TURNS, { a: [0, -4], d: [0, 4], j: [1, -4], l: [1, 4] });
   assert.deepEqual(KEY_BUTTONS, { s: 0, k: 1 });
 });
 test("drag crosses the angle seam without jumping and retains fractional movement", () => {

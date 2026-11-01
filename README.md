@@ -107,8 +107,8 @@ menus and games as the console; new game folders work automatically.
 
 | Knob | Clockwise | Click | Counterclockwise |
 |---|---|---|---|
-| Left | A | S | D |
-| Right | J | K | L |
+| Left | D | S | A |
+| Right | L | K | J |
 
 Tap a turn key for one menu step; hold it to repeat. Hold S or K for the
 console's pause/back action. With a mouse, drag a knob's rim or scroll over it

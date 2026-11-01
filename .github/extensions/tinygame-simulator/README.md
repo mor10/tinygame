@@ -22,8 +22,8 @@ python3 tools/tg.py sim
 
 | Knob | Clockwise | Click (hold for pause/back) | Counterclockwise |
 |---|---|---|---|
-| Left | A | S | D |
-| Right | J | K | L |
+| Left | D | S | A |
+| Right | L | K | J |
 
 One turn key tap is four transitions; holding repeats. Drag a knob's rim to
 rotate it (80 transitions per revolution), scroll over it, or press its centre.
