@@ -72,7 +72,7 @@ Open this folder in GitHub Copilot, Claude Code or Codex, and say what you want:
 
 > "Make a game where you tilt the console to roll a marble through a maze, and clicking opens doors."
 
-The agent uses the `make-a-game` skill. It creates `src/games/<your_game>/`, then builds and tests it, and the game appears in the menu automatically. With the console plugged in, it can also flash the game and check screenshots. Without one, you can still develop and run the host tests.
+The agent uses the `make-a-game` skill. It creates `src/games/<your_game>/`, then builds and tests it, and the game appears in the menu automatically. With the console plugged in, it can also flash the game and check screenshots. Without one, use the browser simulator as well as the host tests.
 
 Doing it by hand:
 
@@ -82,6 +82,95 @@ python3 tools/tg.py flash
 ```
 
 Then edit `src/games/marble/game.cpp`.
+
+## Simulator
+
+**No console needed to start making games.** Play and test the real firmware in
+a browser, then try it on the console when you're ready. In GitHub Copilot,
+ask: **"Open the TinyGame simulator and launch Maze."** In any other coding
+tool, or to play without an agent:
+
+```bash
+python3 tools/tg.py sim                # build, serve locally and open a browser
+python3 tools/tg.py sim --no-open      # print the URL without opening it
+python3 tools/tg.py sim --port 8080    # choose the local HTTP port
+python3 tools/tg.py sim --build-only   # compile WebAssembly only
+```
+
+The simulator build needs macOS or Linux (Windows: use WSL), Python 3.10+,
+Git, curl and Node.js 22+. On first use the helper installs a pinned
+Emscripten SDK in your user cache, outside the repository; it uses LVGL 9.6.0
+from PlatformIO when available, otherwise downloads a pinned cached copy.
+PlatformIO is not required just to run the simulator.
+Allow time and disk space for the first download/build. Later builds reuse
+compiled objects. Source edits rebuild and reload automatically, and compile
+errors appear on the page. Nothing is published to the internet.
+
+The simulator draws the screen, two knobs and RGB LED. It runs the same OS,
+menus and games as the console; new game folders work automatically.
+
+| Knob | Clockwise | Click | Counterclockwise |
+|---|---|---|---|
+| Left | D | S | A |
+| Right | L | K | J |
+
+Tap a turn key for one menu step; hold it to repeat. Hold S or K for the
+console's pause/back action. With a mouse, drag a knob's rim or scroll over it
+to turn, and press its centre to click or hold. Drag the screen or use arrow
+keys to tilt; releasing returns to level. Settings and best scores persist in
+browser storage. Sleep wakes to a fresh boot when you click a knob, like the
+real console. Click the page before using keys; typing in the dev command
+field does not turn the knobs.
+
+The **TinyGame simulator** canvas is included as a project extension for the
+GitHub Copilot app. Ask your agent to open it; it can launch games, send dev
+commands and save screenshots. See the [canvas guide](.github/extensions/tinygame-simulator/README.md)
+for actions and setup. The normal browser has a serial log, dev command field
+and Screenshot button; standalone screenshots go to `sim/screenshots/`.
+
+### Try a change
+
+Start `tg.py sim`, open a game, and edit its files in `src/games/<id>/`.
+The running simulator rebuilds and reloads when you save. Reload starts a
+fresh run, so don't rely on it keeping your current game or level. If a build
+fails, the page shows the error and keeps the previous working firmware;
+fix the error before treating the preview as your latest code.
+
+Expand **Serial log** to see game logs and send dev commands. For example,
+send `launch brickbreaker`, then `click` to launch the ball, or `launch maze`,
+then `click` and `tilt 0.5 0` to roll. Send each command separately. Return an
+injected tilt to level with `tilt off`; release any held input with `up left`
+and `up right`. The canvas agent can send a whole command sequence and save
+a native-resolution screenshot.
+
+Best scores and confirmed settings survive page reloads in the same browser
+origin. They're separate from the physical console's saves. A different
+browser or server port has separate saves; use `--port 8080` each time if you
+want a consistent local-browser origin. Clearing site data resets them.
+
+### Use the physical console as a controller
+
+After flashing firmware with controller support once, enable **Use connected
+console** on the simulator. Physical knob turns, clicks, holds and accelerometer
+tilt control the browser while the board shows **CONTROLLING SIMULATOR**.
+Its own menus and games are paused and idle sleep is suspended. Browser controls
+still work. Disconnecting or losing the host heartbeat restores normal operation.
+If the page says **Connecting** and then reports no input, flash the current
+firmware, make sure the console is awake, and reconnect. USB cannot wake a
+sleeping console; click a physical knob first.
+
+The underlying bridge can also run directly:
+
+```bash
+python3 tools/tg.py bridge [--port /dev/cu.usbmodem...]
+```
+
+**The USB port is exclusive. Disconnect the controller before running `flash`,
+`send`, `shot` or `monitor`.** With multiple boards, specify the serial port
+in the canvas `connect_device` action. Browser checks cannot prove physical
+knob feel/direction, tilt direction, LED colours or real deep-sleep current.
+The bridge forwards knobs and tilt, not raw accelerometer or gyro samples:
+shake, flick and spin gestures still need the real game running on the board.
 
 ## Sharing a game
 
@@ -98,6 +187,9 @@ python3 tools/tg.py build
 ```
 
 PlatformIO supplies the firmware toolchain and the Python serial library. Use your platform's supported Python environment (a virtual environment is fine). `test` and `build` need no board; `flash`, `send`, `shot` and `monitor` do. When several boards are connected, add `--port <device>` to those four.
+For simulator-only play, use the requirements in [Simulator](#simulator)
+instead. USB controller mode additionally needs the Python `pyserial` package
+(supplied by PlatformIO, or installed in your Python environment).
 
 | Harness | Project guidance | Skills |
 |---|---|---|
@@ -114,11 +206,12 @@ On Windows, enable symlinks (for example Developer Mode and Git's `core.symlinks
 - **Hardware:** Waveshare ESP32-S3-LCD-1.47B plus two detentless EC11 rotary encoders with click switches. Pins and wiring are in [docs/wiring.md](docs/wiring.md); the pin map itself is `src/hal/board_config.h`. Both click switches wake the console from sleep. Never put more than 3.3 V on a GPIO.
 - **Software:** PlatformIO, Arduino (ESP32 core 2.x), C++17, LVGL 9.6. LVGL draws through a custom blocking SPI driver, not LovyanGFX: a compile-only LovyanGFX DMA probe passed, but it would need allocation-failure handling and hardware benchmarks before adoption.
 - **Visual style:** "Pocket Arcade": a dark, blocky 8-bit look with cartridge-style menu rows, pixel badges and framed score panels. The shared tokens and helpers are in `include/tg_style.h`.
-- **Tooling:** `tools/tg.py` handles build, flash, host tests, serial monitor, input injection and screenshots. `AGENTS.md` is the guide for coding agents, and the skills are in `.claude/skills/`.
+- **Tooling:** `tools/tg.py` handles firmware and simulator builds, flash, host tests, USB bridging, serial monitor, input injection and screenshots. `AGENTS.md` is the guide for coding agents, and the skills are in `.claude/skills/`.
 - **Architecture:**
   - `src/hal/` holds the drivers.
   - `src/os/` holds the menus, the style library, the game registry and the dev tools.
   - `src/games/` holds the games. Each game registers itself with `TINYGAME(...)`.
+  - `sim/` replaces the hardware layer for WebAssembly and serves the browser UI; games and OS logic are shared, not reimplemented.
   - Input decoding, sleep safety gates, menu logic and game simulations are plain C++ with host unit tests (`python3 tools/tg.py test`).
 
 ## License

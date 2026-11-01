@@ -9,3 +9,6 @@
 shot*.png
 __pycache__/
 *.pyc
+# Generated simulator firmware and standalone screenshots
+sim/web/build/
+sim/screenshots/

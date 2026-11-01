@@ -2,10 +2,17 @@
 
 #include <cstdint>
 
+#include "controller_stream.h"
+
 // Line commands on the USB serial port so coding agents (via tools/tg.py)
 // can see the screen and press buttons. Type `help` in a serial monitor.
 // Every command answers with `[DEV] ok` or `[DEV] error: ...` (except `shot`,
 // which sends `SHOT <w> <h> RGB565LE`, base64 rows, then `END`).
+// `stream on` suspends local controls and sends physical samples about every
+// 20 ms (also on button edges): IN Ltotal Ldown Rtotal Rdown tilt_x tilt_y.
+// Down states are raw physical snapshots; the simulator alone debounces them.
+// Send `stream ping` at least once every 3 seconds; `stream off`, disconnect,
+// or a missing heartbeat restores local controls.
 namespace devtools {
 
 // Fake input set by commands; the OS applies it on top of the real controls.
@@ -35,6 +42,9 @@ struct Overrides {
 // input is used.
 void poll();
 Overrides& overrides();
+// Controller mode streams physical input only, never injected input.
+bool controlling();
+void streamInput(const controller_stream::Sample& sample, std::uint32_t now);
 // Call at the end of each loop: clears one-frame events and requests.
 void endFrame();
 

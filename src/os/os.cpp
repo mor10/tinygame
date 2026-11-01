@@ -42,6 +42,10 @@ std::uint32_t last_input_log_at = 0;
 Screen logged_screen = Screen::Welcome;
 input_adapter::Adapter input_adapter;
 power_state::State power_state;
+lv_obj_t* controller_screen = nullptr;
+lv_obj_t* controller_previous_screen = nullptr;
+bool controller_resume_game = false;
+bool controller_releasing = false;
 
 // The running game.
 struct Running {
@@ -217,12 +221,51 @@ void update() {
     imu::update(now_ms);
     const devtools::Overrides& dev = devtools::overrides();
     const input::State& hw = input::state();
+    const bool controlling = devtools::controlling();
+    if (controlling && controller_screen == nullptr) {
+        controller_previous_screen = lv_screen_active();
+        controller_resume_game = shell_state.screen() == Screen::Game && running.game != nullptr;
+        if (controller_resume_game) running.game->paused(true);
+        controller_screen = lv_obj_create(nullptr);
+        auto* label = tg::ui::label(controller_screen, "CONTROLLING SIMULATOR", tg::Font::S,
+                                    tg::color::ACCENT);
+        lv_obj_center(label);
+        tg::ui::footer(controller_screen, "USB CONNECTED - KNOBS CONTROL THE SIM");
+        lv_screen_load(controller_screen);
+        power_state.cancel(now_ms);
+    }
+    if (!controlling && controller_screen != nullptr) {
+        lv_screen_load(controller_previous_screen);
+        lv_obj_delete(controller_screen);
+        controller_screen = controller_previous_screen = nullptr;
+        if (controller_resume_game) running.game->paused(false);
+        controller_resume_game = false;
+        controller_releasing = true;
+        power_state.cancel(now_ms);
+    }
     const bool activity = hw.left.delta != 0 || hw.right.delta != 0 ||
                           hw.left.button.events != 0 || hw.right.button.events != 0 ||
                           dev.left.delta != 0 || dev.right.delta != 0 ||
                           dev.left.events != 0 || dev.right.events != 0 ||
                           dev.left.down || dev.right.down;
-    power_state.update(now_ms, activity, buttons_pressed);
+    power_state.update(now_ms, activity || controlling || controller_releasing, buttons_pressed);
+    if (controlling || controller_releasing) {
+        // Drain local edge/hold state even while games and menus are suspended.
+        input_adapter.read(hw, imu::reading(), dev, now_ms, shell_state.settings().leftHanded());
+        if (controlling) {
+            const auto& motion = imu::reading();
+            devtools::streamInput({hw.left.total, input::rawButtonDown(true), hw.right.total,
+                                   input::rawButtonDown(false), motion.tilt_x, motion.tilt_y}, now_ms);
+            led.setBase(status_light::fromHex(tg::color::ACCENT));
+            const auto c = led.output(now_ms, shell_state.settings().led());
+            rgb_led::set(c.r, c.g, c.b);
+        } else if (!buttons_pressed && !hw.left.button.down && !hw.right.button.down) {
+            controller_releasing = false;  // release-frame clicks must not reach the OS
+        }
+        devtools::endFrame();
+        lv_timer_handler();
+        return;
+    }
     if (!power_state.acceptingInput()) {
         devtools::endFrame();
         lv_timer_handler();

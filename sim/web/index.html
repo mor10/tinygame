@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TinyGame simulator</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="simulator.css">
+</head>
+<body>
+  <main>
+    <header><h1>TinyGame</h1><span id="status" role="status">Starting firmware...</span></header>
+    <section class="console" aria-label="TinyGame console">
+      <div class="screen-wrap">
+        <canvas id="screen" width="320" height="172" aria-label="Console screen; drag to tilt" tabindex="0"></canvas>
+        <div id="sleep" hidden>Sleeping<br><small>Click a knob to wake</small></div>
+      </div>
+      <div class="controls">
+        <div class="knob-group"><div class="knob" data-side="0" tabindex="0" role="button" aria-label="Left knob: drag rim or scroll to turn; press centre to click"><span class="marker"></span><span class="centre"></span></div><span>LEFT KNOB</span></div>
+        <div class="indicators"><span id="led" aria-label="RGB LED"></span><div class="tilt" aria-label="Tilt indicator"><span id="tilt-dot"></span></div></div>
+        <div class="knob-group"><div class="knob" data-side="1" tabindex="0" role="button" aria-label="Right knob: drag rim or scroll to turn; press centre to click"><span class="marker"></span><span class="centre"></span></div><span>RIGHT KNOB</span></div>
+      </div>
+    </section>
+    <div class="legend">
+      <p><b>Left</b> <kbd>A</kbd> counterclockwise · <kbd>S</kbd> click · <kbd>D</kbd> clockwise</p>
+      <p><b>Right</b> <kbd>J</kbd> counterclockwise · <kbd>K</kbd> click · <kbd>L</kbd> clockwise</p>
+      <p>Drag a knob's rim or scroll to turn. Press its centre to click; hold to pause or go back.<br>Drag the screen or use arrow keys to tilt.</p>
+    </div>
+    <div class="toolbar">
+      <label><input id="device" type="checkbox"> Use connected console</label>
+      <span id="device-status" role="status">Disconnected</span>
+      <button id="reload" type="button">Restart</button>
+      <button id="screenshot" type="button">Screenshot</button>
+    </div>
+    <div id="error" role="alert" hidden></div>
+    <details><summary>Serial log</summary><pre id="log"></pre><form id="command-form"><label for="command">Dev command</label><input id="command" placeholder="launch brickbreaker" autocomplete="off"><button>Send</button></form></details>
+  </main>
+  <script type="module" src="simulator.js"></script>
+</body>
+</html>

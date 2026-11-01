@@ -82,7 +82,52 @@ if (timer_ <= 0) { spawnEnemy(); timer_ = 1.5f; }   // every 1.5 s
 
 Keep timers as `float` seconds in your class. Never call `delay()`, because it freezes the whole console.
 
-## Testing input from the computer
+## Testing in the simulator
+
+Run `python3 tools/tg.py sim` or open the `tinygame-simulator` Copilot canvas.
+The real OS and game code run with browser HAL replacements; don't create a
+JavaScript version of the game. Source saves rebuild/reload to a fresh run.
+
+| Knob | Counterclockwise | Click / hold | Clockwise |
+|---|---|---|---|
+| Left | A | S | D |
+| Right | J | K | L |
+
+Each turn key tap sends four transitions; holding repeats. S/K stay down until
+released, so holding them past 650 ms tests the real OS pause/back path. Drag a
+knob's rim or scroll to turn it, and press its centre to click/hold. Use arrow
+keys or drag the screen for tilt, returning to level on release.
+
+For the canvas, wait for `get_output` to report ready, then call:
+
+```json
+{"game":"mygame"}
+```
+
+as input to `launch`, followed by this input to `send`:
+
+```json
+{"commands":["turn right -40","wait 0.5","turn right 40","click","tilt -1 0","wait 1","up left","up right","tilt off"]}
+```
+
+Use `screenshot` with `{ "label": "mygame" }` to save a 320x172 PNG and inspect
+it. Use `get_output`'s `next` cursor as the next `since` value when reading logs;
+check `buildError` so you don't mistake the last good build for the current edit.
+Full action schemas and discovery instructions live in
+`.github/extensions/tinygame-simulator/README.md`.
+
+In a normal browser, expand Serial log and enter the same commands separately;
+use its Screenshot button. `wait` is supported by the command field/canvas
+`send`, not by the physical firmware parser. `hold` is a convenient injected
+OS event; use a held S/K or mouse centre press when testing actual timing.
+
+With **Use connected console**, physical knobs and tilt control the simulator
+alongside browser input. Flash controller-enabled firmware once, and disconnect
+the bridge before CLI serial tools. The bridge sends tilt, not raw acceleration
+or gyro. The browser synthesizes gravity from tilt; verify shake/flick/spin
+gestures with the actual game running on the device.
+
+## Testing on the physical console from the computer
 
 ```bash
 python3 tools/tg.py send "launch mygame" "turn right -40" "wait 0.5" "turn right 40" click "tilt -1 0" "wait 1"
@@ -91,3 +136,5 @@ python3 tools/tg.py send "up left" "up right" "tilt off"   # release anything st
 ```
 
 `turn` is signed transitions (80 per revolution, clockwise positive) and `click` is a full press and release. `down` holds a knob until `up`, which exercises the held state. `hold` injects the OS long press, which opens pause. Each of these takes `left` or `right` (default `left`). Handedness decides which knob is `main`, so turn the right knob unless Settings says LEFT. The CLI exits non-zero if the board reports an error or doesn't answer.
+These CLI commands target the USB board, not a running simulator. Disconnect
+**Use connected console** first so the serial port is available.
