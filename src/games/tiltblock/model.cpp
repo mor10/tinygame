@@ -9,8 +9,8 @@ namespace tiltblock {
 
 namespace {
 
-constexpr float GRAVITY = 5.2f;
-constexpr float DRAG = 1.25f;
+constexpr float GRAVITY = 13.0f;
+constexpr float DRAG = 1.6f;
 constexpr float PI = 3.14159265358979323846f;
 constexpr float TWIST_DEGREES_PER_TRANSITION = 1.0f;
 

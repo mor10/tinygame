@@ -4,6 +4,7 @@
 
 Roll a ball over a full 8x8x8 block of cubes. Touch every cube on the current
 layer to drop to the next one; the block gets shorter as you clear layers.
+The layers under the ball fade into the dark, one step per layer.
 Clear all eight to start a harder level.
 
 ## How to play
@@ -19,7 +20,8 @@ Clear all eight to start a harder level.
   the center/left. A quarter turn of either knob reaches full tilt in either
   direction. Each angle stays where you leave it; the board tips visibly as
   you turn.
-- The ball keeps its momentum. Roll into a wall to bounce off it and touch its
+- The ball speeds up quickly and rolls up to about three cubes a second, so
+  tip the other way to brake. It keeps its momentum. Roll into a wall to bounce off it and touch its
   side; a wall cube must be touched just like a floor cube.
 - Avoid holes. A hole in the middle traps the ball; a hole on the edge sends it
   off the block. Either costs a life. You start with five lives.
@@ -52,10 +54,31 @@ best score is saved; each new run starts at level 1 with five lives.
 ## Development
 
 The board generator, fixed-step rolling physics and game rules are host-tested
-in `test/`. Run `python3 tools/tg.py test`, `python3 tools/tg.py build`, and
+in `test/`, and so is `framebuffer.cpp`. Run `python3 tools/tg.py test`, `python3 tools/tg.py build`, and
 `python3 tools/tg.py sim --build-only` from the repository root.
 
 For simulator playtests only, send `turn right 1233` on the mode screen to
 start on layer 4, or `turn right 1234` to start at level 6 with an alien on
 the first layer. A physical knob cannot produce that many transitions in one
 update.
+
+### Drawing
+
+The scene is drawn by `framebuffer.cpp` straight into the RGB565 memory of one
+LVGL canvas, using clipped spans instead of one LVGL call per pixel. LVGL still
+puts it on the screen. Each frame erases only last frame's pixels and
+invalidates only what changed: the board area, and the HUD strip only when its
+pixels differ. The display flush, not the drawing, is the expensive part.
+Lower-layer fades are precomputed colours in `fade.h`, not alpha blending.
+
+To measure on a board, build with the opt-in profiler. It prints two `[TB]`
+lines every five seconds: frame rate, model and raster time, LVGL plus flush
+time, and any time lost to the OS 100 ms frame cap.
+
+```bash
+PLATFORMIO_BUILD_FLAGS=-DTILTBLOCK_PROFILE python3 tools/tg.py flash
+python3 tools/tg.py monitor -s 12
+```
+
+Flash a normal build afterwards. On the ESP32-S3 the full cube runs at about
+30 fps: about 14 ms to draw and 14 ms to flush, with no lost time.

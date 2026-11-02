@@ -14,7 +14,7 @@ inline constexpr int MAX_LIVES = 9;
 inline constexpr float STEP = 1.0f / 120.0f;
 inline constexpr float MAX_FRAME = 0.1f;
 inline constexpr float BALL_RADIUS = 0.18f;
-inline constexpr float MAX_SPEED = 3.2f;
+inline constexpr float MAX_SPEED = 4.5f;
 
 enum class Mode : std::uint8_t { Tilt, Twist };
 enum class Stage : std::uint8_t {

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -30,6 +31,129 @@ Model playingTilt() {
     model.update(click, 0.01f);
     assert(model.state().stage == Stage::Playing);
     return model;
+}
+
+void clearBoard(State& state) {
+    for (int i = 0; i < CELLS; ++i) {
+        state.hole[i] = false;
+        state.wall[i] = false;
+        state.bonus[i] = Bonus::None;
+    }
+    state.monster_alive = false;
+    state.safety = 0.0f;
+}
+
+float speedOf(const State& state) { return std::hypot(state.vx, state.vy); }
+
+// Keeps the ball near the middle so long runs measure speed, not edge falls.
+void recentre(State& state) {
+    state.x = 3.5f;
+    state.y = 3.5f;
+}
+
+void rollingIsResponsiveAndBrakes() {
+    // Full one-axis Twist: about twice the old 1.4 cubes/s terminal speed.
+    Model twist = playing();
+    State& t = twist.mutableState();
+    clearBoard(t);
+    tg::Input lean;
+    lean.right.delta = 20;
+    twist.update(lean, 0.0f);
+    const tg::Input hold{};
+    for (int i = 0; i < 30; ++i) twist.update(hold, 1.0f / 60.0f);  // 0.5 s
+    assert(t.vx > 1.2f);                  // old tuning: ~0.66 cubes/s
+    for (int i = 0; i < 600; ++i) {
+        twist.update(hold, 1.0f / 60.0f);
+        recentre(t);
+    }
+    assert(t.vx > 2.5f && t.vx < 3.1f);   // terminal ~2.8 cubes/s
+    assert(std::fabs(t.vy) < 0.0001f);
+
+    // Leaning the other way brakes quickly and reverses.
+    tg::Input back;
+    back.right.delta = -40;
+    twist.update(back, 0.0f);
+    float stop_time = 0.0f;
+    while (t.vx > 0.0f && stop_time < 2.0f) {
+        twist.update(hold, 1.0f / 60.0f);
+        recentre(t);
+        stop_time += 1.0f / 60.0f;
+    }
+    assert(stop_time < 0.5f);
+
+    // A gentle Tilt (0.2) gets going sooner than before (old: ~0.6 after 1 s).
+    Model gentle = playingTilt();
+    State& g = gentle.mutableState();
+    clearBoard(g);
+    tg::Input tilt;
+    tilt.tilt_x = 0.2f * 0.70710678f;
+    tilt.tilt_y = 0.2f * 0.70710678f;
+    for (int i = 0; i < 60; ++i) {
+        gentle.update(tilt, 1.0f / 60.0f);
+        recentre(g);
+    }
+    assert(g.vx > 1.0f && std::fabs(g.vy) < 0.0001f);
+
+    // Full Tilt hits the speed cap, and one physics step moves far less than
+    // the ball radius, so walls and holes can't be skipped.
+    Model fast = playingTilt();
+    State& f = fast.mutableState();
+    clearBoard(f);
+    tilt.tilt_x = tilt.tilt_y = 0.70710678f;
+    for (int i = 0; i < 300; ++i) {
+        fast.update(tilt, 1.0f / 60.0f);
+        recentre(f);
+        assert(speedOf(f) <= MAX_SPEED + 0.0001f);
+    }
+    assert(speedOf(f) > MAX_SPEED - 0.01f);
+    assert(MAX_SPEED * STEP < BALL_RADIUS * 0.5f);
+}
+
+void fastBallStillCollides() {
+    Model model = playingTilt();
+    State& state = model.mutableState();
+    clearBoard(state);
+    for (int row = 0; row < SIDE; ++row) state.wall[Model::cell(6, row)] = true;
+    tg::Input tilt;
+    tilt.tilt_x = tilt.tilt_y = 0.70710678f;  // full lean toward +x
+    for (int i = 0; i < 240; ++i) {
+        model.update(tilt, 1.0f / 60.0f);
+        assert(state.x < 6.0f - BALL_RADIUS + 0.001f);
+    }
+    assert(state.touched[Model::cell(6, 3)]);
+
+    Model holes = playingTilt();
+    State& h = holes.mutableState();
+    clearBoard(h);
+    h.hole[Model::cell(5, 3)] = true;
+    unsigned events = NO_EVENT;
+    for (int i = 0; i < 120 && !(events & LIFE_LOST); ++i) events |= holes.update(tilt, 1.0f / 60.0f);
+    assert(events & LIFE_LOST);
+}
+
+void framePartitionsMatch() {
+    // Same total time in different frame sizes gives the same motion.
+    Model a = playing();
+    Model b = playing();
+    clearBoard(a.mutableState());
+    clearBoard(b.mutableState());
+    tg::Input lean;
+    lean.left.delta = 12;
+    lean.right.delta = 20;
+    a.update(lean, 0.0f);
+    b.update(lean, 0.0f);
+    const tg::Input hold{};
+    for (int i = 0; i < 40; ++i) a.update(hold, 1.0f / 120.0f);
+    const float sizes[] = {3.0f / 120.0f, 1.0f / 120.0f, 5.0f / 120.0f, 2.0f / 120.0f};
+    int steps = 0;
+    for (int i = 0; steps < 40; ++i) {
+        const int n = std::min(static_cast<int>(std::lround(sizes[i % 4] * 120.0f)), 40 - steps);
+        b.update(hold, n / 120.0f);
+        steps += n;
+    }
+    assert(std::fabs(a.state().x - b.state().x) < 0.0005f);
+    assert(std::fabs(a.state().y - b.state().y) < 0.0005f);
+    assert(std::fabs(a.state().vx - b.state().vx) < 0.0005f);
 }
 
 void startFlowAndCalibration() {
@@ -297,6 +421,9 @@ void laserHitAndGameOverRestart() {
 int main() {
     startFlowAndCalibration();
     twistAngleAndFixedSteps();
+    rollingIsResponsiveAndBrakes();
+    fastBallStillCollides();
+    framePartitionsMatch();
     generatedBoardsAreSolvableAndProgress();
     bonusesAndLifeRules();
     wallBouncesAndEdgeHoleUsesTractor();
