@@ -47,22 +47,30 @@ void Model::tiltAcceleration(float tilt_x, float tilt_y, float& x, float& y) {
     y = std::clamp((-tilt_x + tilt_y) * DIAGONAL, -1.0f, 1.0f);
 }
 
+void Model::twistAcceleration(float left_angle, float right_angle, float& x, float& y) {
+    x = std::sin(right_angle * PI / 180.0f);
+    y = -std::sin(left_angle * PI / 180.0f);
+}
+
 void Model::startRun() {
     const Mode mode = state_.mode;
     const std::uint32_t best = state_.best;
     const float calibration_x = state_.calibration_x;
     const float calibration_y = state_.calibration_y;
     const int start_level = playtest_level_;
+    const int start_layer = playtest_layer_;
     state_ = State{};
     state_.mode = mode;
     state_.best = best;
     state_.calibration_x = calibration_x;
     state_.calibration_y = calibration_y;
     state_.level = start_level;
+    state_.layer = start_layer;
     state_.stage = Stage::Playing;
     accumulator_ = 0.0f;
     generateLayer();
     playtest_level_ = 1;
+    playtest_layer_ = LAYERS_PER_LEVEL;
     playtest_mode_ = false;
 }
 
@@ -555,8 +563,13 @@ void Model::step(float ax, float ay, unsigned& events) {
 
 unsigned Model::update(const tg::Input& input, float seconds) {
     if (state_.stage == Stage::ModeSelect) {
-        if (input.main.delta == 1234) {
+        if (input.main.delta == 1233) {
+            playtest_level_ = 1;
+            playtest_layer_ = 4;
+            playtest_mode_ = false;
+        } else if (input.main.delta == 1234) {
             playtest_level_ = 6;
+            playtest_layer_ = LAYERS_PER_LEVEL;
             playtest_mode_ = true;
         }
         const std::uint8_t choice = mode_picker_.update(
@@ -601,10 +614,7 @@ unsigned Model::update(const tg::Input& input, float seconds) {
         const float ty = std::clamp(input.tilt_y - state_.calibration_y, -1.0f, 1.0f);
         tiltAcceleration(tx, ty, ax, ay);
     } else {
-        const float left = std::sin(state_.left_angle * PI / 180.0f);
-        const float right = std::sin(state_.right_angle * PI / 180.0f);
-        ax = std::clamp(right - left, -1.0f, 1.0f);
-        ay = std::clamp(right + left, -1.0f, 1.0f);
+        twistAcceleration(state_.left_angle, state_.right_angle, ax, ay);
     }
 
     accumulator_ += std::clamp(seconds, 0.0f, MAX_FRAME);

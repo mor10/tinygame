@@ -12,15 +12,19 @@ namespace tiltblock {
 
 namespace {
 
-constexpr int HALF_X = 9;
-constexpr float HALF_Y = 4.5f;
+constexpr float SCALE = 1.25f;
+constexpr float HALF_X = 9.0f * SCALE;
+constexpr float HALF_Y = 4.5f * SCALE;
+constexpr float CUBE_HEIGHT = HALF_X * 1.11803398875f;
 constexpr float BOARD_X = 160.0f;
-constexpr float BOARD_Y = 66.0f;
+constexpr float BOARD_Y = 82.0f;
 constexpr std::uint32_t CUBE_DARK = 0x35465B;
 constexpr std::uint32_t CUBE_SIDE = 0x233145;
 constexpr std::uint32_t CUBE_GRID = 0x1B2635;
 constexpr std::uint32_t CUBE_WALL = 0x74849A;
 constexpr std::uint32_t CUBE_HOLE = 0x101722;
+constexpr std::uint32_t CUBE_TOUCHED_FRONT = 0x16877B;
+constexpr std::uint32_t CUBE_TOUCHED_RIGHT = 0x12675F;
 constexpr std::uint32_t SHADOW = 0x18202B;
 
 struct Point {
@@ -258,10 +262,38 @@ private:
         const float row = y - 4.0f;
         const float left = state_ ? state_->left_angle / 20.0f : 0.0f;
         const float right = state_ ? state_->right_angle / 20.0f : 0.0f;
-        const float roll = right - left;
-        const float pitch = right + left;
-        return {BOARD_X + (col - row) * HALF_X + roll * (col + row) * 0.25f,
-                BOARD_Y + (col + row) * HALF_Y + pitch * (col + row) * 0.4f - z};
+        const float tilt_height = (-right * col + left * row) * 0.8f;
+        return {BOARD_X + (col - row) * HALF_X,
+                BOARD_Y + (col + row) * HALF_Y - tilt_height - z};
+    }
+
+    static Point lower(Point point, float depth) {
+        point.y += depth;
+        return point;
+    }
+
+    void drawStackSide(Point a, Point b, float depth, std::uint32_t color,
+                       std::uint32_t touched_color, bool touched) {
+        if (depth <= 0.0f) return;
+        const Point face[] = {a, b, lower(b, depth), lower(a, depth)};
+        polygon(face, 4, color);
+        if (touched) {
+            const float top_cube_depth = std::min(depth, CUBE_HEIGHT);
+            const Point top_cube[] = {a, b, lower(b, top_cube_depth),
+                                      lower(a, top_cube_depth)};
+            polygon(top_cube, 4, touched_color);
+        }
+
+        for (int layer = 0; layer <= static_cast<int>(depth / CUBE_HEIGHT); ++layer) {
+            const float offset = std::min(static_cast<float>(layer) * CUBE_HEIGHT, depth);
+            line(lower(a, offset), lower(b, offset), CUBE_GRID);
+        }
+        const float last_grid = std::floor(depth / CUBE_HEIGHT) * CUBE_HEIGHT;
+        if (depth - last_grid > 0.01f) {
+            line(lower(a, depth), lower(b, depth), CUBE_GRID);
+        }
+        line(a, lower(a, depth), CUBE_GRID);
+        line(b, lower(b, depth), CUBE_GRID);
     }
 
     void drawModeSelect(const State& state) {
@@ -322,7 +354,12 @@ private:
     }
 
     void drawBoard(const State& state) {
-        const float depth = static_cast<float>(std::max(state.layer - 1, 0)) * 3.0f;
+        float stack_layers = static_cast<float>(LAYERS_PER_LEVEL - state.layer + 1);
+        if (state.stage == Stage::LayerDrop) {
+            const float progress = 1.0f - std::clamp(state.timer / 0.85f, 0.0f, 1.0f);
+            stack_layers = static_cast<float>(LAYERS_PER_LEVEL - state.layer) + progress;
+        }
+        const float depth = stack_layers * CUBE_HEIGHT;
         for (int sum = 0; sum <= 2 * (SIDE - 1); ++sum) {
             for (int row = 0; row < SIDE; ++row) {
                 const int col = sum - row;
@@ -330,25 +367,23 @@ private:
                 const int index = Model::cell(col, row);
                 Point p = boardPoint(col + 0.5f, row + 0.5f);
                 if (state.stage == Stage::LayerDrop || state.stage == Stage::LevelClear) {
-                    p.y += static_cast<float>(std::max(0.0f, 0.85f - state.timer)) * 22.0f;
+                    p.y += static_cast<float>(std::max(0.0f, 0.85f - state.timer)) * 27.5f;
                 }
                 if (row == SIDE - 1) {
-                    const Point face[] = {{p.x - HALF_X, p.y}, {p.x + HALF_X, p.y},
-                                          {p.x + HALF_X, p.y + depth}, {p.x - HALF_X, p.y + depth}};
-                    polygon(face, 4, CUBE_SIDE);
-                    for (int layer = 1; layer < state.layer; ++layer) {
-                        const float y = p.y + static_cast<float>(layer * 3);
-                        line({p.x - HALF_X, y}, {p.x + HALF_X, y}, CUBE_GRID);
-                    }
+                    const Point left = boardPoint(static_cast<float>(col),
+                                                  static_cast<float>(row + 1));
+                    const Point bottom = boardPoint(static_cast<float>(col + 1),
+                                                    static_cast<float>(row + 1));
+                    drawStackSide(left, bottom, depth, CUBE_SIDE, CUBE_TOUCHED_FRONT,
+                                  state.touched[index]);
                 }
                 if (col == SIDE - 1) {
-                    const Point face[] = {{p.x, p.y + HALF_Y}, {p.x + HALF_X, p.y},
-                                          {p.x + HALF_X, p.y + depth}, {p.x, p.y + HALF_Y + depth}};
-                    polygon(face, 4, CUBE_DARK);
-                    for (int layer = 1; layer < state.layer; ++layer) {
-                        const float y = p.y + HALF_Y + static_cast<float>(layer * 3);
-                        line({p.x, y}, {p.x + HALF_X, y - HALF_Y}, CUBE_GRID);
-                    }
+                    const Point right = boardPoint(static_cast<float>(col + 1),
+                                                   static_cast<float>(row));
+                    const Point bottom = boardPoint(static_cast<float>(col + 1),
+                                                    static_cast<float>(row + 1));
+                    drawStackSide(right, bottom, depth, CUBE_DARK, CUBE_TOUCHED_RIGHT,
+                                  state.touched[index]);
                 }
                 if (state.hole[index]) {
                     diamond(p, HALF_X, HALF_Y, CUBE_HOLE);
@@ -358,14 +393,30 @@ private:
                     continue;
                 }
                 if (state.wall[index]) {
-                    const Point raised = boardPoint(col + 0.5f, row + 0.5f, 5.0f);
-                    const Point left_side[] = {{p.x - HALF_X, p.y}, {p.x, p.y + HALF_Y},
-                                               {raised.x, raised.y + HALF_Y}, {raised.x - HALF_X, raised.y}};
-                    const Point right_side[] = {{p.x + HALF_X, p.y}, {p.x, p.y + HALF_Y},
-                                                {raised.x, raised.y + HALF_Y},
-                                                {raised.x + HALF_X, raised.y}};
-                    polygon(left_side, 4, CUBE_SIDE);
-                    polygon(right_side, 4, CUBE_DARK);
+                    const Point raised = boardPoint(col + 0.5f, row + 0.5f, CUBE_HEIGHT);
+                    const Point left = boardPoint(static_cast<float>(col),
+                                                  static_cast<float>(row + 1));
+                    const Point bottom = boardPoint(static_cast<float>(col + 1),
+                                                    static_cast<float>(row + 1));
+                    const Point right = boardPoint(static_cast<float>(col + 1),
+                                                   static_cast<float>(row));
+                    const Point raised_left = boardPoint(static_cast<float>(col),
+                                                         static_cast<float>(row + 1),
+                                                         CUBE_HEIGHT);
+                    const Point raised_bottom = boardPoint(static_cast<float>(col + 1),
+                                                           static_cast<float>(row + 1),
+                                                           CUBE_HEIGHT);
+                    const Point raised_right = boardPoint(static_cast<float>(col + 1),
+                                                          static_cast<float>(row),
+                                                          CUBE_HEIGHT);
+                    const Point left_side[] = {left, bottom, raised_bottom, raised_left};
+                    const Point right_side[] = {right, bottom, raised_bottom, raised_right};
+                    const std::uint32_t touched_front = state.touched[index]
+                        ? CUBE_TOUCHED_FRONT : CUBE_SIDE;
+                    const std::uint32_t touched_right = state.touched[index]
+                        ? CUBE_TOUCHED_RIGHT : CUBE_DARK;
+                    polygon(left_side, 4, touched_front);
+                    polygon(right_side, 4, touched_right);
                     const std::uint32_t top = state.touched[index] ? tg::color::MINT : CUBE_WALL;
                     diamond(raised, HALF_X, HALF_Y, top);
                     outlineDiamond(raised, HALF_X, HALF_Y, CUBE_GRID);
@@ -402,17 +453,17 @@ private:
             p = boardPoint(4.0f, 4.0f);
         }
         if (state.stage == Stage::LayerDrop || state.stage == Stage::LevelClear) {
-            p.y += static_cast<float>(std::max(0.0f, 0.85f - state.timer)) * 22.0f;
+            p.y += static_cast<float>(std::max(0.0f, 0.85f - state.timer)) * 27.5f;
         }
         if (state.safety > 0.0f && static_cast<int>(state.safety * 12.0f) % 2 == 0) return;
         const int x = static_cast<int>(std::lround(p.x));
         const int y = static_cast<int>(std::lround(p.y));
-        box(x - 4, y + 3, 8, 2, SHADOW);
-        box(x - 3, y - 2, 6, 5, tg::color::WHITE);
-        box(x - 2, y - 3, 4, 7, tg::color::WHITE);
+        box(x - 5, y + 4, 10, 3, SHADOW);
+        box(x - 4, y - 3, 8, 6, tg::color::WHITE);
+        box(x - 3, y - 4, 6, 9, tg::color::WHITE);
         if (state.laser_armed) pixel(x, y - 4, tg::color::ORANGE);
         if (state.airborne > 0.0f) {
-            box(x - 5, y + 5, 10, 1, tg::color::YELLOW);
+            box(x - 6, y + 6, 12, 1, tg::color::YELLOW);
         }
     }
 

@@ -91,6 +91,7 @@ public:
     static int cell(int col, int row);
     static bool solvable(const State& state);
     static void tiltAcceleration(float tilt_x, float tilt_y, float& x, float& y);
+    static void twistAcceleration(float left_angle, float right_angle, float& x, float& y);
 
 private:
     std::uint32_t random();
@@ -116,6 +117,7 @@ private:
     std::uint32_t seed_ = 1;
     float accumulator_ = 0.0f;
     int playtest_level_ = 1;
+    int playtest_layer_ = LAYERS_PER_LEVEL;
     bool playtest_mode_ = false;
     tg::Picker mode_picker_;
 };

@@ -60,16 +60,35 @@ void startFlowAndCalibration() {
     playtest.update(select, 0.01f);
     assert(playtest.state().level == 6);
     assert(playtest.state().monster_pending);
+
+    Model lower_layer(9);
+    hidden_start.main.delta = 1233;
+    lower_layer.update(hidden_start, 0.01f);
+    lower_layer.update(select, 0.01f);
+    assert(lower_layer.state().stage == Stage::Playing);
+    assert(lower_layer.state().level == 1);
+    assert(lower_layer.state().layer == 4);
 }
 
 void twistAngleAndFixedSteps() {
     Model model = playing();
     tg::Input in;
     in.left.delta = 80;
-    model.update(in, STEP);
+    model.update(in, 0.1f);
     assert(std::fabs(model.state().left_angle - 20.0f) < 0.0001f);
-    assert(model.state().x < 3.5f);
-    assert(model.state().y > 3.5f);
+    assert(std::fabs(model.state().x - 3.5f) < 0.0001f);
+    assert(model.state().y < 3.5f);
+
+    float x = 0.0f;
+    float y = 0.0f;
+    Model::twistAcceleration(20.0f, 0.0f, x, y);
+    assert(std::fabs(x) < 0.0001f && y < 0.0f);
+    Model::twistAcceleration(-20.0f, 0.0f, x, y);
+    assert(std::fabs(x) < 0.0001f && y > 0.0f);
+    Model::twistAcceleration(0.0f, 20.0f, x, y);
+    assert(x > 0.0f && std::fabs(y) < 0.0001f);
+    Model::twistAcceleration(0.0f, -20.0f, x, y);
+    assert(x < 0.0f && std::fabs(y) < 0.0001f);
 
     Model a = playingTilt();
     Model b = playingTilt();

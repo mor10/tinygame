@@ -11,8 +11,11 @@ layer to drop to the next one; clear all eight to start a harder level.
   then click either knob.
 - In **TILT**, move the dot into the center of the square and click either
   knob to level the play surface. Tilt the console to roll the ball.
-- In **TWIST**, turn the left knob to tip the front-left edge and the right
-  knob to tip the front-right edge. The angle stays where you leave it.
+- In **TWIST**, the left knob tips the board along its front-left diagonal:
+  clockwise rolls the ball toward the center/right, and counterclockwise
+  rolls it the other way. The right knob controls the opposite diagonal:
+  clockwise rolls toward the center/right, and counterclockwise rolls toward
+  the center/left. Each angle stays where you leave it.
 - The ball keeps its momentum. Roll into a wall to bounce off it and touch its
   side; a wall cube must be touched just like a floor cube.
 - Avoid holes. A hole in the middle traps the ball; a hole on the edge sends it
@@ -49,6 +52,7 @@ The board generator, fixed-step rolling physics and game rules are host-tested
 in `test/`. Run `python3 tools/tg.py test`, `python3 tools/tg.py build`, and
 `python3 tools/tg.py sim --build-only` from the repository root.
 
-For simulator playtests only, send `turn right 1234` on the mode screen to
-start at level 6 with an alien on the first layer. A physical knob cannot
-produce that many transitions in one update.
+For simulator playtests only, send `turn right 1233` on the mode screen to
+start on layer 4, or `turn right 1234` to start at level 6 with an alien on
+the first layer. A physical knob cannot produce that many transitions in one
+update.
