@@ -16,6 +16,7 @@ constexpr float SCALE = 1.25f;
 constexpr float HALF_X = 9.0f * SCALE;
 constexpr float HALF_Y = 4.5f * SCALE;
 constexpr float CUBE_HEIGHT = HALF_X * 1.11803398875f;
+constexpr float TWIST_VISUAL_SCALE = 3.0f;
 constexpr float BOARD_X = 160.0f;
 constexpr float BOARD_Y = 82.0f;
 constexpr std::uint32_t CUBE_DARK = 0x35465B;
@@ -262,7 +263,7 @@ private:
         const float row = y - 4.0f;
         const float left = state_ ? state_->left_angle / 20.0f : 0.0f;
         const float right = state_ ? state_->right_angle / 20.0f : 0.0f;
-        const float tilt_height = (-right * col + left * row) * 0.8f;
+        const float tilt_height = (-right * col + left * row) * TWIST_VISUAL_SCALE;
         return {BOARD_X + (col - row) * HALF_X,
                 BOARD_Y + (col + row) * HALF_Y - tilt_height - z};
     }

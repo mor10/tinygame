@@ -88,11 +88,35 @@ void startFlowAndCalibration() {
 void twistAngleAndFixedSteps() {
     Model model = playing();
     tg::Input in;
-    in.left.delta = 80;
-    model.update(in, 0.1f);
+    in.left.delta = 20;
+    model.update(in, 0.0f);
     assert(std::fabs(model.state().left_angle - 20.0f) < 0.0001f);
-    assert(std::fabs(model.state().x - 3.5f) < 0.0001f);
-    assert(model.state().y < 3.5f);
+
+    in.left.delta = -20;
+    model.update(in, 0.0f);
+    assert(std::fabs(model.state().left_angle) < 0.0001f);
+
+    in.left.delta = -20;
+    model.update(in, 0.0f);
+    assert(std::fabs(model.state().left_angle + 20.0f) < 0.0001f);
+
+    in.left.delta = 20;
+    in.right.delta = 20;
+    model.update(in, 0.0f);
+    assert(std::fabs(model.state().left_angle) < 0.0001f);
+    assert(std::fabs(model.state().right_angle - 20.0f) < 0.0001f);
+
+    in.right.delta = -20;
+    model.update(in, 0.0f);
+    assert(std::fabs(model.state().right_angle) < 0.0001f);
+
+    Model physics = playing();
+    in = tg::Input{};
+    in.left.delta = 20;
+    physics.update(in, 0.1f);
+    assert(std::fabs(physics.state().left_angle - 20.0f) < 0.0001f);
+    assert(std::fabs(physics.state().x - 3.5f) < 0.0001f);
+    assert(physics.state().y < 3.5f);
 
     float x = 0.0f;
     float y = 0.0f;

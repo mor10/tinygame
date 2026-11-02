@@ -16,7 +16,9 @@ Clear all eight to start a harder level.
   clockwise rolls the ball toward the center/right, and counterclockwise
   rolls it the other way. The right knob controls the opposite diagonal:
   clockwise rolls toward the center/right, and counterclockwise rolls toward
-  the center/left. Each angle stays where you leave it.
+  the center/left. A quarter turn of either knob reaches full tilt in either
+  direction. Each angle stays where you leave it; the board tips visibly as
+  you turn.
 - The ball keeps its momentum. Roll into a wall to bounce off it and touch its
   side; a wall cube must be touched just like a floor cube.
 - Avoid holes. A hole in the middle traps the ball; a hole on the edge sends it

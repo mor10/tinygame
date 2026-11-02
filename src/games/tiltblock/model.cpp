@@ -12,6 +12,7 @@ namespace {
 constexpr float GRAVITY = 5.2f;
 constexpr float DRAG = 1.25f;
 constexpr float PI = 3.14159265358979323846f;
+constexpr float TWIST_DEGREES_PER_TRANSITION = 1.0f;
 
 void addScore(State& state, std::uint32_t amount) {
     state.score = amount > UINT32_MAX - state.score ? UINT32_MAX : state.score + amount;
@@ -608,8 +609,10 @@ unsigned Model::update(const tg::Input& input, float seconds) {
     }
 
     if (state_.mode == Mode::Twist && state_.stage == Stage::Playing) {
-        state_.left_angle = std::clamp(state_.left_angle + input.left.delta * 0.25f, -20.0f, 20.0f);
-        state_.right_angle = std::clamp(state_.right_angle + input.right.delta * 0.25f, -20.0f, 20.0f);
+        state_.left_angle = std::clamp(
+            state_.left_angle + input.left.delta * TWIST_DEGREES_PER_TRANSITION, -20.0f, 20.0f);
+        state_.right_angle = std::clamp(
+            state_.right_angle + input.right.delta * TWIST_DEGREES_PER_TRANSITION, -20.0f, 20.0f);
     }
     unsigned events = NO_EVENT;
     if (state_.stage == Stage::Playing && input.click) fireLaser(events);
