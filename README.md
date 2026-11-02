@@ -29,7 +29,9 @@ The knobs turn continuously without detents. Firmware measures electrical moveme
 
 ### Screenshots
 
-The launcher and the three games currently included:
+The launcher and four games are currently included: Brick Breaker, Maze, Rock
+Rain, and TiltBlock. TiltBlock is an isometric cube puzzle where the ball rolls
+as you tilt the console or turn the two knobs.
 
 | Launcher | Brick Breaker |
 |---|---|
