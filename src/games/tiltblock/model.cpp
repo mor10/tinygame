@@ -364,10 +364,19 @@ void Model::loseLife(bool edge_fall, unsigned& events) {
     respawn();
 }
 
+void Model::beginFall(bool edge, bool hole) {
+    state_.stage = Stage::Falling;
+    state_.timer = FALL_SECONDS;
+    state_.fall_edge = edge;
+    state_.fall_hole = hole;
+    state_.safety = 0.0f;
+    state_.airborne = 0.0f;
+}
+
 void Model::finishLayer(unsigned& events) {
     addScore(state_, static_cast<std::uint32_t>(100 * state_.level));
-    state_.stage = Stage::LayerDrop;
-    state_.timer = 0.85f;
+    state_.stage = Stage::BeamUp;
+    state_.timer = BEAM_SECONDS;
     state_.vx = state_.vy = 0.0f;
     state_.monster_alive = false;
     state_.monster_pending = false;
@@ -375,12 +384,7 @@ void Model::finishLayer(unsigned& events) {
     events |= LAYER_CLEARED;
     if (state_.layer == 1) {
         addScore(state_, static_cast<std::uint32_t>(1000 * state_.level));
-        if (state_.level < 1000000) ++state_.level;
-        state_.stage = Stage::LevelClear;
-        state_.timer = 1.1f;
         events |= LEVEL_CLEARED;
-    } else {
-        --state_.layer;
     }
 }
 
@@ -437,12 +441,12 @@ void Model::move(float ax, float ay, unsigned& events) {
     }
 
     if (state_.x < 0.0f || state_.x >= SIDE || state_.y < 0.0f || state_.y >= SIDE) {
-        loseLife(true, events);
+        beginFall(true, false);
         return;
     }
     const int index = cell(static_cast<int>(state_.x), static_cast<int>(state_.y));
     if (state_.airborne <= 0.0f && state_.hole[index]) {
-        loseLife(edgeCell(index), events);
+        beginFall(edgeCell(index), true);
         return;
     }
     if (state_.airborne <= 0.0f && !state_.wall[index]) touch(index);
@@ -528,13 +532,29 @@ void Model::fireLaser(unsigned& events) {
 }
 
 void Model::step(float ax, float ay, unsigned& events) {
+    if (state_.stage == Stage::Falling || state_.stage == Stage::BeamUp) {
+        state_.timer = std::max(0.0f, state_.timer - STEP);
+        if (state_.timer > 0.00001f) return;
+        if (state_.stage == Stage::Falling) {
+            state_.stage = Stage::Playing;
+            loseLife(state_.fall_edge, events);
+        } else if (state_.layer == 1) {
+            if (state_.level < 1000000) ++state_.level;
+            state_.stage = Stage::LevelClear;
+            state_.timer = 1.1f;
+        } else {
+            --state_.layer;
+            state_.stage = Stage::LayerDrop;
+            generateLayer();
+        }
+        return;
+    }
     if (state_.stage == Stage::LayerDrop || state_.stage == Stage::LevelClear ||
         state_.stage == Stage::TractorSave) {
         state_.timer -= STEP;
         if (state_.timer > 0.0f) return;
         if (state_.stage == Stage::LayerDrop) {
             state_.stage = Stage::Playing;
-            generateLayer();
         } else if (state_.stage == Stage::LevelClear) {
             state_.layer = LAYERS_PER_LEVEL;
             state_.stage = Stage::Playing;

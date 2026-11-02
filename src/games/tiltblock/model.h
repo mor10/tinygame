@@ -15,12 +15,16 @@ inline constexpr float STEP = 1.0f / 120.0f;
 inline constexpr float MAX_FRAME = 0.1f;
 inline constexpr float BALL_RADIUS = 0.18f;
 inline constexpr float MAX_SPEED = 4.5f;
+inline constexpr float FALL_SECONDS = 0.8f;
+inline constexpr float BEAM_SECONDS = 1.0f;
 
 enum class Mode : std::uint8_t { Tilt, Twist };
 enum class Stage : std::uint8_t {
     ModeSelect,
     Calibration,
     Playing,
+    Falling,
+    BeamUp,
     LayerDrop,
     LevelClear,
     TractorSave,
@@ -80,6 +84,8 @@ struct State {
     bool laser_armed = false;
     bool monster_pending = false;
     bool monster_alive = false;
+    bool fall_edge = false;
+    bool fall_hole = false;
 };
 
 class Model {
@@ -107,6 +113,7 @@ private:
     void step(float ax, float ay, unsigned& events);
     void move(float ax, float ay, unsigned& events);
     void loseLife(bool edge_fall, unsigned& events);
+    void beginFall(bool edge, bool hole);
     void respawn();
     void finishLayer(unsigned& events);
     void moveMonster(float dt, unsigned& events);
