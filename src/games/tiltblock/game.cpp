@@ -354,21 +354,14 @@ private:
     }
 
     void drawBoard(const State& state) {
-        float stack_layers = static_cast<float>(LAYERS_PER_LEVEL - state.layer + 1);
-        if (state.stage == Stage::LayerDrop) {
-            const float progress = 1.0f - std::clamp(state.timer / 0.85f, 0.0f, 1.0f);
-            stack_layers = static_cast<float>(LAYERS_PER_LEVEL - state.layer) + progress;
-        }
+        const float stack_layers = Model::stackDepthLayersForView(state);
         const float depth = stack_layers * CUBE_HEIGHT;
         for (int sum = 0; sum <= 2 * (SIDE - 1); ++sum) {
             for (int row = 0; row < SIDE; ++row) {
                 const int col = sum - row;
                 if (col < 0 || col >= SIDE) continue;
                 const int index = Model::cell(col, row);
-                Point p = boardPoint(col + 0.5f, row + 0.5f);
-                if (state.stage == Stage::LayerDrop || state.stage == Stage::LevelClear) {
-                    p.y += static_cast<float>(std::max(0.0f, 0.85f - state.timer)) * 27.5f;
-                }
+                const Point p = boardPoint(col + 0.5f, row + 0.5f);
                 if (row == SIDE - 1) {
                     const Point left = boardPoint(static_cast<float>(col),
                                                   static_cast<float>(row + 1));
@@ -451,9 +444,6 @@ private:
         Point p = boardPoint(state.x, state.y);
         if (state.stage == Stage::TractorSave) {
             p = boardPoint(4.0f, 4.0f);
-        }
-        if (state.stage == Stage::LayerDrop || state.stage == Stage::LevelClear) {
-            p.y += static_cast<float>(std::max(0.0f, 0.85f - state.timer)) * 27.5f;
         }
         if (state.safety > 0.0f && static_cast<int>(state.safety * 12.0f) % 2 == 0) return;
         const int x = static_cast<int>(std::lround(p.x));

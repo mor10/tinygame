@@ -90,6 +90,7 @@ public:
     State& mutableState() { return state_; }
     static int cell(int col, int row);
     static bool solvable(const State& state);
+    static float stackDepthLayersForView(const State& state);
     static void tiltAcceleration(float tilt_x, float tilt_y, float& x, float& y);
     static void twistAcceleration(float left_angle, float right_angle, float& x, float& y);
 

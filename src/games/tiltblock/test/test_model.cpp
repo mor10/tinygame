@@ -33,6 +33,21 @@ Model playingTilt() {
 }
 
 void startFlowAndCalibration() {
+    State initial_view;
+    assert(Model::stackDepthLayersForView(initial_view) == LAYERS_PER_LEVEL);
+
+    State dropping_view;
+    dropping_view.stage = Stage::LayerDrop;
+    dropping_view.layer = LAYERS_PER_LEVEL - 1;
+    dropping_view.timer = 0.85f;
+    assert(std::fabs(Model::stackDepthLayersForView(dropping_view) -
+                     LAYERS_PER_LEVEL) < 0.0001f);
+    dropping_view.timer = 0.425f;
+    assert(std::fabs(Model::stackDepthLayersForView(dropping_view) -
+                     (LAYERS_PER_LEVEL - 0.5f)) < 0.0001f);
+    dropping_view.timer = 0.0f;
+    assert(Model::stackDepthLayersForView(dropping_view) == LAYERS_PER_LEVEL - 1);
+
     Model tilt(9);
     tg::Input in;
     in.tilt_x = 0.25f;

@@ -41,6 +41,13 @@ std::uint32_t Model::random() {
     return tg::randomNext(seed_);
 }
 
+float Model::stackDepthLayersForView(const State& state) {
+    const float layers = static_cast<float>(
+        std::clamp(state.layer, 1, LAYERS_PER_LEVEL));
+    if (state.stage != Stage::LayerDrop) return layers;
+    return layers + std::clamp(state.timer / 0.85f, 0.0f, 1.0f);
+}
+
 void Model::tiltAcceleration(float tilt_x, float tilt_y, float& x, float& y) {
     constexpr float DIAGONAL = 0.70710678118f;
     x = std::clamp((tilt_x + tilt_y) * DIAGONAL, -1.0f, 1.0f);

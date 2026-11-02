@@ -2,8 +2,9 @@
 
 **Made by:** mor10
 
-Roll a ball over a stack of eight cube layers. Touch every cube on the current
-layer to drop to the next one; clear all eight to start a harder level.
+Roll a ball over a full 8x8x8 block of cubes. Touch every cube on the current
+layer to drop to the next one; the block gets shorter as you clear layers.
+Clear all eight to start a harder level.
 
 ## How to play
 
