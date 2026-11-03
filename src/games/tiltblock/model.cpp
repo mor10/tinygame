@@ -202,7 +202,9 @@ void Model::generateLayer() {
         std::swap(order[i], order[random() % (i + 1)]);
     }
 
-    const int wall_target = state_.level < 2 ? 0
+    // layer counts down; tutorial lessons count up in the order played.
+    const int lesson = state_.level == 1 ? LAYERS_PER_LEVEL - state_.layer + 1 : 0;
+    const int wall_target = lesson == 3 ? 1 : state_.level < 2 ? 0
         : std::min(5 + (state_.level - 2) * 2, 22);
     int walls = 0;
     for (int i : order) {
@@ -216,7 +218,7 @@ void Model::generateLayer() {
         }
     }
 
-    const int hole_target = state_.level < 3 ? 0
+    const int hole_target = lesson == 2 ? 1 : state_.level < 3 ? 0
         : std::min(2 + (state_.level - 3) * 2, 14);
     int holes = 0;
     if (state_.level >= 3) {
@@ -241,7 +243,7 @@ void Model::generateLayer() {
         }
     }
 
-    if (state_.level >= 4) {
+    if (lesson == 4 || state_.level >= 4) {
         addBonus(Bonus::Life);
         addBonus(Bonus::Zone);
         if (!state_.tractor) addBonus(Bonus::Tractor);
@@ -250,14 +252,19 @@ void Model::generateLayer() {
         addBonus(Bonus::Boing);
         addBonus(Bonus::Quake);
     }
+    if (lesson == 5) addBonus(Bonus::Boing);
+    if (lesson == 6) addBonus(Bonus::Quake);
 
     state_.monster_alive = false;
     state_.monster_pending = false;
+    state_.monster_preview = lesson == 7;
     state_.monster_corner = -1;
     state_.laser_cell = -1;
     state_.laser_armed = false;
     state_.monster_pause = 0.0f;
-    if (state_.level >= 6) {
+    if (lesson == 7 || lesson == 8) {
+        spawnMonster();
+    } else if (state_.level >= 6) {
         const int chance = std::min(25 + (state_.level - 6) * 10, 75);
         if (playtest_mode_ || static_cast<int>(random() % 100) < chance) {
             state_.monster_pending = true;
@@ -456,30 +463,31 @@ void Model::move(float ax, float ay, unsigned& events) {
     if (state_.stage == Stage::Playing && complete()) finishLayer(events);
 }
 
+void Model::spawnMonster() {
+    state_.monster_pending = false;
+    state_.monster_alive = true;
+    state_.monster_corner = static_cast<int>(random() % 4);
+    const int corner = cornerCell(state_.monster_corner);
+    state_.monster_x = static_cast<float>(corner % SIDE) + 0.5f;
+    state_.monster_y = static_cast<float>(corner / SIDE) + 0.5f;
+    if (!state_.monster_preview) {
+        state_.laser_cell = cornerCell(state_.monster_corner ^ 3);
+        state_.bonus[state_.laser_cell] = Bonus::Laser;
+    }
+}
+
 void Model::moveMonster(float dt, unsigned& events) {
     if (state_.monster_pending) {
         state_.monster_spawn -= dt;
         if (state_.monster_spawn <= 0.0f) {
-            state_.monster_pending = false;
-            state_.monster_alive = true;
-            state_.monster_corner = static_cast<int>(random() % 4);
-            const int corner = cornerCell(state_.monster_corner);
-            state_.monster_x = static_cast<float>(corner % SIDE) + 0.5f;
-            state_.monster_y = static_cast<float>(corner / SIDE) + 0.5f;
-            state_.laser_cell = cornerCell(state_.monster_corner ^ 3);
-            state_.bonus[state_.laser_cell] = Bonus::Laser;
+            spawnMonster();
         }
     }
-    if (!state_.monster_alive) return;
+    if (!state_.monster_alive || state_.monster_preview) return;
     if (state_.monster_pause > 0.0f) {
         state_.monster_pause = std::max(0.0f, state_.monster_pause - dt);
         if (state_.monster_pause == 0.0f) {
-            state_.monster_corner = static_cast<int>(random() % 4);
-            const int corner = cornerCell(state_.monster_corner);
-            state_.monster_x = static_cast<float>(corner % SIDE) + 0.5f;
-            state_.monster_y = static_cast<float>(corner / SIDE) + 0.5f;
-            state_.laser_cell = cornerCell(state_.monster_corner ^ 3);
-            state_.bonus[state_.laser_cell] = Bonus::Laser;
+            spawnMonster();
         }
         return;
     }
@@ -498,7 +506,7 @@ void Model::moveMonster(float dt, unsigned& events) {
 }
 
 void Model::fireLaser(unsigned& events) {
-    if (!state_.laser_armed || state_.laser_cooldown > 0.0f) return;
+    if (!state_.laser_armed || state_.laser_cooldown > 0.0f || state_.monster_preview) return;
     const float speed = std::hypot(state_.vx, state_.vy);
     if (speed < 0.05f) {
         state_.laser_cooldown = 3.0f;
@@ -583,7 +591,8 @@ void Model::step(float ax, float ay, unsigned& events) {
     if (state_.stage != Stage::Playing) return;
     if (state_.safety <= 0.0f) moveMonster(STEP, events);
     if (state_.stage == Stage::Playing && state_.safety <= 0.0f &&
-        state_.monster_alive && std::hypot(state_.x - state_.monster_x,
+        state_.monster_alive && !state_.monster_preview &&
+        std::hypot(state_.x - state_.monster_x,
                                           state_.y - state_.monster_y) < 0.42f) {
         loseLife(false, events);
     }
@@ -599,6 +608,10 @@ unsigned Model::update(const tg::Input& input, float seconds) {
             playtest_level_ = 6;
             playtest_layer_ = LAYERS_PER_LEVEL;
             playtest_mode_ = true;
+        } else if (input.main.delta == 1235 || input.main.delta == 1236) {
+            playtest_level_ = 1;
+            playtest_layer_ = input.main.delta == 1235 ? 2 : 1;
+            playtest_mode_ = false;
         }
         const std::uint8_t choice = mode_picker_.update(
             static_cast<std::uint8_t>(state_.mode), 2, input.main.delta);

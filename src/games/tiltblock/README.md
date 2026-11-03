@@ -48,8 +48,29 @@ Clear all eight to start a harder level.
 | Purple | Tractor | Saves one fall from an outer edge |
 | Orange | Laser | Arms the ball while an alien is on the layer |
 
-Walls begin on level 2, holes on level 3, bonuses on level 4, and the alien
-appears from level 6. The alien drifts toward the ball without following the
+## Level 1: eight lessons
+
+Each layer introduces one feature, in the order you play it:
+
+| Layer | Lesson |
+|---|---|
+| 1 | Plain cubes, just like before |
+| 2 | Exactly one random hole to avoid |
+| 3 | Exactly one random wall to bounce against and touch |
+| 4 | Three random bonus cubes: Life, Zone and Tractor |
+| 5 | One Boing cube for hopping |
+| 6 | One Quake cube to experience the shaking trap |
+| 7 | A blue, smiling alien marked FRIEND: it stays still and cannot hurt you; no Laser |
+| 8 | A live alien and an orange Laser cube, ready from the start |
+
+Each feature appears only on its introduction layer, not on later Level 1
+layers. A collected Tractor still saves one outer-edge fall as usual.
+The Level 1 HUD counts lessons from 1 to 8 while the block gets shorter.
+
+From level 2 onward, the original difficulty progression is unchanged:
+walls begin on level 2, holes on level 3, Life/Zone/Tractor on level 4,
+Boing/Quake on level 5, and random alien encounters from level 6.
+The live alien drifts toward the ball without following the
 block's tilt. Find the orange laser cube, then click while rolling toward the
 alien. A hit is worth 500 points.
 
@@ -64,8 +85,10 @@ in `test/`, and so is `framebuffer.cpp`. Run `python3 tools/tg.py test`, `python
 `python3 tools/tg.py sim --build-only` from the repository root.
 
 For simulator playtests only, send `turn right 1233` on the mode screen to
-start on layer 4, or `turn right 1234` to start at level 6 with an alien on
-the first layer. A physical knob cannot produce that many transitions in one
+start with four layers remaining (Level 1 lesson 5), or `turn right 1234` to
+start at level 6 with an alien on the first layer. Use `turn right 1235` for
+the friendly preview lesson or `turn right 1236` for the Laser lesson.
+A physical knob cannot produce that many transitions in one
 update.
 
 ### Drawing
