@@ -14,7 +14,8 @@
 Dev commands for `send`: turn <left|right> <signed-transitions> (-1000000..1000000),
 click|hold|down|up [left|right] (default left),
 tilt <x> <y>|off, launch <id>, info, log on|off, stream on|off|ping, wait <seconds>.
-System > Sleep or 3 minutes idle sleeps; either knob click wakes.
+System > Sleep or configurable auto-off (default 5 minutes) sleeps; either knob
+click wakes. An active USB serial host suspends auto-off, not manual Sleep.
 USB may reconnect after wake; serial cannot wake the board.
 """
 

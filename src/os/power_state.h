@@ -1,10 +1,10 @@
 #pragma once
 
 #include "input_logic.h"
+#include "settings.h"
 
 namespace power_state {
 
-inline constexpr std::uint32_t IDLE_TIMEOUT_MS = 3UL * 60 * 1000;
 inline constexpr std::uint32_t PANEL_SETTLE_MS = 120;
 
 class State {
@@ -13,7 +13,8 @@ public:
         *this = State{};
         last_activity_ = released_at_ = now;
     }
-    void update(std::uint32_t now, bool activity, bool either_pressed) {
+    void update(std::uint32_t now, bool activity, bool either_pressed,
+                const settings::Settings& settings = {}, bool usb_host_active = false) {
         now_ = now;
         if (either_pressed || was_pressed_) released_at_ = now;
         was_pressed_ = either_pressed;
@@ -22,8 +23,11 @@ public:
             accepting_ = released_;
             last_activity_ = now;
         }
-        if (activity || either_pressed) last_activity_ = now;
-        if (accepting_ && now - last_activity_ >= IDLE_TIMEOUT_MS) request();
+        // Start a fresh countdown when auto-off is re-enabled or USB closes.
+        if (activity || either_pressed || !settings.autoOff() || usb_host_active)
+            last_activity_ = now;
+        if (accepting_ && settings.autoOff() && !usb_host_active &&
+            now - last_activity_ >= settings.autoOffTimeoutMs()) request();
     }
     void request() { pending_ = true; }
     void cancel(std::uint32_t now) {

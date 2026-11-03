@@ -46,16 +46,17 @@ bool bestKey(const char* id, char* key, std::size_t size) {
 namespace storage {
 settings::Settings loadSettings() {
     settings::Settings result;
-    const bool loaded = loadBytes("tinygame.sim.settings.v2", result.value, sizeof(result.value));
+    bool loaded = loadBytes("tinygame.sim.settings.v3", result.value, sizeof(result.value));
+    if (!loaded) loaded = loadBytes("tinygame.sim.settings.v2", result.value, 3);
     const auto valid = settings::sanitize(result);
     if (loaded && valid != result) {
-        Serial.println("[STORAGE] error loading tinygame.sim.settings.v2: values out of range");
+        Serial.println("[STORAGE] error loading settings: values out of range");
     }
     return valid;
 }
 bool saveSettings(const settings::Settings& values) {
     const auto valid = settings::sanitize(values);
-    return saveBytes("tinygame.sim.settings.v2", valid.value, sizeof(valid.value)) != 0;
+    return saveBytes("tinygame.sim.settings.v3", valid.value, sizeof(valid.value)) != 0;
 }
 std::uint32_t loadBest(const char* game_id) {
     char key[64];
