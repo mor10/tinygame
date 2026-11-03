@@ -5,30 +5,27 @@ description: Create, change, fix, or share a game for the TinyGame console (ESP3
 
 # Make a TinyGame
 
-Read `AGENTS.md` first. You're often helping a **kid (around 10)**, so explain things simply and match the user's experience. Explain meaningful changes, not every tool call. Use screenshots when hardware is available.
+Follow `AGENTS.md` for the working loop, simulator checks and definition of done.
+Explain meaningful changes simply; don't narrate every tool call.
 
 ## Workflow
 
 1. **Choose the task path.**
-   - **Create:** clarify the idea only where needed. Ask at most 3 quick questions: What's the game? What do turning, clicking and tilting do? How do you win or lose? If they're unsure, offer 2–3 ideas that fit the controls.
-   - **Change/debug:** read the existing game's README, adapter, model/view and relevant tests. Reproduce the problem; don't create another game.
+   - **Create:** establish the game, controls and win/loss rules. Ask only for blocking choices within the root guide's question budget; offer 2–3 ideas only if the user is unsure.
+   - **Change/debug:** read the target game's README, adapter, model/view and relevant tests. Reproduce the failed criterion; don't scaffold another game.
    - **Review/plan:** inspect and explain; don't edit source, scaffold or flash before approval.
    - **Share:** follow the sharing checks below and the user's harness workflow.
 2. **For a new game only:** `python3 tools/tg.py new <id> "<NAME>"`
    - `id`: lowercase letters, digits and `_`; start with a letter, max 15. No C++ keywords or double underscores. It's also the namespace.
    - `NAME`: 1–13 printable ASCII characters; the tool makes it uppercase.
    - This makes `src/games/<id>/game.cpp`, a small working catch game, and a `README.md`. Rewrite the game from there.
-3. **Implement and verify:**
-   - Use the API below. Load the style guide for screen changes and other references only as needed.
-   - `python3 tools/tg.py test`, then `python3 tools/tg.py build`. Fix compile errors before saying anything works.
-   - Use the simulator for the visual/interaction feedback loop: `python3 tools/tg.py sim`, or the `tinygame-simulator` Copilot canvas. New games are included automatically; source saves rebuild and reload. Inspect the game's screen, play its core action, and check pause/restart. A visible old screen after a compile error is not a successful build.
-   - With a board connected: disconnect any USB controller bridge, run `python3 tools/tg.py flash`, then `send "launch <id>"`, then `shot` to save `shot.png`. Read the PNG and check it. Reconnect the controller only if the player wants to use the board with the simulator.
-   - Drive the game with `send "turn right 20" click "tilt 0.5 0" "wait 1"`. `turn` is signed transitions (80 per full turn, clockwise positive). Turn the **right** knob unless Settings says HANDEDNESS = LEFT, because games steer with the main knob.
-   - Before finishing, release injected input: `send "up left" "up right" "tilt off"`.
-   - Use `--port <device>` when more than one board is connected.
-   - Without a board, run `python3 tools/tg.py sim --build-only` and check the game in the browser instead of flashing. The canvas offers `launch`, `send`, `screenshot` and `get_output`; see `.github/extensions/tinygame-simulator/README.md` and `references/input-recipes.md`. CLI `send/shot` still target USB, not the simulator.
-   - Say which checks remain physical: knob feel/direction, tilt direction, LED colours and any shake/gyro gesture. Never claim a screenshot, canvas action or flash you didn't get.
-4. **Fill in `README.md`:** how to play, and who made it.
+3. **Implement the acceptance checklist:** use the API below and load the style
+   guide for screen changes; other references only as needed. Check requested
+   dimensions, scale, visibility and animation duration explicitly. For control
+   changes, test actual movement, not only an axis coefficient's sign.
+4. **Document and verify:** update the game's README with controls, how to play
+   and authorship (don't invent a creator). Run the root guide's checks once
+   per edit batch; reuse successful builds and capture representative evidence.
 
 The game appears in both the device and simulator launchers automatically.
 Don't edit any list, OS file or browser code to add it; keep the same game
@@ -90,12 +87,18 @@ Put rules that don't draw anything (movement, collisions, scoring) in their own 
 
 Add a regression test for every bug fix. Cover fixed-step timing, pool limits and restart state when relevant. Don't truncate `dt` to whole milliseconds on each update.
 
+For input changes, feed signed knob transitions or tilt through the game's
+input-to-model path and assert the resulting movement/action. Cover both signs
+and each independent knob; check handedness when using `main`, and ensure
+pause/resume cannot accidentally trigger an action. A screenshot cannot prove
+control direction.
+
 ## Sharing a game
 
 A game is just its folder.
 
 - **To share:** when asked, commit `src/games/<id>/` and use the user's harness-supported pull-request workflow. Prefer its native PR tool when it has one, and use the `gh` CLI only where the harness allows it. Or send the folder to a friend.
-- **Before sharing:** `tg.py build`, `tg.py test` and `tg.py sim --build-only` pass, the game has been played and visually checked in the simulator, the README says how to play, and the id is unique. Note any real-device checks that remain.
+- **Before sharing:** satisfy `AGENTS.md`'s definition of done, ensure the id is unique and the README explains how to play. Reuse completed checks; don't repeat them just to share.
 - **To receive a game:** inspect the folder, copy it into `src/games/`, build and test, then flash if a board is connected. If two games share an id, rename the folder, the namespace and the `TINYGAME(...)` id together. The console holds at most 32 games; a game that can't register is skipped and the boot log says why (`[BOOT] rejected game`).
 
 ## References (read when needed)

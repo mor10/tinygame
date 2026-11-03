@@ -19,6 +19,29 @@ TinyGame is a tiny handheld game console: an ESP32-S3 with a 320×172 screen, tw
 - **Scope:** reviews and plans only inspect: no edits, scaffolding or flashing until approved. Fixing a game edits that game; don't scaffold another one.
 - **Be honest:** never report a failed command, build, flash or save as success.
 
+## Working loop
+
+- Read this guide and the matching skill once. For a game change, start with
+  only that game's README, adapter, model/view and relevant tests; follow
+  dependencies only when needed. Load targeted references, not every game.
+- Ask one question at a time, only for a blocking design decision; at most
+  three unless the user requests iterative ideation. State reversible defaults
+  and proceed. Preserve explicit requirements; do not substitute an easier design.
+- Turn requirements into a short acceptance checklist before editing:
+  controls and expected movement, win/loss, visual geometry/scale and timing
+  as applicable. Use exact requested values, not just "looks good".
+- Make one coherent change, then verify against that checklist. Batch related
+  commands and scenarios. Do not rescan, rebuild or repeat a passed check
+  without a relevant change; retry a failed check only after addressing its cause.
+- For slowness, measure model, rendering and display time on the affected
+  target before changing physics or the renderer. Simulator speed is not
+  device performance. Compare the same scene before and after.
+- Use existing checks and reuse passing results for unchanged code. Report
+  blocked checks honestly; declare completion once per request, only after
+  all requested work is verified or a genuine blocker is explained.
+- Keep durable guidance here or in its owning skill/reference. Replace stale
+  facts; do not add duplicate knowledge files, run histories or private reasoning.
+
 ## Layout
 
 ```
@@ -61,30 +84,25 @@ Dev commands for `send`: `turn <left|right> <signed-transitions>`, `click|hold|d
 
 Use the simulator for visual and interaction checks during game development,
 even without hardware. Read `.github/extensions/tinygame-simulator/README.md`
-for the canonical canvas actions, schemas and setup.
-It needs macOS/Linux (Windows: WSL), Python 3.10+, Git, curl and Node 22+;
-the helper installs pinned Emscripten/LVGL in the user cache. PlatformIO is
-needed for firmware builds, not simulator-only play. If setup is unavailable,
-report that blocked check explicitly rather than claiming a visual verification.
+for setup, controls, action schemas and troubleshooting. If setup is unavailable,
+report the blocked check instead of claiming visual verification.
 
 - In Copilot, discover `tinygame-simulator`, open it with optional
   `{ "game": "<id>" }`, and wait for `get_output` to report `pageReady: true`
   and `status: "ready"`. Keep the same instance handle for subsequent actions.
-  If the project extension is not discovered, reload extensions or ask the
-  user to reopen the session; do not claim it loaded. `tg.py sim --no-open`
-  plus the Browser canvas is a fallback, not proof of extension RPC routing.
+  Keep one page per server URL; do not reopen a ready canvas between scenarios.
+  If discovery fails, try one extension reload or use `tg.py sim --no-open`
+  with the Browser canvas. The fallback does not verify extension RPC routing.
 - Use `launch`, `send`, `screenshot` and `get_output` to exercise the change.
-  `tg.py send/shot` target the physical USB board, not the browser. The normal
-  browser offers a dev command field and Screenshot button instead.
-- Browser shortcuts: left A = counterclockwise, S = click, D = clockwise;
-  right J = counterclockwise, K = click, L = clockwise. Turn taps are four
-  transitions; S/K holds exercise real OS long-press timing. Drag a knob rim
-  or scroll to turn, press its centre to click, and use arrows/screen drag
-  to tilt. Positive dev `turn` remains clockwise on both targets.
+  Start with three scenarios: core action, pause/resume/restart, and the
+  changed edge case; add only uncovered acceptance criteria. Batch commands
+  in `send`, read logs incrementally using `next` as `since`, and save/inspect
+  representative screenshots, not every intermediate frame.
+  CLI `tg.py send/shot` target USB, not the browser.
 - Source saves trigger rebuild/reload. A compile error leaves the previous
   firmware visible, so check `buildError` before calling a preview current.
-  Reload resets game state. Saved settings/scores use localStorage for that
-  browser origin, not device storage; a new server port starts separate saves.
+  `reload` restarts loaded firmware, not a build. Reuse a successful watcher
+  build; do not rebuild unchanged sources just to obtain the same evidence.
 - USB controller mode forwards physical knobs and tilt at about 50 Hz.
   Disconnect it before any physical `flash/send/shot/monitor`, and reconnect
   afterward only if the user is playing with the board. Closing the page
@@ -96,14 +114,19 @@ report that blocked check explicitly rather than claiming a visual verification.
 
 ## Definition of done
 
-1. `tg.py test` and `tg.py build` pass, with no new warnings.
-2. For game/OS behaviour or visuals, `tg.py sim --build-only` passes; drive the
-   change in the simulator and inspect a saved screenshot. Check interaction,
-   pause/restart and the relevant edge case, not just that it boots.
+1. For firmware/game changes, `tg.py test` and the firmware build pass with no
+   new warnings. `tg.py test` has no game filter; run it once after the edit
+   batch. `tg.py flash` includes the build, so a separate `build` is unnecessary
+   when flashing the same sources.
+2. For game/OS behaviour or visuals, the WebAssembly build passes (via
+   `tg.py sim --build-only` or the simulator watcher); exercise the acceptance
+   scenarios above and inspect saved screenshots. A boot alone is not enough.
 3. For firmware/game changes with a board attached, disconnect any controller
    bridge, run `tg.py flash`, drive the change with `send` and inspect a `shot`.
    Browser-only UI changes do not need a firmware flash.
-4. Say clearly what still needs a human to check on the device: feel, knob direction, tilt direction, LED colours. Never claim a screenshot, canvas action or flash you didn't get. Documentation-only changes need no firmware build or flash.
+4. Say what remains physical: knob feel/direction, tilt direction, LED colours
+   and gyro gestures. Documentation-only changes need a consistency/diff
+   check, not tests, builds, simulator startup or flashing.
 
 ## Skills
 
