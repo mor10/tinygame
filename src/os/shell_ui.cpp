@@ -199,9 +199,10 @@ void showSettings(const shell::State& state) {
     ui::MenuItem items[settings::ITEM_COUNT + 1];
     for (std::uint8_t i = 0; i < settings::ITEM_COUNT; ++i) {
         const bool editing = state.editing() && state.selected() == i;
-        if (i == settings::HANDEDNESS) {
+        if (settings::SPECS[i].choices != nullptr) {
             std::snprintf(settings_values[i], sizeof(settings_values[i]),
-                          editing ? "<%s>" : "%s", state.settings().leftHanded() ? "LEFT" : "RIGHT");
+                          editing ? "<%s>" : "%s",
+                          settings::SPECS[i].choices[settings::valueIndex(state.settings(), i)]);
         } else {
             std::snprintf(settings_values[i], sizeof(settings_values[i]),
                           editing ? "<%u%s>" : "%u%s",

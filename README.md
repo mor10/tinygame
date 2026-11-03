@@ -22,8 +22,9 @@ What TinyGame will you build?
 
 - **Turn the right knob** to choose; **click either knob** to open, **hold either** to go back. Left-handed? Set **System > Settings > HANDEDNESS** to LEFT and the left knob takes over. Menus stop at their ends instead of wrapping.
 - In any game, **hold either knob** to pause: Resume, Restart or Quit.
-- **System** (the last item in the game list) has Settings (screen and LED brightness, handedness), Diagnostics (live knob, switch and tilt readings), the Style preview and Sleep. On Diagnostics, clicks stay on the page so you can inspect them; **hold either knob** to exit.
-- **Sleep:** System > Sleep, or 3 minutes without knob activity (even in a game), enters deep sleep. Click either knob to wake to the welcome screen. That restarts the console, not the previous game. Saved scores and confirmed settings stay saved.
+- **System** (the last item in the game list) has Settings (screen and LED brightness, handedness, auto-off), Diagnostics (live knob, switch and tilt readings), the Style preview and Sleep. On Diagnostics, clicks stay on the page so you can inspect them; **hold either knob** to exit.
+- **Sleep:** System > Sleep, or 5 minutes without knob activity by default (even in a game), enters deep sleep. In System > Settings, set **AUTO-OFF** to ON or OFF and **OFF AFTER** to **1, 5, 10, 15 or 30 minutes**. Click either knob to wake to the welcome screen. That restarts the console, not the previous game. Saved scores and confirmed settings stay saved.
+- **Using a computer:** An open USB CDC serial connection (for example, the serial monitor or simulator controller) suspends auto-off. USB power alone, including a computer with no open serial connection, does not. Closing the connection starts a fresh idle countdown. System > Sleep still works while connected.
 
 The knobs turn continuously without detents. Firmware measures electrical movement: nominally 80 steps per turn, with four per menu item. Games steer with the main knob using the shared `tg::Steer` + `tg::glide` controls, and a click on either knob is the action button.
 
@@ -62,8 +63,9 @@ On Diagnostics, the `L/R HW` rows show physical counts and A/B levels. `C` is to
 - Rotate and click each knob alone and together.
 - Mark a shaft position and count one full turn (nominally 80), and check that clockwise is positive. Direction constants are in `src/hal/board_config.h`.
 - Reverse slowly and quickly, and turn during a screenshot. A single-channel bounce can briefly move the count back and forth; persistent drift or a rising `ERR` needs investigation.
-- Choose System > Sleep, then wake with each knob click on its own. Also leave the console idle for 3 minutes in a menu and in a game.
-  - Turning, clicking or holding either knob (or simulating it) resets the idle timer; tilt and serial monitoring don't. A held switch prevents sleep.
+- Choose System > Sleep, then wake with each knob click on its own. Also leave the console idle for 5 minutes in a menu and in a game with no serial connection open; test the other timeout options and AUTO-OFF = OFF.
+  - Turning, clicking or holding either knob (or simulating it) resets the idle timer; tilt doesn't. An active USB serial host suspends auto-off, and closing it restarts the countdown. A held switch prevents sleep.
+  - Keep the serial monitor open beyond the timeout and confirm the console stays awake. Close it (USB power can stay connected) and confirm auto-off works. Manual Sleep must still work with the monitor open.
   - Both switches must be released before shutdown. The wake press is swallowed, so holding it through startup selects nothing. Turning or serial commands can't wake the board.
   - Screen, backlight and RGB LED stay off while asleep. USB may disappear, so reconnect the monitor after waking.
   - Deep sleep isn't a physical power disconnect. Measure whole-board current instead of assuming a chip-datasheet number.

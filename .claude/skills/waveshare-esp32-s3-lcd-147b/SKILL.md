@@ -42,14 +42,17 @@ The main encoder (right by default; left when Settings > HANDEDNESS = LEFT) navi
 
 ## Deep sleep
 
-System > Sleep or 3 minutes without encoder activity requests deep sleep.
+System > Sleep or the auto-off idle timeout requests deep sleep. AUTO-OFF defaults
+to ON, with 1, 5 (default), 10, 15 or 30 minutes under OFF AFTER. An active
+USB CDC serial host suspends auto-off; USB power alone does not. Closing the
+serial host starts a fresh countdown. Manual Sleep remains available.
 Either encoder click (GPIO6/7) wakes to startup via ext1
 `ESP_EXT1_WAKEUP_ANY_LOW`. RTC pull-ups remain powered; restore both switch
 GPIOs with `rtc_gpio_deinit()` before normal input setup. Wait nonblockingly for
 both switches to release before shutdown and ignore all input until both
 release stably on boot, so the wake press cannot select anything.
 
-The OS validates wake setup before shutdown, disables IMU sensors, turns off RGB/backlight, holds the backlight low, sends panel sleep commands, and waits 120 ms nonblockingly before deep sleep. Do not copy a `while (pressed) delay(...)` release loop. Turns, clicks, switch events and holds on either encoder reset idle time, including injected events; IMU motion and serial monitoring do not. Confirmed settings/scores persist, but RAM/game state and encoder counters reset. USB CDC can disconnect; serial and encoder rotation cannot wake the board, only a physical switch press. Measure whole-board current if power consumption matters.
+The OS validates wake setup before shutdown, disables IMU sensors, turns off RGB/backlight, holds the backlight low, sends panel sleep commands, and waits 120 ms nonblockingly before deep sleep. Do not copy a `while (pressed) delay(...)` release loop. Turns, clicks, switch events and holds on either encoder reset idle time, including injected events; IMU motion does not. Confirmed settings/scores persist, but RAM/game state and encoder counters reset. USB CDC can disconnect; serial and encoder rotation cannot wake the board, only a physical switch press. Measure whole-board current if power consumption matters.
 
 ## Display facts (verified; don't change without a reason)
 
@@ -61,7 +64,7 @@ The OS validates wake setup before shutdown, disables IMU sensors, turns off RGB
 
 - `platform = espressif32 @ 6.12.0` ships the **Arduino core 2.x** API: `ledcSetup`/`ledcAttachPin`, not `ledcAttach`.
 - LVGL 9.6.0, configured in `include/lv_conf.h`. It uses the CLIB malloc, so large buffers go to PSRAM.
-- USB CDC on boot (`ARDUINO_USB_MODE=1`). The port is `/dev/cu.usbmodem*` (VID 0x303A); `tools/tg.py` finds it.
+- TinyUSB CDC on boot (`ARDUINO_USB_MODE=0`). Auto-off checks TinyUSB's mounted state and CDC DTR (asserted on serial open, cleared on close), independently of RTS flow control; mode 1 hardware CDC latches traffic until unplug/reset and cannot reliably detect host close. The port is `/dev/cu.usbmodem*` (VID 0x303A); `tools/tg.py` finds it. Pins are unchanged.
 
 ## Commands
 

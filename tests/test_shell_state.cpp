@@ -117,6 +117,28 @@ void settingsAreRelativeAndCancelRestoresValue() {
     assert(s.settings().leftHanded());
     s.update(0, true, false);
     s.update(4, false, false);
+    assert(s.selected() == settings::AUTO_OFF && s.settings().autoOff());
+    s.update(0, true, false);
+    s.update(-4, false, false);
+    assert(!s.settings().autoOff());
+    s.update(0, false, true);
+    assert(s.settings().autoOff());
+    s.update(0, true, false);
+    s.update(-4, false, false);
+    s.update(0, true, false);
+    assert(!s.settings().autoOff() && !s.editing());
+    s.update(4, false, false);
+    assert(s.selected() == settings::AUTO_OFF_TIME);
+    s.update(0, true, false);
+    s.update(100, false, false);
+    assert(s.settings().autoOffTimeoutMs() == 1800000);
+    s.update(0, false, true);
+    assert(s.settings().autoOffTimeoutMs() == 300000);
+    s.update(0, true, false);
+    s.update(-4, false, false);
+    s.update(0, true, false);
+    assert(s.settings().autoOffTimeoutMs() == 60000);
+    s.update(4, false, false);
     s.update(0, true, false);
     assert(s.screen() == Screen::System);
 }

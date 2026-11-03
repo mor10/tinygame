@@ -36,7 +36,7 @@ async function boot() {
     onWake: side => wake.push(side),
   });
   advance();
-  assert.match(serial.join(""), /ready, 3 games/);
+  assert.match(serial.join(""), /ready, 4 games/);
   const framebuffer = engine._tg_sim_framebuffer();
   assert(framebuffer > 0);
   assert(engine.HEAPU8.subarray(framebuffer, framebuffer + 320 * 172 * 2)
@@ -69,7 +69,7 @@ assert.equal(engine._tg_sim_brightness(), 90);
 assert.equal(engine._tg_sim_sleeping(), 0);
 click(engine);
 assert.match(serial.join(""), /screen=LAUNCHER/);
-engine._tg_sim_turn(1, 12);
+engine._tg_sim_turn(1, 1000); // Clamp to System regardless of installed game count.
 advance();
 click(engine);
 assert.match(serial.join(""), /screen=SYSTEM/);
@@ -80,7 +80,35 @@ engine._tg_sim_turn(1, -4);
 advance();
 assert.equal(engine._tg_sim_brightness(), 80);
 click(engine); // Confirm the edit.
-assert.deepEqual(JSON.parse(saved.get("tinygame.sim.settings.v2")), [80, 50, 0]);
+assert.deepEqual(JSON.parse(saved.get("tinygame.sim.settings.v3")), [80, 50, 0, 1, 1]);
+
+engine._tg_sim_turn(1, 12);
+advance();
+click(engine); // Edit auto-off.
+engine._tg_sim_turn(1, -4);
+advance();
+click(engine);
+assert.deepEqual(JSON.parse(saved.get("tinygame.sim.settings.v3")), [80, 50, 0, 0, 1]);
+advance(300_500);
+assert.equal(engine._tg_sim_sleeping(), 0);
+click(engine);
+engine._tg_sim_turn(1, 4);
+advance();
+click(engine); // Re-enable.
+engine._tg_sim_turn(1, 4);
+advance();
+click(engine); // Edit timeout.
+for (const [transitions, index] of [[-4, 0], [4, 1], [4, 2], [4, 3], [4, 4]]) {
+  engine._tg_sim_turn(1, transitions);
+  advance();
+  click(engine); // Confirm each choice through the shared OS.
+  assert.equal(JSON.parse(saved.get("tinygame.sim.settings.v3"))[4], index);
+  click(engine);
+}
+engine._tg_sim_turn(1, -12);
+advance();
+click(engine); // Restore five-minute default.
+assert.deepEqual(JSON.parse(saved.get("tinygame.sim.settings.v3")), [80, 50, 0, 1, 1]);
 
 // Store scores through the real HAL data layout, then confirm a reboot keeps them.
 saved.set("tinygame.sim.best.maze", JSON.stringify([0x78, 0x56, 0x34, 0x12]));
@@ -108,9 +136,9 @@ assert(engine._tg_sim_led() >= 0 && engine._tg_sim_led() <= 0xffffff);
 command(engine, "info");
 assert.match(serial.join(""), /\[DEV\] ok\n/);
 
-// Shared firmware's idle timer uses turns/buttons, not tilt or serial activity.
+// Browser dev commands aren't a USB host; tilt doesn't reset the idle timer.
 engine._tg_sim_tilt(-0.8, 0.3);
-advance(180_500);
+advance(300_500);
 assert.equal(engine._tg_sim_sleeping(), 1);
 assert.equal(engine._tg_sim_brightness(), 0);
 assert.equal(engine._tg_sim_led(), 0);
@@ -133,18 +161,26 @@ engine.resumeMainLoop();
 advance();
 engine._tg_sim_stop();
 
-saved.set("tinygame.sim.settings.v2", "[90, 50, -1]");
+saved.delete("tinygame.sim.settings.v3");
+saved.set("tinygame.sim.settings.v2", "[70, 25, 1]");
+({ engine, serial } = await boot());
+assert.equal(engine._tg_sim_brightness(), 70); // Version 2 settings migrate.
+assert.doesNotMatch(serial.join(""), /\[STORAGE\] error/);
+engine._tg_sim_stop();
+saved.delete("tinygame.sim.settings.v2");
+
+saved.set("tinygame.sim.settings.v3", "[90, 50, 0, 1, -1]");
 ({ engine, serial } = await boot());
 assert.equal(engine._tg_sim_brightness(), 90);
 assert.match(serial.join(""), /\[STORAGE\] error loading .*invalid byte array/);
 engine._tg_sim_stop();
 
-saved.set("tinygame.sim.settings.v2", "{broken JSON");
+saved.set("tinygame.sim.settings.v3", "{broken JSON");
 ({ engine, serial } = await boot());
 assert.match(serial.join(""), /\[STORAGE\] error loading .*SyntaxError/);
 engine._tg_sim_stop();
 
-saved.set("tinygame.sim.settings.v2", "[255, 50, 0]");
+saved.set("tinygame.sim.settings.v3", "[255, 50, 0, 255, 255]");
 ({ engine, serial } = await boot());
 assert.equal(engine._tg_sim_brightness(), 90);
 assert.match(serial.join(""), /\[STORAGE\] error loading .*values out of range/);
@@ -158,7 +194,7 @@ globalThis.localStorage = {
 ({ engine, serial } = await boot());
 assert.match(serial.join(""), /\[STORAGE\] error loading /);
 click(engine);
-engine._tg_sim_turn(1, 12);
+engine._tg_sim_turn(1, 1000);
 advance();
 click(engine);
 click(engine);

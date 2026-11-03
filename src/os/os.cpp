@@ -2,6 +2,9 @@
 
 #include <Arduino.h>
 #include <lvgl.h>
+#ifndef __EMSCRIPTEN__
+#include <tusb.h>
+#endif
 
 #include <cstdarg>
 #include <cstdio>
@@ -56,6 +59,15 @@ struct Running {
     persistence::BestScore best;  // read from flash once per run
 };
 Running running;
+
+bool usbHostActive() {
+#ifdef __EMSCRIPTEN__
+    return false; // Browser dev commands are not a USB serial connection.
+#else
+    // DTR signals an open serial host, independently of RTS/flow control.
+    return tud_mounted() && (tud_cdc_get_line_state() & 1U) != 0;
+#endif
+}
 
 const tg::GameInfo& runningInfo() {
     return registry::get(running.index);
@@ -159,7 +171,9 @@ void logState(const input::State& hw, std::uint32_t now_ms) {
                           static_cast<unsigned long>(effective.clicks),
                           input::eventName(effective.last_event));
         }
-        Serial.printf("[INPUT] idle_sleep=180s ready=%d wake=%s tilt=%+.2f,%+.2f\n",
+        Serial.printf("[INPUT] idle_sleep=%lus auto_off=%d usb_host=%d ready=%d wake=%s tilt=%+.2f,%+.2f\n",
+                      static_cast<unsigned long>(shell_state.settings().autoOffTimeoutMs() / 1000),
+                      shell_state.settings().autoOff(), usbHostActive(),
                       power_state.acceptingInput(), power::wakeName(),
                       static_cast<double>(m.tilt_x), static_cast<double>(m.tilt_y));
     }
@@ -248,7 +262,8 @@ void update() {
                           dev.left.delta != 0 || dev.right.delta != 0 ||
                           dev.left.events != 0 || dev.right.events != 0 ||
                           dev.left.down || dev.right.down;
-    power_state.update(now_ms, activity || controlling || controller_releasing, buttons_pressed);
+    power_state.update(now_ms, activity || controlling || controller_releasing, buttons_pressed,
+                       shell_state.settings(), usbHostActive());
     if (controlling || controller_releasing) {
         // Drain local edge/hold state even while games and menus are suspended.
         input_adapter.read(hw, imu::reading(), dev, now_ms, shell_state.settings().leftHanded());

@@ -7,8 +7,8 @@ namespace {
 
 constexpr const char* SETTINGS_NAMESPACE = "tinygame";
 constexpr const char* BEST_NAMESPACE = "tg_best";
-// Bump when the stored settings layout changes; older data is then ignored.
-constexpr std::uint8_t SCHEMA_VERSION = 2;
+// Version 3 appends auto-off settings; version 2's original bytes still migrate.
+constexpr std::uint8_t SCHEMA_VERSION = 3;
 constexpr const char* KEY_VERSION = "ver";
 constexpr const char* KEY_SETTINGS = "settings";
 
@@ -28,9 +28,11 @@ settings::Settings loadSettings() {
     if (!openReadOnly(prefs, SETTINGS_NAMESPACE)) {
         return result;
     }
-    if (prefs.getUChar(KEY_VERSION, 0) == SCHEMA_VERSION &&
-        prefs.getBytesLength(KEY_SETTINGS) == sizeof(result.value)) {
-        prefs.getBytes(KEY_SETTINGS, result.value, sizeof(result.value));
+    const auto version = prefs.getUChar(KEY_VERSION, 0);
+    const std::size_t size = version == 2 ? 3 : sizeof(result.value);
+    if ((version == 2 || version == SCHEMA_VERSION) &&
+        prefs.getBytesLength(KEY_SETTINGS) == size) {
+        prefs.getBytes(KEY_SETTINGS, result.value, size);
     }
     prefs.end();
     return settings::sanitize(result);
