@@ -84,6 +84,7 @@ struct State {
     bool laser_armed = false;
     bool monster_pending = false;
     bool monster_alive = false;
+    bool monster_preview = false;
     bool fall_edge = false;
     bool fall_hole = false;
 };
@@ -116,6 +117,7 @@ private:
     void beginFall(bool edge, bool hole);
     void respawn();
     void finishLayer(unsigned& events);
+    void spawnMonster();
     void moveMonster(float dt, unsigned& events);
     void fireLaser(unsigned& events);
     int safeCell(int preferred) const;

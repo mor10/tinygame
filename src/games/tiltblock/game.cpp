@@ -184,7 +184,9 @@ private:
             tg::ui::text(score_, "S %lu", static_cast<unsigned long>(state.score));
         }
         if (!chrome_ready_ || state.level != shown_level_ || state.layer != shown_layer_) {
-            tg::ui::text(level_, "L%d-%d", state.level, state.layer);
+            const int layer = state.level == 1 ? LAYERS_PER_LEVEL - state.layer + 1 : state.layer;
+            tg::ui::text(level_, "L%d-%d%s", state.level, layer,
+                         state.monster_preview ? " FRIEND" : "");
         }
         if (!chrome_ready_ || state.lives != shown_lives_) {
             tg::ui::text(lives_, "+%d", state.lives);
@@ -565,14 +567,21 @@ private:
         const Point p = boardPoint(state.monster_x, state.monster_y, 2.0f);
         const int x = static_cast<int>(std::lround(p.x));
         const int y = static_cast<int>(std::lround(p.y));
-        box(x - 5, y - 4, 10, 7, tg::color::FOREST);
-        box(x - 4, y - 6, 8, 3, tg::color::LIME);
+        const std::uint32_t body = state.monster_preview ? tg::color::SKY : tg::color::FOREST;
+        const std::uint32_t trim = state.monster_preview ? tg::color::MINT : tg::color::LIME;
+        box(x - 5, y - 4, 10, 7, body);
+        box(x - 4, y - 6, 8, 3, trim);
         box(x - 3, y - 2, 2, 2, tg::color::WHITE);
         box(x + 2, y - 2, 2, 2, tg::color::WHITE);
         pixel(x - 2, y - 2, tg::color::BG);
         pixel(x + 3, y - 2, tg::color::BG);
-        box(x - 3, y + 3, 2, 2, tg::color::LIME);
-        box(x + 2, y + 3, 2, 2, tg::color::LIME);
+        if (state.monster_preview) {
+            pixel(x - 2, y, tg::color::WHITE);
+            pixel(x + 2, y, tg::color::WHITE);
+            box(x - 1, y + 1, 3, 1, tg::color::WHITE);
+        }
+        box(x - 3, y + 3, 2, 2, trim);
+        box(x + 2, y + 3, 2, 2, trim);
     }
 
     void drawTractor(const State& state) {
