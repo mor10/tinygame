@@ -4,7 +4,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdint>
+#include <cstring>
 
+#include "camera.h"
 #include "fade.h"
 #include "framebuffer.h"
 #include "model.h"
@@ -19,13 +21,6 @@ namespace tiltblock {
 
 namespace {
 
-constexpr float SCALE = 1.25f;
-constexpr float HALF_X = 9.0f * SCALE;
-constexpr float HALF_Y = 4.5f * SCALE;
-constexpr float CUBE_HEIGHT = HALF_X * 1.11803398875f;
-constexpr float TWIST_VISUAL_SCALE = 3.0f;
-constexpr float BOARD_X = 160.0f;
-constexpr float BOARD_Y = 82.0f;
 constexpr std::uint32_t CUBE_DARK = 0x35465B;
 constexpr std::uint32_t CUBE_SIDE = 0x233145;
 constexpr std::uint32_t CUBE_GRID = 0x1B2635;
@@ -171,6 +166,10 @@ private:
         clear_title_ = tg::ui::label(clear_, "", tg::Font::M, tg::color::GOOD);
         lv_obj_center(clear_title_);
         over_ = tg::ui::popup(screen, "GAME OVER", "CLICK: MODE", tg::color::BAD);
+        for (lv_obj_t*& label : feedback_) {
+            label = tg::ui::label(screen, "", tg::Font::S, tg::color::TEXT);
+            lv_obj_set_hidden(label, true);
+        }
     }
 
     void updateChrome(const State& state, std::uint32_t best) {
@@ -185,8 +184,7 @@ private:
         }
         if (!chrome_ready_ || state.level != shown_level_ || state.layer != shown_layer_) {
             const int layer = state.level == 1 ? LAYERS_PER_LEVEL - state.layer + 1 : state.layer;
-            tg::ui::text(level_, "L%d-%d%s", state.level, layer,
-                         state.monster_preview ? " FRIEND" : "");
+            tg::ui::text(level_, "L%d-%d", state.level, layer);
         }
         if (!chrome_ready_ || state.lives != shown_lives_) {
             tg::ui::text(lives_, "+%d", state.lives);
@@ -216,6 +214,7 @@ private:
 
     void renderScene(const State& state, float raw_x, float raw_y) {
         state_ = &state;
+        scene_camera_ = false;
         camera_x_ = camera_y_ = 0;
         if (state.stage == Stage::Playing && state.earthquake > 0.0f) {
             const int tick = static_cast<int>(state.earthquake * 24.0f);
@@ -231,20 +230,93 @@ private:
             drawCalibration(raw_x, raw_y);
             return;
         }
+        camera_ = Camera::fit(state);
+        scene_camera_ = true;
+        camera_x_ = static_cast<int>(std::lround(camera_x_ * camera_.zoom));
+        camera_y_ = static_cast<int>(std::lround(camera_y_ * camera_.zoom));
+        fb_.setOffset(camera_x_, camera_y_);
         drawBoard(state);
         if (state.stage == Stage::TractorSave) drawTractor(state);
         if (state.monster_alive) drawMonster(state);
         if (state.laser_flash > 0.0f) {
-            line(boardPoint(state.laser_x1, state.laser_y1),
-                 boardPoint(state.laser_x2, state.laser_y2), tg::color::ORANGE, 2);
+            drawLaser(state);
+        }
+        if (state.monster_burst > 0.0f) drawBurst(state);
+        drawFeedback(state);
+    }
+
+    void drawLaser(const State& state) {
+        const Point start = camera_.project(boardPoint(state.laser_x1, state.laser_y1));
+        const Point ray = camera_.project(boardPoint(state.laser_x2, state.laser_y2));
+        const float dx = ray.x - start.x, dy = ray.y - start.y;
+        float distance = 1.0f;
+        if (dx > 0.0f) distance = std::min(distance, (tg::WIDTH - 1 - camera_x_ - start.x) / dx);
+        if (dx < 0.0f) distance = std::min(distance, (-camera_x_ - start.x) / dx);
+        if (dy > 0.0f) distance = std::min(distance, (tg::HEIGHT - 1 - camera_y_ - start.y) / dy);
+        if (dy < 0.0f) distance = std::min(distance, (-camera_y_ - start.y) / dy);
+        const Point end{start.x + dx * distance, start.y + dy * distance};
+        fb_.line(start, end, fb::rgb565(tg::color::ORANGE), scaled(3));
+        fb_.line(start, end, fb::rgb565(tg::color::WHITE), scaled(1));
+    }
+
+    void drawBurst(const State& state) {
+        const Point p = boardPoint(state.burst_x, state.burst_y, 2.0f);
+        const float progress = 1.0f - state.monster_burst / BURST_SECONDS;
+        const float radius = 5.0f + progress * 22.0f;
+        const std::uint32_t color = progress < 0.5f ? tg::color::WHITE : BEAM_CYAN;
+        if (progress < 0.3f) diamond(p, 9.0f, 7.0f, tg::color::WHITE);
+        for (int i = 0; i < 8; ++i) {
+            const float angle = i * 3.14159265f / 4.0f;
+            const float dx = std::cos(angle), dy = std::sin(angle);
+            line({p.x + dx * radius * 0.55f, p.y + dy * radius * 0.55f},
+                 {p.x + dx * radius, p.y + dy * radius}, color, progress < 0.5f ? 2 : 1);
+        }
+    }
+
+    void drawFeedback(const State& state) {
+        for (int i = 0; i < FEEDBACK_SLOTS; ++i) {
+            const Feedback& item = state.feedback[i];
+            lv_obj_set_hidden(feedback_[i], item.remaining <= 0.0f || state.stage == Stage::Over);
+            if (item.remaining <= 0.0f) continue;
+            if (shown_message_[i] != item.message) {
+                lv_label_set_text(feedback_[i], Model::messageText(item.message));
+                const std::uint32_t color = item.message == Message::Lost || item.message == Message::Quake
+                    ? tg::color::BAD : item.message == Message::Kill || item.message == Message::Saved
+                    ? tg::color::YELLOW : tg::color::TEXT;
+                lv_obj_set_style_text_color(feedback_[i], lv_color_hex(color), 0);
+                shown_message_[i] = item.message;
+            }
+            const Point p = camera_.project(boardPoint(std::clamp(item.x, 0.0f, 8.0f),
+                                                       std::clamp(item.y, 0.0f, 8.0f)));
+            const int width = static_cast<int>(std::strlen(Model::messageText(item.message))) * 8;
+            const float rise = (1.0f - item.remaining / FEEDBACK_SECONDS) * 14.0f * camera_.zoom;
+            lv_obj_set_pos(feedback_[i],
+                std::clamp(static_cast<int>(p.x) + camera_x_ - width / 2, 2, tg::WIDTH - width - 2),
+                std::clamp(static_cast<int>(p.y - 18.0f * camera_.zoom - rise) + camera_y_,
+                           20, tg::HEIGHT - 12));
         }
     }
 
     // Colours are 0xRRGGBB at call sites and packed once per primitive.
-    void pixel(int x, int y, std::uint32_t color) { fb_.pixel(x, y, fb::rgb565(color)); }
+    Point projected(Point p) const { return scene_camera_ ? camera_.project(p) : p; }
+
+    int scaled(int size) const {
+        return std::max(1, static_cast<int>(std::lround(size * (scene_camera_ ? camera_.zoom : 1.0f))));
+    }
+
+    void box565(int x, int y, int w, int h, std::uint16_t color) {
+        const Point a = projected({float(x), float(y)});
+        const Point b = projected({float(x + w), float(y + h)});
+        const int left = static_cast<int>(std::lround(a.x));
+        const int top = static_cast<int>(std::lround(a.y));
+        fb_.rect(left, top, std::max(1, static_cast<int>(std::lround(b.x)) - left),
+                 std::max(1, static_cast<int>(std::lround(b.y)) - top), color);
+    }
+
+    void pixel(int x, int y, std::uint32_t color) { box565(x, y, 1, 1, fb::rgb565(color)); }
 
     void box(int x, int y, int w, int h, std::uint32_t color) {
-        fb_.rect(x, y, w, h, fb::rgb565(color));
+        box565(x, y, w, h, fb::rgb565(color));
     }
 
     void boxOutline(int x, int y, int w, int h, std::uint32_t color) {
@@ -252,11 +324,21 @@ private:
     }
 
     void line(Point a, Point b, std::uint32_t color, int width = 1) {
-        fb_.line(a, b, fb::rgb565(color), width);
+        line565(a, b, fb::rgb565(color), width);
+    }
+
+    void line565(Point a, Point b, std::uint16_t color, int width = 1) {
+        fb_.line(projected(a), projected(b), color, scaled(width));
     }
 
     void polygon(const Point* points, int count, std::uint32_t color) {
-        fb_.polygon(points, count, fb::rgb565(color));
+        polygon565(points, count, fb::rgb565(color));
+    }
+
+    void polygon565(const Point* points, int count, std::uint16_t color) {
+        Point transformed[8];
+        for (int i = 0; i < count; ++i) transformed[i] = projected(points[i]);
+        fb_.polygon(transformed, count, color);
     }
 
     void diamond(Point center, float hx, float hy, std::uint32_t color) {
@@ -294,15 +376,7 @@ private:
     }
 
     Point boardPoint(float x, float y, float z = 0.0f) const {
-        const float col = x - 4.0f;
-        const float row = y - 4.0f;
-        const float left = state_ ? state_->left_angle / 20.0f : 0.0f;
-        const float right = state_ ? state_->right_angle / 20.0f : 0.0f;
-        const float tilt_height = (-right * col + left * row) * TWIST_VISUAL_SCALE;
-        const float drop = state_ && state_->stage == Stage::LayerDrop
-            ? std::clamp(state_->timer / 0.85f, 0.0f, 1.0f) * CUBE_HEIGHT : 0.0f;
-        return {BOARD_X + (col - row) * HALF_X,
-                BOARD_Y + (col + row) * HALF_Y - tilt_height - z + drop};
+        return tiltblock::boardPoint(*state_, x, y, z);
     }
 
     static Point lower(Point point, float depth) {
@@ -321,7 +395,7 @@ private:
             if (top >= depth - 0.01f) break;
             const float bottom = std::min(top + CUBE_HEIGHT, depth);
             // Nothing below the screen edge can be seen.
-            if (std::min(a.y, b.y) + top + camera_y_ >= tg::HEIGHT) break;
+            if (projected(lower(a.y < b.y ? a : b, top)).y + camera_y_ >= tg::HEIGHT) break;
             const bool beaming = state_->stage == Stage::BeamUp;
             if (band == 0 && beaming) continue;
             const std::uint16_t fill = band == 0 && touched ? touched565 : face.band[band];
@@ -329,13 +403,13 @@ private:
             if (fill != BG565) {
                 const Point quad[] = {lower(a, top), lower(b, top), lower(b, bottom),
                                       lower(a, bottom)};
-                fb_.polygon(quad, 4, fill);
+                polygon565(quad, 4, fill);
             }
             if (seam != BG565) {
-                fb_.line(lower(a, top), lower(b, top), seam);
-                fb_.line(lower(a, top), lower(a, bottom), seam);
-                fb_.line(lower(b, top), lower(b, bottom), seam);
-                if (bottom >= depth - 0.01f) fb_.line(lower(a, bottom), lower(b, bottom), seam);
+                line565(lower(a, top), lower(b, top), seam);
+                line565(lower(a, top), lower(a, bottom), seam);
+                line565(lower(b, top), lower(b, bottom), seam);
+                if (bottom >= depth - 0.01f) line565(lower(a, bottom), lower(b, bottom), seam);
             }
         }
     }
@@ -401,18 +475,18 @@ private:
                               lower(cube[3], CUBE_HEIGHT * size),
                               lower(cube[0], CUBE_HEIGHT * size)};
         if (size > 0.02f) {
-            fb_.polygon(side, 6, GLOW_RAMP.step[rampStep(wave * 0.5f)]);
-            fb_.polygon(cube, 4, glow);
+            polygon565(side, 6, GLOW_RAMP.step[rampStep(wave * 0.5f)]);
+            polygon565(cube, 4, glow);
             outlineDiamond(top, HALF_X * size, HALF_Y * size, BEAM_CYAN);
         }
         if (dissolve > 0.05f && dissolve < 1.0f) {
             const float rise = dissolve * dissolve * 72.0f;
             const std::uint16_t light = BEAM_FADE.step[rampStep(dissolve)];
-            fb_.line({p.x, top.y - rise}, {p.x, top.y + HALF_Y * size}, light, 3);
-            fb_.line({p.x, top.y - rise}, {p.x, top.y - rise + 12.0f},
+            line565({p.x, top.y - rise}, {p.x, top.y + HALF_Y * size}, light, 3);
+            line565({p.x, top.y - rise}, {p.x, top.y - rise + 12.0f},
                      BEAM_FADE.step[rampStep(dissolve * 0.7f)]);
-            fb_.pixel(static_cast<int>(p.x + (col % 3 - 1) * 5),
-                      static_cast<int>(top.y - rise * 0.7f), light);
+            box565(static_cast<int>(p.x + (col % 3 - 1) * 5),
+                   static_cast<int>(top.y - rise * 0.7f), 1, 1, light);
         }
     }
 
@@ -558,7 +632,7 @@ private:
         for (int row = -radius; row <= radius; ++row) {
             if (y + row > clip_bottom) continue;
             const int half = std::abs(row) == radius ? radius - 1 : radius;
-            fb_.span(x - half, x + half, y + row, color);
+            box565(x - half, y + row, 2 * half + 1, 1, color);
         }
         if (state.laser_armed && state.stage != Stage::Falling) pixel(x, y - radius, tg::color::ORANGE);
     }
@@ -567,19 +641,14 @@ private:
         const Point p = boardPoint(state.monster_x, state.monster_y, 2.0f);
         const int x = static_cast<int>(std::lround(p.x));
         const int y = static_cast<int>(std::lround(p.y));
-        const std::uint32_t body = state.monster_preview ? tg::color::SKY : tg::color::FOREST;
-        const std::uint32_t trim = state.monster_preview ? tg::color::MINT : tg::color::LIME;
+        const std::uint32_t body = tg::color::FOREST;
+        const std::uint32_t trim = tg::color::LIME;
         box(x - 5, y - 4, 10, 7, body);
         box(x - 4, y - 6, 8, 3, trim);
         box(x - 3, y - 2, 2, 2, tg::color::WHITE);
         box(x + 2, y - 2, 2, 2, tg::color::WHITE);
         pixel(x - 2, y - 2, tg::color::BG);
         pixel(x + 3, y - 2, tg::color::BG);
-        if (state.monster_preview) {
-            pixel(x - 2, y, tg::color::WHITE);
-            pixel(x + 2, y, tg::color::WHITE);
-            box(x - 1, y + 1, 3, 1, tg::color::WHITE);
-        }
         box(x - 3, y + 3, 2, 2, trim);
         box(x + 2, y + 3, 2, 2, trim);
     }
@@ -597,6 +666,8 @@ private:
     lv_obj_t* canvas_ = nullptr;
     lv_draw_buf_t* buffer_ = nullptr;
     fb::Framebuffer fb_;
+    Camera camera_;
+    bool scene_camera_ = false;
     fb::Rect shown_scene_;
     lv_obj_t* hud_ = nullptr;
     lv_obj_t* score_ = nullptr;
@@ -607,6 +678,8 @@ private:
     lv_obj_t* clear_ = nullptr;
     lv_obj_t* clear_title_ = nullptr;
     lv_obj_t* over_ = nullptr;
+    lv_obj_t* feedback_[FEEDBACK_SLOTS] = {};
+    Message shown_message_[FEEDBACK_SLOTS] = {};
     bool chrome_ready_ = false;
     std::uint32_t shown_score_ = 0, shown_best_ = 0;
     int shown_level_ = 0, shown_layer_ = 0, shown_lives_ = 0;

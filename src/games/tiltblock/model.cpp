@@ -204,7 +204,7 @@ void Model::generateLayer() {
 
     // layer counts down; tutorial lessons count up in the order played.
     const int lesson = state_.level == 1 ? LAYERS_PER_LEVEL - state_.layer + 1 : 0;
-    const int wall_target = lesson == 3 ? 1 : state_.level < 2 ? 0
+    const int wall_target = lesson == 3 || lesson == 8 ? 5 : state_.level < 2 ? 0
         : std::min(5 + (state_.level - 2) * 2, 22);
     int walls = 0;
     for (int i : order) {
@@ -218,7 +218,7 @@ void Model::generateLayer() {
         }
     }
 
-    const int hole_target = lesson == 2 ? 1 : state_.level < 3 ? 0
+    const int hole_target = lesson == 2 || lesson == 8 ? 5 : state_.level < 3 ? 0
         : std::min(2 + (state_.level - 3) * 2, 14);
     int holes = 0;
     if (state_.level >= 3) {
@@ -243,12 +243,12 @@ void Model::generateLayer() {
         }
     }
 
-    if (lesson == 4 || state_.level >= 4) {
+    if (lesson == 4 || lesson == 8 || state_.level >= 4) {
         addBonus(Bonus::Life);
         addBonus(Bonus::Zone);
         if (!state_.tractor) addBonus(Bonus::Tractor);
     }
-    if (state_.level >= 5) {
+    if (lesson == 8 || state_.level >= 5) {
         addBonus(Bonus::Boing);
         addBonus(Bonus::Quake);
     }
@@ -257,7 +257,6 @@ void Model::generateLayer() {
 
     state_.monster_alive = false;
     state_.monster_pending = false;
-    state_.monster_preview = lesson == 7;
     state_.monster_corner = -1;
     state_.laser_cell = -1;
     state_.laser_armed = false;
@@ -282,6 +281,8 @@ void Model::generateLayer() {
     state_.quake_shove = 0.0f;
     state_.laser_cooldown = 0.0f;
     state_.laser_flash = 0.0f;
+    state_.monster_burst = 0.0f;
+    for (Feedback& item : state_.feedback) item = Feedback{};
     state_.timer = 0.85f;
 }
 
@@ -301,6 +302,14 @@ void Model::touch(int index) {
 }
 
 void Model::collect(int index, Bonus bonus) {
+    const Message message = bonus == Bonus::Life
+        ? (state_.lives < MAX_LIVES ? Message::Life : Message::LifeFull)
+        : bonus == Bonus::Zone ? Message::Zone
+        : bonus == Bonus::Boing ? Message::Boing
+        : bonus == Bonus::Quake ? Message::Quake
+        : bonus == Bonus::Tractor ? Message::Tractor
+        : bonus == Bonus::Laser ? Message::Laser : Message::None;
+    feedback(message, index % SIDE + 0.5f, index / SIDE + 0.5f);
     switch (bonus) {
         case Bonus::Life:
             if (state_.lives < MAX_LIVES) ++state_.lives;
@@ -334,6 +343,37 @@ void Model::collect(int index, Bonus bonus) {
     }
 }
 
+const char* Model::messageText(Message message) {
+    switch (message) {
+        case Message::Life: return "+1 LIFE";
+        case Message::LifeFull: return "LIFE FULL";
+        case Message::Zone: return "ZONE";
+        case Message::Boing: return "BOING";
+        case Message::Quake: return "QUAKE";
+        case Message::Tractor: return "TRACTOR READY";
+        case Message::Laser: return "LASER READY";
+        case Message::Kill: return "ALIEN +500";
+        case Message::Saved: return "SAVED";
+        case Message::Lost: return "-1 LIFE";
+        case Message::Aim: return "ROLL TO AIM";
+        case Message::None: return "";
+    }
+    return "";
+}
+
+void Model::feedback(Message message, float x, float y) {
+    if (message == Message::None) return;
+    Feedback* slot = &state_.feedback[0];
+    for (Feedback& item : state_.feedback) {
+        if (item.remaining < slot->remaining) slot = &item;
+        if (item.remaining <= 0.0f) {
+            slot = &item;
+            break;
+        }
+    }
+    *slot = {message, x, y, FEEDBACK_SECONDS};
+}
+
 bool Model::complete() const {
     for (int i = 0; i < CELLS; ++i) {
         if (!state_.hole[i] && !state_.touched[i]) return false;
@@ -348,10 +388,12 @@ void Model::respawn() {
     state_.vx = state_.vy = 0.0f;
     state_.safety = 1.5f;
     state_.airborne = 0.0f;
+    state_.laser_flash = 0.0f;
 }
 
 void Model::loseLife(bool edge_fall, unsigned& events) {
     if (edge_fall && state_.tractor) {
+        feedback(Message::Saved, state_.x, state_.y);
         state_.tractor = false;
         state_.stage = Stage::TractorSave;
         state_.timer = 0.8f;
@@ -360,6 +402,7 @@ void Model::loseLife(bool edge_fall, unsigned& events) {
         return;
     }
     if (state_.lives > 0) --state_.lives;
+    feedback(Message::Lost, state_.x, state_.y);
     events |= LIFE_LOST;
     if (state_.monster_alive) state_.monster_pause = 1.0f;
     if (state_.lives <= 0) {
@@ -470,10 +513,8 @@ void Model::spawnMonster() {
     const int corner = cornerCell(state_.monster_corner);
     state_.monster_x = static_cast<float>(corner % SIDE) + 0.5f;
     state_.monster_y = static_cast<float>(corner / SIDE) + 0.5f;
-    if (!state_.monster_preview) {
-        state_.laser_cell = cornerCell(state_.monster_corner ^ 3);
-        state_.bonus[state_.laser_cell] = Bonus::Laser;
-    }
+    state_.laser_cell = cornerCell(state_.monster_corner ^ 3);
+    state_.bonus[state_.laser_cell] = Bonus::Laser;
 }
 
 void Model::moveMonster(float dt, unsigned& events) {
@@ -483,7 +524,7 @@ void Model::moveMonster(float dt, unsigned& events) {
             spawnMonster();
         }
     }
-    if (!state_.monster_alive || state_.monster_preview) return;
+    if (!state_.monster_alive) return;
     if (state_.monster_pause > 0.0f) {
         state_.monster_pause = std::max(0.0f, state_.monster_pause - dt);
         if (state_.monster_pause == 0.0f) {
@@ -506,40 +547,58 @@ void Model::moveMonster(float dt, unsigned& events) {
 }
 
 void Model::fireLaser(unsigned& events) {
-    if (!state_.laser_armed || state_.laser_cooldown > 0.0f || state_.monster_preview) return;
+    if (!state_.laser_armed || state_.laser_cooldown > 0.0f) return;
     const float speed = std::hypot(state_.vx, state_.vy);
     if (speed < 0.05f) {
         state_.laser_cooldown = 3.0f;
+        feedback(Message::Aim, state_.x, state_.y);
         return;
     }
-    const float dx = state_.vx / speed;
-    const float dy = state_.vy / speed;
+    state_.laser_flash = LASER_SECONDS;
+    state_.laser_cooldown = 3.0f;
+    sweepLaser(events);
+}
+
+void Model::sweepLaser(unsigned& events) {
+    if (state_.laser_flash <= 0.0f) return;
+    const float speed = std::hypot(state_.vx, state_.vy);
+    const float previous_x = state_.laser_x2 - state_.laser_x1;
+    const float previous_y = state_.laser_y2 - state_.laser_y1;
+    const float previous_length = std::hypot(previous_x, previous_y);
+    if (speed < 0.05f && previous_length < 0.0001f) return;
+    // Keep the last heading when braking to a stop during the flash.
+    const float dx = speed >= 0.05f ? state_.vx / speed : previous_x / previous_length;
+    const float dy = speed >= 0.05f ? state_.vy / speed : previous_y / previous_length;
     state_.laser_x1 = state_.x;
     state_.laser_y1 = state_.y;
-    float end = 2.5f;
-    bool hit = false;
+    // The view clips this ray at the screen edge, including when the board tips.
+    state_.laser_x2 = state_.x + dx * 128.0f;
+    state_.laser_y2 = state_.y + dy * 128.0f;
     if (state_.monster_alive) {
         const float mx = state_.monster_x - state_.x;
         const float my = state_.monster_y - state_.y;
         const float along = mx * dx + my * dy;
         const float across = std::fabs(mx * dy - my * dx);
-        if (along > 0.0f && along <= 8.0f && across <= 0.38f) {
-            end = along;
+        if (along > 0.0f && across <= 0.38f) {
+            state_.burst_x = state_.monster_x;
+            state_.burst_y = state_.monster_y;
+            state_.monster_burst = BURST_SECONDS;
+            feedback(Message::Kill, state_.monster_x, state_.monster_y);
             state_.monster_alive = false;
             state_.monster_pending = false;
             state_.laser_armed = false;
             addScore(state_, 500);
             events |= MONSTER_KILLED;
-            hit = true;
         }
     }
-    state_.laser_x2 = state_.laser_x1 + dx * end;
-    state_.laser_y2 = state_.laser_y1 + dy * end;
-    state_.laser_flash = 0.22f;
-    if (!hit) state_.laser_cooldown = 3.0f;
 }
 
 void Model::step(float ax, float ay, unsigned& events) {
+    for (Feedback& item : state_.feedback) {
+        item.remaining = std::max(0.0f, item.remaining - STEP);
+    }
+    state_.monster_burst = std::max(0.0f, state_.monster_burst - STEP);
+    state_.laser_flash = std::max(0.0f, state_.laser_flash - STEP);
     if (state_.stage == Stage::Falling || state_.stage == Stage::BeamUp) {
         state_.timer = std::max(0.0f, state_.timer - STEP);
         if (state_.timer > 0.00001f) return;
@@ -577,7 +636,6 @@ void Model::step(float ax, float ay, unsigned& events) {
 
     state_.safety = std::max(0.0f, state_.safety - STEP);
     state_.laser_cooldown = std::max(0.0f, state_.laser_cooldown - STEP);
-    state_.laser_flash = std::max(0.0f, state_.laser_flash - STEP);
     state_.earthquake = std::max(0.0f, state_.earthquake - STEP);
     if (state_.airborne <= 0.0f && state_.earthquake > 0.0f) {
         state_.quake_shove -= STEP;
@@ -589,9 +647,10 @@ void Model::step(float ax, float ay, unsigned& events) {
     }
     move(ax, ay, events);
     if (state_.stage != Stage::Playing) return;
+    sweepLaser(events);
     if (state_.safety <= 0.0f) moveMonster(STEP, events);
     if (state_.stage == Stage::Playing && state_.safety <= 0.0f &&
-        state_.monster_alive && !state_.monster_preview &&
+        state_.monster_alive &&
         std::hypot(state_.x - state_.monster_x,
                                           state_.y - state_.monster_y) < 0.42f) {
         loseLife(false, events);

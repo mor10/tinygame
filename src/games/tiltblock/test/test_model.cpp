@@ -2,7 +2,9 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <iterator>
+#include <utility>
 
 #include "model.h"
 
@@ -87,16 +89,15 @@ void tutorialLessonsFollowPlayOrder() {
             assert(s.x == 3.5f && s.y == 3.5f && s.vx == 0.0f && s.vy == 0.0f);
             const int center = Model::cell(3, 3);
             assert(!s.wall[center] && !s.hole[center] && s.bonus[center] == Bonus::None);
-            assert(std::count(std::begin(s.hole), std::end(s.hole), true) == (lesson == 2 ? 1 : 0));
-            assert(std::count(std::begin(s.wall), std::end(s.wall), true) == (lesson == 3 ? 1 : 0));
-            assert(bonusCount(s, Bonus::Life) == (lesson == 4 ? 1 : 0));
-            assert(bonusCount(s, Bonus::Zone) == (lesson == 4 ? 1 : 0));
-            assert(bonusCount(s, Bonus::Tractor) == (lesson == 4 ? 1 : 0));
-            assert(bonusCount(s, Bonus::Boing) == (lesson == 5 ? 1 : 0));
-            assert(bonusCount(s, Bonus::Quake) == (lesson == 6 ? 1 : 0));
-            assert(bonusCount(s, Bonus::Laser) == (lesson == 8 ? 1 : 0));
+            assert(std::count(std::begin(s.hole), std::end(s.hole), true) == (lesson == 2 || lesson == 8 ? 5 : 0));
+            assert(std::count(std::begin(s.wall), std::end(s.wall), true) == (lesson == 3 || lesson == 8 ? 5 : 0));
+            assert(bonusCount(s, Bonus::Life) == (lesson == 4 || lesson == 8 ? 1 : 0));
+            assert(bonusCount(s, Bonus::Zone) == (lesson == 4 || lesson == 8 ? 1 : 0));
+            assert(bonusCount(s, Bonus::Tractor) == (lesson == 4 || lesson == 8 ? 1 : 0));
+            assert(bonusCount(s, Bonus::Boing) == (lesson == 5 || lesson == 8 ? 1 : 0));
+            assert(bonusCount(s, Bonus::Quake) == (lesson == 6 || lesson == 8 ? 1 : 0));
+            assert(bonusCount(s, Bonus::Laser) == (lesson >= 7 ? 1 : 0));
             assert(s.monster_alive == (lesson >= 7));
-            assert(s.monster_preview == (lesson == 7));
             assert(!s.monster_pending && !s.laser_armed);
             for (int i = 0; i < CELLS; ++i) {
                 holes_seen[i] |= s.hole[i];
@@ -112,7 +113,7 @@ void tutorialLessonsFollowPlayOrder() {
             clearLayer(repeat);
         }
         assert(model.state().level == 2 && model.state().layer == LAYERS_PER_LEVEL);
-        assert(!model.state().monster_preview && !model.state().monster_alive);
+        assert(!model.state().monster_alive);
     }
     assert(std::count(std::begin(holes_seen), std::end(holes_seen), true) > 1);
     assert(std::count(std::begin(walls_seen), std::end(walls_seen), true) > 1);
@@ -135,38 +136,31 @@ void tutorialHoleAndWallUseNormalRules() {
     const int wall = static_cast<int>(std::find(std::begin(w.wall), std::end(w.wall), true) -
                                       std::begin(w.wall));
     // Approach a reachable side from inside the board.
-    const bool from_left = wall % SIDE > 0;
-    w.x = wall % SIDE + (from_left ? -0.1f : 1.1f);
-    w.y = wall / SIDE + 0.5f;
-    w.vx = from_left ? 1.0f : -1.0f;
+    int dx = 0, dy = 0;
+    for (const auto& offset : {std::pair<int, int>{-1, 0}, {1, 0}, {0, -1}, {0, 1}}) {
+        const int neighbor = Model::cell(wall % SIDE + offset.first, wall / SIDE + offset.second);
+        if (neighbor >= 0 && !w.wall[neighbor]) {
+            dx = offset.first;
+            dy = offset.second;
+            break;
+        }
+    }
+    assert(dx || dy);
+    w.x = wall % SIDE + 0.5f + dx * 0.6f;
+    w.y = wall / SIDE + 0.5f + dy * 0.6f;
+    w.vx = static_cast<float>(-dx);
+    w.vy = static_cast<float>(-dy);
     walls.update(tg::Input{}, STEP);
     assert(w.touched[wall]);
-    assert(from_left ? w.vx < 0.0f : w.vx > 0.0f);
+    assert(w.vx * dx + w.vy * dy > 0.0f);
 }
 
-void previewIsHarmlessAndLaserLessonIsLive() {
-    Model preview = tutorial(7);
-    State& p = preview.mutableState();
-    const float monster_x = p.monster_x, monster_y = p.monster_y;
-    assert(!(advance(preview, 10.0f) & LIFE_LOST));
-    assert(p.monster_x == monster_x && p.monster_y == monster_y);
-    p.x = monster_x;
-    p.y = monster_y;
-    p.safety = 0.0f;
-    p.lives = 1;
-    assert(!(advance(preview, 10.0f) & (LIFE_LOST | GAME_OVER)));
-    assert(p.lives == 1 && p.stage == Stage::Playing && p.monster_alive);
-    assert(p.laser_cell == -1 && bonusCount(p, Bonus::Laser) == 0);
-    p.laser_armed = true;
-    p.vx = 1.0f;
+void laserLessonAndFinaleAreLive() {
     tg::Input click;
     click.click = true;
-    assert(!(preview.update(click, 0.0f) & MONSTER_KILLED));
-    assert(p.monster_alive && p.laser_flash == 0.0f);
-
-    Model encounter = tutorial(8);
+    Model encounter = tutorial(7);
     State& s = encounter.mutableState();
-    assert(!s.monster_preview && s.monster_alive && s.laser_cell >= 0);
+    assert(s.monster_alive && s.laser_cell >= 0);
     s.x = s.laser_cell % SIDE + 0.5f;
     s.y = s.laser_cell / SIDE + 0.5f;
     encounter.update(tg::Input{}, STEP);
@@ -176,14 +170,13 @@ void previewIsHarmlessAndLaserLessonIsLive() {
     advance(encounter, 3.1f);
     const float dx = s.monster_x - s.x, dy = s.monster_y - s.y;
     const float distance = std::hypot(dx, dy);
-    // Opposite corners are outside the existing eight-cube Laser range.
-    s.x = s.monster_x - dx / distance * 2.0f;
-    s.y = s.monster_y - dy / distance * 2.0f;
+    assert(distance > 8.0f);
     s.vx = dx / distance;
     s.vy = dy / distance;
     const std::uint32_t before = s.score;
     assert(encounter.update(click, 0.0f) & MONSTER_KILLED);
     assert(s.score == before + 500 && !s.monster_alive && !s.laser_armed);
+    assert(s.monster_burst == BURST_SECONDS);
 
     Model contact = tutorial(8);
     State& c = contact.mutableState();
@@ -192,6 +185,11 @@ void previewIsHarmlessAndLaserLessonIsLive() {
     c.y = c.monster_y;
     assert(contact.update(tg::Input{}, STEP) & LIFE_LOST);
     assert(c.lives == START_LIVES - 1);
+
+    Model moving = tutorial(7);
+    const float old_x = moving.state().monster_x, old_y = moving.state().monster_y;
+    advance(moving, 1.0f);
+    assert(std::hypot(moving.state().monster_x - old_x, moving.state().monster_y - old_y) > 0.0f);
 }
 
 void laterLevelFeatureThresholdsStayUnchanged() {
@@ -205,7 +203,7 @@ void laterLevelFeatureThresholdsStayUnchanged() {
             s.timer = 0.0f;
             model.update(tg::Input{}, STEP);
             assert(s.stage == Stage::Playing && s.layer == LAYERS_PER_LEVEL);
-            assert(Model::solvable(s) && !s.monster_preview && !s.monster_alive);
+            assert(Model::solvable(s) && !s.monster_alive);
             const int walls = std::count(std::begin(s.wall), std::end(s.wall), true);
             const int holes = std::count(std::begin(s.hole), std::end(s.hole), true);
             assert(walls > 0 && walls <= std::min(5 + (level - 2) * 2, 22));
@@ -398,8 +396,7 @@ void startFlowAndCalibration() {
         assert(lesson.state().level == 1);
         assert(lesson.state().layer == (shortcut == 1235 ? 2 : 1));
         assert(lesson.state().monster_alive);
-        assert(lesson.state().monster_preview == (shortcut == 1235));
-        assert(bonusCount(lesson.state(), Bonus::Laser) == (shortcut == 1236 ? 1 : 0));
+        assert(bonusCount(lesson.state(), Bonus::Laser) == 1);
     }
 }
 
@@ -630,6 +627,147 @@ void laserHitAndGameOverRestart() {
     assert(state.score >= 500);
 }
 
+bool hasFeedback(const State& state, Message message, float x, float y) {
+    for (const Feedback& item : state.feedback) {
+        if (item.message == message && item.remaining > 0.0f &&
+            item.x == x && item.y == y) return true;
+    }
+    return false;
+}
+
+void laserSweepsWithMovementAndHitsOnce() {
+    tg::Input click;
+    click.click = true;
+    for (int dx = -1; dx <= 1; ++dx) {
+        for (int dy = -1; dy <= 1; ++dy) {
+            if (dx == 0 && dy == 0) continue;
+            Model model = playing();
+            State& s = model.mutableState();
+            clearBoard(s);
+            s.vx = static_cast<float>(dx);
+            s.vy = static_cast<float>(dy);
+            s.laser_armed = true;
+            model.update(click, 0.0f);
+            const float ray_x = s.laser_x2 - s.laser_x1;
+            const float ray_y = s.laser_y2 - s.laser_y1;
+            assert(std::fabs(std::hypot(ray_x, ray_y) - 128.0f) < 0.001f);
+            assert(ray_x * dx + ray_y * dy > 0.0f);
+            assert(std::fabs(ray_x * dy - ray_y * dx) < 0.001f);
+        }
+    }
+
+    Model model = playing();
+    State& s = model.mutableState();
+    clearBoard(s);
+    s.laser_armed = true;
+    s.vx = 0.06f;
+    model.update(click, 0.0f);
+    assert(s.laser_x2 > s.laser_x1);
+    tg::Input turn;
+    turn.right.delta = -20;
+    model.update(turn, 0.05f);
+    assert(s.vx < 0.0f && s.laser_x2 < s.laser_x1);
+    assert(s.laser_x1 == s.x && s.laser_y1 == s.y);
+    s.monster_alive = true;
+    s.monster_x = s.x - 1.0f;
+    s.monster_y = s.y;
+    const float hit_x = s.monster_x, hit_y = s.monster_y;
+    const std::uint32_t before = s.score;
+    assert(model.update(tg::Input{}, STEP) & MONSTER_KILLED);
+    assert(s.score == before + 500);
+    assert(!s.monster_alive && !s.monster_pending && !s.laser_armed);
+    assert(hasFeedback(s, Message::Kill, hit_x, hit_y));
+    assert(s.burst_x == hit_x && s.burst_y == hit_y && s.monster_burst == BURST_SECONDS);
+    assert(!(model.update(click, STEP) & MONSTER_KILLED));
+    advance(model, LASER_SECONDS);
+    assert(s.laser_flash == 0.0f && s.monster_burst > 0.0f);
+    advance(model, BURST_SECONDS);
+    assert(s.monster_burst == 0.0f && !s.monster_alive);
+    advance(model, FEEDBACK_SECONDS);
+    for (const Feedback& item : s.feedback) assert(item.remaining == 0.0f);
+
+    Model contact = playing();
+    State& c = contact.mutableState();
+    clearBoard(c);
+    c.x = 6.5f;
+    c.vx = 1.0f;
+    c.monster_alive = true;
+    c.monster_x = 6.3f;
+    c.monster_y = c.y;
+    c.laser_armed = true;
+    const unsigned collided = contact.update(click, STEP);
+    assert((collided & LIFE_LOST) && !(collided & MONSTER_KILLED));
+    assert(c.x == 3.5f && c.laser_flash == 0.0f);
+    assert(!(contact.update(tg::Input{}, STEP) & MONSTER_KILLED));
+    assert(c.monster_alive);  // Respawning must not move a shot onto the alien.
+}
+
+void pickupAndSaveFeedbackIsMeaningfulAndExpires() {
+    const int center = Model::cell(3, 3);
+    for (const auto& pair : {std::pair<Bonus, Message>{Bonus::Life, Message::Life},
+                            {Bonus::Zone, Message::Zone}, {Bonus::Boing, Message::Boing},
+                            {Bonus::Quake, Message::Quake}, {Bonus::Tractor, Message::Tractor},
+                            {Bonus::Laser, Message::Laser}}) {
+        Model model = playing();
+        State& s = model.mutableState();
+        s.bonus[center] = pair.first;
+        model.update(tg::Input{}, STEP);
+        assert(hasFeedback(s, pair.second, 3.5f, 3.5f));
+        assert(s.bonus[center] == Bonus::None);
+        if (pair.first == Bonus::Zone) {
+            for (int y = 2; y <= 4; ++y) {
+                for (int x = 2; x <= 4; ++x) assert(s.touched[Model::cell(x, y)]);
+            }
+            assert(s.x == 3.5f && s.y == 3.5f);  // Zone does not teleport.
+        }
+    }
+    assert(std::strcmp(Model::messageText(Message::Life), "+1 LIFE") == 0);
+    assert(std::strcmp(Model::messageText(Message::Zone), "ZONE") == 0);
+    Model full = playing();
+    State& f = full.mutableState();
+    f.lives = MAX_LIVES;
+    f.bonus[center] = Bonus::Life;
+    full.update(tg::Input{}, STEP);
+    assert(f.lives == MAX_LIVES && hasFeedback(f, Message::LifeFull, 3.5f, 3.5f));
+
+    Model chain = playing();
+    State& c = chain.mutableState();
+    c.bonus[center] = Bonus::Zone;
+    c.bonus[Model::cell(2, 2)] = Bonus::Life;
+    chain.update(tg::Input{}, STEP);
+    assert(hasFeedback(c, Message::Zone, 3.5f, 3.5f));
+    assert(hasFeedback(c, Message::Life, 2.5f, 2.5f));
+
+    Model pooled = playing();
+    State& p = pooled.mutableState();
+    for (int i = 0; i < FEEDBACK_SLOTS + 4; ++i) {
+        p.bonus[center] = Bonus::Tractor;
+        p.touched[center] = false;
+        pooled.update(tg::Input{}, STEP);
+    }
+    for (const Feedback& item : p.feedback) {
+        assert(item.message == Message::Tractor);
+        assert(item.remaining > 0.0f && item.remaining <= FEEDBACK_SECONDS);
+    }
+    clearLayer(pooled);
+    for (const Feedback& item : p.feedback) assert(item.remaining == 0.0f);
+    assert(p.monster_burst == 0.0f && p.laser_flash == 0.0f);
+
+    for (bool saved : {false, true}) {
+        Model model = playing();
+        State& s = model.mutableState();
+        s.tractor = saved;
+        s.x = -0.01f;
+        model.update(tg::Input{}, STEP);
+        const float x = s.x, y = s.y;
+        advance(model, FALL_SECONDS);
+        assert(hasFeedback(s, saved ? Message::Saved : Message::Lost, x, y));
+        assert(s.lives == START_LIVES - (saved ? 0 : 1));
+        advance(model, FEEDBACK_SECONDS + STEP);
+        for (const Feedback& item : s.feedback) assert(item.remaining == 0.0f);
+    }
+}
+
 void fallAnimationPrecedesExactlyOneLifeLoss() {
     for (bool hole : {false, true}) {
         Model model = playing();
@@ -705,7 +843,7 @@ void animationFramePartitionsMatch() {
 int main() {
     tutorialLessonsFollowPlayOrder();
     tutorialHoleAndWallUseNormalRules();
-    previewIsHarmlessAndLaserLessonIsLive();
+    laserLessonAndFinaleAreLive();
     laterLevelFeatureThresholdsStayUnchanged();
     fallAnimationPrecedesExactlyOneLifeLoss();
     animationFramePartitionsMatch();
@@ -719,5 +857,7 @@ int main() {
     wallBouncesAndEdgeHoleUsesTractor();
     monsterContactCostsALife();
     laserHitAndGameOverRestart();
+    laserSweepsWithMovementAndHitsOnce();
+    pickupAndSaveFeedbackIsMeaningfulAndExpires();
     std::puts("tiltblock model passed");
 }
