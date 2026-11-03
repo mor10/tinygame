@@ -106,6 +106,14 @@ update.
 
 ### Drawing
 
+The camera fills more of the screen with the same 8x8 board: the level surface
+is about 254 pixels wide instead of 180 (41% larger). It uniformly scales
+cubes, holes, walls, actors, Laser and effects, and centers the playable surface
+below the HUD. Framing adapts to raised walls, TWIST angles and hops so the
+board edges stay visible, with margin for shake and falling effects. The lower
+stack still fades off-screen and departing beams still reach the screen edge.
+HUD and overlay fonts keep their original sizes.
+
 The scene is drawn by `framebuffer.cpp` straight into the RGB565 memory of one
 LVGL canvas, using clipped spans instead of one LVGL call per pixel. LVGL still
 puts it on the screen. Each frame erases only last frame's pixels and
