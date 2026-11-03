@@ -49,6 +49,15 @@ void colourPacking() {
     assert(mix565(0xFFFFFF, 0x000000, 0) == 0xFFFF);
     assert(mix565(0xFFFFFF, 0x000000, 255) == 0x0000);
     assert(mix565(0xFF0000, 0x0000FF, 128) == rgb565(0x7F0080));
+    constexpr auto ramp = tiltblock::makeRamp(0x86F8FF, 0x0B0E1A);
+    static_assert(ramp.step[0] == rgb565(0x86F8FF), "Ramp starts at full glow");
+    static_assert(ramp.step[tiltblock::EFFECT_STEPS - 1] == rgb565(0x0B0E1A),
+                  "Ramp ends at the background");
+    for (int i = 1; i < tiltblock::EFFECT_STEPS; ++i) {
+        assert((ramp.step[i] >> 11) <= (ramp.step[i - 1] >> 11));
+        assert(((ramp.step[i] >> 5) & 63) <= ((ramp.step[i - 1] >> 5) & 63));
+        assert((ramp.step[i] & 31) <= (ramp.step[i - 1] & 31));
+    }
 }
 
 void fillAndStride() {

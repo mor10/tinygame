@@ -45,6 +45,13 @@ void clearBoard(State& state) {
 
 float speedOf(const State& state) { return std::hypot(state.vx, state.vy); }
 
+unsigned advance(Model& model, float seconds) {
+    unsigned events = NO_EVENT;
+    const int steps = static_cast<int>(std::lround(seconds / STEP));
+    for (int i = 0; i < steps; ++i) events |= model.update(tg::Input{}, STEP);
+    return events;
+}
+
 // Keeps the ball near the middle so long runs measure speed, not edge falls.
 void recentre(State& state) {
     state.x = 3.5f;
@@ -282,11 +289,20 @@ void generatedBoardsAreSolvableAndProgress() {
                 if (!state.hole[i]) state.touched[i] = true;
             }
             model.update(tg::Input{}, STEP);
-            assert(model.state().stage == Stage::LayerDrop ||
-                   model.state().stage == Stage::LevelClear);
+            assert(model.state().stage == Stage::BeamUp);
             assert(state.score == static_cast<std::uint32_t>(
-                100 * level + (state.stage == Stage::LevelClear ? 1000 * level : 0)));
-            const int ticks = model.state().stage == Stage::LevelClear ? 140 : 110;
+                100 * level + (state.layer == 1 ? 1000 * level : 0)));
+            assert(state.level == level);
+            const int previous_layer = state.layer;
+            advance(model, BEAM_SECONDS - STEP);
+            assert(state.stage == Stage::BeamUp && state.layer == previous_layer);
+            advance(model, STEP);
+            assert(state.stage == (previous_layer == 1 ? Stage::LevelClear : Stage::LayerDrop));
+            if (state.stage == Stage::LayerDrop) {
+                for (bool touched : state.touched) assert(!touched);
+                assert(state.safety > 0.0f);
+            }
+            const int ticks = state.stage == Stage::LevelClear ? 140 : 110;
             for (int i = 0; i < ticks; ++i) model.update(tg::Input{}, 0.01f);
         }
         if (level >= 3) assert(saw_edge_hole);
@@ -324,7 +340,10 @@ void wallBouncesAndEdgeHoleUsesTractor() {
     state.y = 3.5f;
     state.vx = state.vy = 0.0f;
     const int lives = state.lives;
-    const unsigned fall = model.update(tg::Input{}, STEP);
+    assert(model.update(tg::Input{}, STEP) == NO_EVENT);
+    assert(state.stage == Stage::Falling && state.fall_hole && state.fall_edge);
+    assert(state.tractor);
+    const unsigned fall = advance(model, FALL_SECONDS);
     assert(fall & BONUS_USED);
     assert(!(fall & LIFE_LOST));
     assert(state.stage == Stage::TractorSave);
@@ -366,7 +385,9 @@ void bonusesAndLifeRules() {
     state.hole[center] = true;
     state.x = 3.5f;
     state.y = 3.5f;
-    const unsigned before_inner = model.update(tg::Input{}, STEP);
+    model.update(tg::Input{}, STEP);
+    assert(state.stage == Stage::Falling);
+    const unsigned before_inner = advance(model, FALL_SECONDS);
     assert(before_inner & LIFE_LOST);
     assert(!(before_inner & BONUS_USED));
     assert(state.lives == 4);
@@ -375,7 +396,8 @@ void bonusesAndLifeRules() {
     state.hole[center] = false;
     state.x = -0.1f;
     state.y = 3.5f;
-    const unsigned saved = model.update(tg::Input{}, STEP);
+    model.update(tg::Input{}, STEP);
+    const unsigned saved = advance(model, FALL_SECONDS);
     assert(saved & BONUS_USED);
     assert(!(saved & LIFE_LOST));
     assert(!state.tractor);
@@ -406,9 +428,14 @@ void laserHitAndGameOverRestart() {
     state.lives = 1;
     state.x = -0.1f;
     state.y = 3.5f;
-    const unsigned lost = model.update(tg::Input{}, STEP);
+    model.update(tg::Input{}, STEP);
+    assert(state.stage == Stage::Falling);
+    const unsigned lost = advance(model, FALL_SECONDS);
     assert(lost & GAME_OVER);
     assert(state.stage == Stage::Over);
+    assert(state.lives == 0);
+    assert(advance(model, 0.5f) == NO_EVENT);
+    assert(state.stage == Stage::Over && state.lives == 0);
     tg::Input restart;
     restart.click = true;
     model.update(restart, 0.01f);
@@ -416,9 +443,81 @@ void laserHitAndGameOverRestart() {
     assert(state.score >= 500);
 }
 
+void fallAnimationPrecedesExactlyOneLifeLoss() {
+    for (bool hole : {false, true}) {
+        Model model = playing();
+        State& s = model.mutableState();
+        clearBoard(s);
+        s.x = hole ? 2.2f : 8.01f;
+        s.y = 3.5f;
+        s.vx = 1.0f;
+        s.hole[Model::cell(2, 3)] = hole;
+        s.monster_alive = true;
+        s.monster_x = s.x;
+        s.monster_y = s.y;
+        const unsigned start = model.update(tg::Input{}, STEP);
+        assert(start == NO_EVENT);
+        assert(s.stage == Stage::Falling && s.fall_hole == hole);
+        assert(s.lives == START_LIVES && s.safety == 0.0f);
+        const float x = s.x, y = s.y;
+        assert(advance(model, FALL_SECONDS - STEP) == NO_EVENT);
+        assert(s.stage == Stage::Falling && s.x == x && s.y == y);
+        assert(s.lives == START_LIVES);
+        const unsigned end = advance(model, STEP);
+        assert((end & LIFE_LOST) && !(end & GAME_OVER));
+        assert(s.stage == Stage::Playing && s.lives == START_LIVES - 1);
+        assert(s.x == 3.5f && s.y == 3.5f && s.safety == 1.5f);
+        assert(!(advance(model, 0.5f) & LIFE_LOST));
+        assert(s.lives == START_LIVES - 1);
+    }
+
+    Model saved = playing();
+    State& s = saved.mutableState();
+    s.x = -0.01f;
+    s.tractor = true;
+    s.lives = 1;
+    saved.update(tg::Input{}, STEP);
+    assert(s.stage == Stage::Falling && s.tractor);
+    assert(advance(saved, FALL_SECONDS) == BONUS_USED);
+    assert(s.stage == Stage::TractorSave && s.lives == 1 && !s.tractor);
+    advance(saved, 0.9f);
+    assert(s.stage == Stage::Playing && s.safety > 1.3f && s.lives == 1);
+}
+
+void animationFramePartitionsMatch() {
+    for (bool clearing : {false, true}) {
+        Model a = playing();
+        Model b = playing();
+        for (Model* model : {&a, &b}) {
+            State& s = model->mutableState();
+            clearBoard(s);
+            if (clearing) {
+                for (bool& touched : s.touched) touched = true;
+            } else {
+                s.x = 8.01f;
+            }
+            model->update(tg::Input{}, STEP);
+        }
+        const float duration = clearing ? BEAM_SECONDS : FALL_SECONDS;
+        unsigned events_a = advance(a, duration);
+        unsigned events_b = NO_EVENT;
+        for (int i = 0; i < static_cast<int>(std::lround(duration * 10)); ++i) {
+            events_b |= b.update(tg::Input{}, 0.1f);
+        }
+        assert(events_a == events_b);
+        assert(a.state().stage == b.state().stage);
+        assert(a.state().lives == b.state().lives && a.state().layer == b.state().layer);
+        assert(std::fabs(a.state().timer - b.state().timer) < 0.0001f);
+        assert(std::fabs(a.state().safety - b.state().safety) < 0.0001f);
+        assert(a.state().score == b.state().score);
+    }
+}
+
 }  // namespace
 
 int main() {
+    fallAnimationPrecedesExactlyOneLifeLoss();
+    animationFramePartitionsMatch();
     startFlowAndCalibration();
     twistAngleAndFixedSteps();
     rollingIsResponsiveAndBrakes();

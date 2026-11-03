@@ -29,4 +29,17 @@ constexpr FadeTable makeFade(std::uint32_t color, std::uint32_t background) {
     return table;
 }
 
+inline constexpr int EFFECT_STEPS = 32;
+struct ColorRamp {
+    std::uint16_t step[EFFECT_STEPS];
+};
+
+constexpr ColorRamp makeRamp(std::uint32_t from, std::uint32_t to) {
+    ColorRamp ramp{};
+    for (int i = 0; i < EFFECT_STEPS; ++i) {
+        ramp.step[i] = fb::mix565(from, to, i * 255U / (EFFECT_STEPS - 1));
+    }
+    return ramp;
+}
+
 }  // namespace tiltblock

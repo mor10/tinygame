@@ -38,6 +38,10 @@ constexpr std::uint16_t BG565 = fb::rgb565(tg::color::BG);
 constexpr FadeTable FRONT_FADE = makeFade(CUBE_SIDE, tg::color::BG);
 constexpr FadeTable RIGHT_FADE = makeFade(CUBE_DARK, tg::color::BG);
 constexpr FadeTable GRID_FADE = makeFade(CUBE_GRID, tg::color::BG);
+constexpr std::uint32_t BEAM_CYAN = 0x86F8FF;
+constexpr ColorRamp GLOW_RAMP = makeRamp(tg::color::MINT, BEAM_CYAN);
+constexpr ColorRamp BEAM_FADE = makeRamp(BEAM_CYAN, tg::color::BG);
+constexpr ColorRamp BALL_FADE = makeRamp(tg::color::WHITE, tg::color::BG);
 
 using Point = fb::Point;
 
@@ -121,6 +125,7 @@ public:
         lv_obj_set_size(canvas_, tg::WIDTH, tg::HEIGHT);
         fb_.fill(BG565);
         shown_scene_ = fb_.dirty();
+        buildChrome(screen);
         render(State{}, 0.0f, 0.0f, 0);
     }
 
@@ -130,24 +135,15 @@ public:
 
     void render(const State& state, float raw_x, float raw_y, std::uint32_t best) {
         if (!canvas_ || !buffer_ || !fb_.valid()) return;
-        // Erase only last frame's pixels and present only what changed: the
-        // LVGL/SPI flush, not the drawing, is the slow part. The HUD strip is
-        // tracked separately so its full width doesn't widen the board area,
-        // and is only presented when its pixels actually change.
-        fb_.clear(shown_hud_, BG565);
+        updateChrome(state, best);
+        // Chrome is separate LVGL objects: unchanged labels don't widen the
+        // board's dirty rectangle into a full-screen display flush.
         fb_.clear(shown_scene_, BG565);
         fb_.resetDirty();
-        hud_drawn_ = fb::Rect{};
-        renderScene(state, raw_x, raw_y, best);
+        renderScene(state, raw_x, raw_y);
         const fb::Rect scene = fb_.dirty();
         const fb::Rect scene_area = fb::unite(shown_scene_, scene);
-        const fb::Rect hud_area = fb::unite(shown_hud_, hud_drawn_);
         shown_scene_ = scene;
-        shown_hud_ = hud_drawn_;
-        const std::uint32_t hud_sum = checksum(hud_area);
-        if (hud_sum != hud_sum_ || force_hud_) invalidate(hud_area);
-        hud_sum_ = hud_sum;
-        force_hud_ = false;
         invalidate(scene_area);
     }
 
@@ -158,17 +154,65 @@ private:
         lv_obj_invalidate_area(canvas_, &area);
     }
 
-    std::uint32_t checksum(const fb::Rect& r) const {
-        std::uint32_t sum = 2166136261U;
-        for (int y = std::max(r.y0, 0); y <= std::min(r.y1, fb_.height() - 1); ++y) {
-            for (int x = std::max(r.x0, 0); x <= std::min(r.x1, fb_.width() - 1); ++x) {
-                sum = (sum ^ fb_.at(x, y)) * 16777619U;
-            }
-        }
-        return sum ^ static_cast<std::uint32_t>(r.x0 + r.y0 * 7 + r.x1 * 131 + r.y1 * 1031);
+    void buildChrome(lv_obj_t* screen) {
+        hud_ = tg::ui::block(screen, 0, 0, tg::WIDTH, 18, tg::color::SURFACE);
+        tg::ui::block(hud_, 0, 16, 32, 2, tg::color::MINT);
+        score_ = tg::ui::label(hud_, "", tg::Font::S);
+        lv_obj_set_pos(score_, 6, 4);
+        level_ = tg::ui::label(hud_, "", tg::Font::S, tg::color::TEXT_DIM);
+        lv_obj_set_pos(level_, 112, 4);
+        lives_ = tg::ui::label(hud_, "", tg::Font::S, tg::color::GOOD);
+        lv_obj_set_pos(lives_, 280, 4);
+        tractor_ = tg::ui::label(hud_, "T", tg::Font::S, tg::color::PINK);
+        lv_obj_set_pos(tractor_, 244, 4);
+        laser_ = tg::ui::label(hud_, "!", tg::Font::S, tg::color::ORANGE);
+        lv_obj_set_pos(laser_, 260, 4);
+        clear_ = tg::ui::panel(screen, 56, 140, 208, 28);
+        clear_title_ = tg::ui::label(clear_, "", tg::Font::M, tg::color::GOOD);
+        lv_obj_center(clear_title_);
+        over_ = tg::ui::popup(screen, "GAME OVER", "CLICK: MODE", tg::color::BAD);
     }
 
-    void renderScene(const State& state, float raw_x, float raw_y, std::uint32_t best) {
+    void updateChrome(const State& state, std::uint32_t best) {
+        const bool playing = state.stage != Stage::ModeSelect && state.stage != Stage::Calibration;
+        const bool clearing = state.stage == Stage::BeamUp || state.stage == Stage::LayerDrop ||
+                              state.stage == Stage::LevelClear;
+        lv_obj_set_hidden(hud_, !playing);
+        lv_obj_set_hidden(clear_, !clearing);
+        lv_obj_set_hidden(over_, state.stage != Stage::Over);
+        if (!chrome_ready_ || state.score != shown_score_) {
+            tg::ui::text(score_, "S %lu", static_cast<unsigned long>(state.score));
+        }
+        if (!chrome_ready_ || state.level != shown_level_ || state.layer != shown_layer_) {
+            tg::ui::text(level_, "L%d-%d", state.level, state.layer);
+        }
+        if (!chrome_ready_ || state.lives != shown_lives_) {
+            tg::ui::text(lives_, "+%d", state.lives);
+        }
+        lv_obj_set_hidden(tractor_, !state.tractor);
+        lv_obj_set_hidden(laser_, !state.laser_armed);
+        if (clearing && (!chrome_ready_ || state.stage != shown_stage_)) {
+            lv_label_set_text(clear_title_,
+                state.stage == Stage::LevelClear ||
+                (state.stage == Stage::BeamUp && state.layer == 1) ? "LEVEL CLEAR" : "LAYER CLEAR");
+            lv_obj_center(clear_title_);
+        }
+        if (state.stage == Stage::Over && (!chrome_ready_ || shown_stage_ != Stage::Over ||
+                                          state.score != shown_score_ || best != shown_best_)) {
+            tg::ui::result(over_, state.score, best, false);
+            tg::ui::text(tg::ui::popupHint(over_), "BEST %lu\nCLICK: MODE",
+                         static_cast<unsigned long>(best));
+        }
+        shown_score_ = state.score;
+        shown_best_ = best;
+        shown_level_ = state.level;
+        shown_layer_ = state.layer;
+        shown_lives_ = state.lives;
+        shown_stage_ = state.stage;
+        chrome_ready_ = true;
+    }
+
+    void renderScene(const State& state, float raw_x, float raw_y) {
         state_ = &state;
         camera_x_ = camera_y_ = 0;
         if (state.stage == Stage::Playing && state.earthquake > 0.0f) {
@@ -185,24 +229,12 @@ private:
             drawCalibration(raw_x, raw_y);
             return;
         }
-        drawHud(state);
-        hud_drawn_ = fb_.dirty();
-        fb_.resetDirty();
         drawBoard(state);
         if (state.stage == Stage::TractorSave) drawTractor(state);
-        drawBall(state);
         if (state.monster_alive) drawMonster(state);
         if (state.laser_flash > 0.0f) {
             line(boardPoint(state.laser_x1, state.laser_y1),
                  boardPoint(state.laser_x2, state.laser_y2), tg::color::ORANGE, 2);
-        }
-        if (state.stage == Stage::LayerDrop || state.stage == Stage::LevelClear) {
-            box(100, 79, 120, 25, tg::color::SURFACE);
-            boxOutline(100, 79, 120, 25, tg::color::LINE);
-            text(116, 86, state.stage == Stage::LevelClear ? "LEVEL CLEAR" : "LAYER CLEAR",
-                 tg::color::GOOD, 2);
-        } else if (state.stage == Stage::Over) {
-            drawGameOver(state, best);
         }
     }
 
@@ -265,8 +297,10 @@ private:
         const float left = state_ ? state_->left_angle / 20.0f : 0.0f;
         const float right = state_ ? state_->right_angle / 20.0f : 0.0f;
         const float tilt_height = (-right * col + left * row) * TWIST_VISUAL_SCALE;
+        const float drop = state_ && state_->stage == Stage::LayerDrop
+            ? std::clamp(state_->timer / 0.85f, 0.0f, 1.0f) * CUBE_HEIGHT : 0.0f;
         return {BOARD_X + (col - row) * HALF_X,
-                BOARD_Y + (col + row) * HALF_Y - tilt_height - z};
+                BOARD_Y + (col + row) * HALF_Y - tilt_height - z + drop};
     }
 
     static Point lower(Point point, float depth) {
@@ -286,6 +320,8 @@ private:
             const float bottom = std::min(top + CUBE_HEIGHT, depth);
             // Nothing below the screen edge can be seen.
             if (std::min(a.y, b.y) + top + camera_y_ >= tg::HEIGHT) break;
+            const bool beaming = state_->stage == Stage::BeamUp;
+            if (band == 0 && beaming) continue;
             const std::uint16_t fill = band == 0 && touched ? touched565 : face.band[band];
             const std::uint16_t seam = GRID_FADE.band[band];
             if (fill != BG565) {
@@ -334,34 +370,60 @@ private:
         text(60, 148, "CENTER DOT CLICK EITHER KNOB", tg::color::TEXT_DIM);
     }
 
-    void drawHud(const State& state) {
-        box(0, 0, tg::WIDTH, 18, tg::color::SURFACE);
-        box(0, 16, 32, 2, tg::color::MINT);
-        char score[16];
-        char level[16];
-        std::snprintf(score, sizeof(score), "S %lu", static_cast<unsigned long>(state.score));
-        std::snprintf(level, sizeof(level), "L%d-%d", state.level, state.layer);
-        text(6, 6, score, tg::color::TEXT);
-        text(154, 6, level, tg::color::TEXT_DIM);
-        int x = 252;
-        if (state.tractor) {
-            box(x, 6, 5, 5, tg::color::PLUM);
-            pixel(x + 2, 5, tg::color::PINK);
-            x += 8;
+    static int rampStep(float progress) {
+        return static_cast<int>(std::clamp(progress, 0.0f, 1.0f) * (EFFECT_STEPS - 1));
+    }
+
+    void drawBeamCube(const State& state, int col, int row, Point p, float progress, float pulse) {
+        const float diagonal = (col + row) / 14.0f;
+        const float dissolve = std::clamp((progress - 0.35f - diagonal * 0.16f) / 0.49f,
+                                          0.0f, 1.0f);
+        const float size = 1.0f - dissolve;
+        const float wave = std::max(0.0f, 1.0f -
+            std::fabs(diagonal - (progress - 0.12f) * 2.8f) * 5.0f);
+        const std::uint16_t glow = GLOW_RAMP.step[rampStep(std::max(pulse, wave))];
+        const Point under = lower(p, CUBE_HEIGHT);
+        if (state.layer > 1) {
+            diamond(under, HALF_X, HALF_Y, CUBE_DARK);
+            outlineDiamond(under, HALF_X, HALF_Y, CUBE_GRID);
         }
-        if (state.laser_armed) {
-            box(x, 6, 5, 5, tg::color::ORANGE);
-            pixel(x + 2, 4, tg::color::YELLOW);
-            x += 8;
+        Point top = p;
+        top.y -= dissolve * 10.0f;
+        if (state.wall[Model::cell(col, row)]) top.y -= CUBE_HEIGHT * size;
+        const Point cube[] = {{top.x - HALF_X * size, top.y},
+                              {top.x, top.y - HALF_Y * size},
+                              {top.x + HALF_X * size, top.y},
+                              {top.x, top.y + HALF_Y * size}};
+        const Point side[] = {cube[0], cube[3], cube[2],
+                              lower(cube[2], CUBE_HEIGHT * size),
+                              lower(cube[3], CUBE_HEIGHT * size),
+                              lower(cube[0], CUBE_HEIGHT * size)};
+        if (size > 0.02f) {
+            fb_.polygon(side, 6, GLOW_RAMP.step[rampStep(wave * 0.5f)]);
+            fb_.polygon(cube, 4, glow);
+            outlineDiamond(top, HALF_X * size, HALF_Y * size, BEAM_CYAN);
         }
-        for (int i = 0; i < state.lives && i < MAX_LIVES; ++i) {
-            box(x + i * 7, 6, 5, 6, tg::color::GOOD);
+        if (dissolve > 0.05f && dissolve < 1.0f) {
+            const float rise = dissolve * dissolve * 72.0f;
+            const std::uint16_t light = BEAM_FADE.step[rampStep(dissolve)];
+            fb_.line({p.x, top.y - rise}, {p.x, top.y + HALF_Y * size}, light, 3);
+            fb_.line({p.x, top.y - rise}, {p.x, top.y - rise + 12.0f},
+                     BEAM_FADE.step[rampStep(dissolve * 0.7f)]);
+            fb_.pixel(static_cast<int>(p.x + (col % 3 - 1) * 5),
+                      static_cast<int>(top.y - rise * 0.7f), light);
         }
     }
 
     void drawBoard(const State& state) {
+        if (state.stage == Stage::LevelClear) return;
         const float stack_layers = Model::stackDepthLayersForView(state);
-        const float depth = stack_layers * CUBE_HEIGHT;
+        const float depth = (state.stage == Stage::LayerDrop ? state.layer : stack_layers) * CUBE_HEIGHT;
+        const float beam_progress = state.stage == Stage::BeamUp ? 1.0f - state.timer / BEAM_SECONDS : 0.0f;
+        const float beam_pulse = state.stage == Stage::BeamUp
+            ? 0.35f + 0.3f * std::sin(beam_progress * 24.0f) : 0.0f;
+        const bool back_fall = state.stage == Stage::Falling && !state.fall_hole &&
+                               (state.x < 0.0f || state.y < 0.0f);
+        if (back_fall) drawBall(state);
         for (int sum = 0; sum <= 2 * (SIDE - 1); ++sum) {
             for (int row = 0; row < SIDE; ++row) {
                 const int col = sum - row;
@@ -384,42 +446,15 @@ private:
                     drawStackSide(right, bottom, depth, RIGHT_FADE, CUBE_TOUCHED_RIGHT,
                                   state.touched[index]);
                 }
+                if (state.stage == Stage::BeamUp) {
+                    if (!state.hole[index]) drawBeamCube(state, col, row, p, beam_progress, beam_pulse);
+                    continue;
+                }
                 if (state.hole[index]) {
                     diamond(p, HALF_X, HALF_Y, CUBE_HOLE);
                     outlineDiamond(p, HALF_X, HALF_Y, CUBE_GRID);
                     line({p.x - HALF_X + 2, p.y}, {p.x, p.y - HALF_Y + 1}, tg::color::LINE);
                     line({p.x + HALF_X - 2, p.y}, {p.x, p.y - HALF_Y + 1}, tg::color::LINE);
-                    continue;
-                }
-                if (state.wall[index]) {
-                    const Point raised = boardPoint(col + 0.5f, row + 0.5f, CUBE_HEIGHT);
-                    const Point left = boardPoint(static_cast<float>(col),
-                                                  static_cast<float>(row + 1));
-                    const Point bottom = boardPoint(static_cast<float>(col + 1),
-                                                    static_cast<float>(row + 1));
-                    const Point right = boardPoint(static_cast<float>(col + 1),
-                                                   static_cast<float>(row));
-                    const Point raised_left = boardPoint(static_cast<float>(col),
-                                                         static_cast<float>(row + 1),
-                                                         CUBE_HEIGHT);
-                    const Point raised_bottom = boardPoint(static_cast<float>(col + 1),
-                                                           static_cast<float>(row + 1),
-                                                           CUBE_HEIGHT);
-                    const Point raised_right = boardPoint(static_cast<float>(col + 1),
-                                                          static_cast<float>(row),
-                                                          CUBE_HEIGHT);
-                    const Point left_side[] = {left, bottom, raised_bottom, raised_left};
-                    const Point right_side[] = {right, bottom, raised_bottom, raised_right};
-                    const std::uint32_t touched_front = state.touched[index]
-                        ? CUBE_TOUCHED_FRONT : CUBE_SIDE;
-                    const std::uint32_t touched_right = state.touched[index]
-                        ? CUBE_TOUCHED_RIGHT : CUBE_DARK;
-                    polygon(left_side, 4, touched_front);
-                    polygon(right_side, 4, touched_right);
-                    const std::uint32_t top = state.touched[index] ? tg::color::MINT : CUBE_WALL;
-                    diamond(raised, HALF_X, HALF_Y, top);
-                    outlineDiamond(raised, HALF_X, HALF_Y, CUBE_GRID);
-                    line({raised.x - HALF_X, raised.y}, {raised.x, raised.y - HALF_Y}, tg::color::SILVER);
                     continue;
                 }
                 std::uint32_t color = state.touched[index] ? tg::color::MINT : CUBE_DARK;
@@ -444,23 +479,86 @@ private:
                                   icon, tg::color::BG);
             }
         }
+        if (state.stage == Stage::BeamUp) return;
+        // Floors cannot cover the ball. Merge it with the raised walls in
+        // world-depth order, so only walls in front paint over its sprite.
+        bool ball_drawn = back_fall;
+        const float ball_depth = state.stage == Stage::TractorSave ? 8.0f : state.x + state.y;
+        for (int sum = 0; sum <= 2 * (SIDE - 1); ++sum) {
+            if (!ball_drawn && ball_depth < sum + 1.0f) {
+                drawBall(state);
+                ball_drawn = true;
+            }
+            for (int row = 0; row < SIDE; ++row) {
+                const int col = sum - row;
+                if (col >= 0 && col < SIDE && state.wall[Model::cell(col, row)]) {
+                    drawWall(state, col, row);
+                }
+            }
+        }
+        if (!ball_drawn) drawBall(state);
+    }
+
+    void drawWall(const State& state, int col, int row) {
+        const int index = Model::cell(col, row);
+        const Point raised = boardPoint(col + 0.5f, row + 0.5f, CUBE_HEIGHT);
+        const Point left = boardPoint(col, row + 1.0f);
+        const Point bottom = boardPoint(col + 1.0f, row + 1.0f);
+        const Point right = boardPoint(col + 1.0f, row);
+        const Point raised_left = boardPoint(col, row + 1.0f, CUBE_HEIGHT);
+        const Point raised_bottom = boardPoint(col + 1.0f, row + 1.0f, CUBE_HEIGHT);
+        const Point raised_right = boardPoint(col + 1.0f, row, CUBE_HEIGHT);
+        const Point left_side[] = {left, bottom, raised_bottom, raised_left};
+        const Point right_side[] = {right, bottom, raised_bottom, raised_right};
+        polygon(left_side, 4, state.touched[index] ? CUBE_TOUCHED_FRONT : CUBE_SIDE);
+        polygon(right_side, 4, state.touched[index] ? CUBE_TOUCHED_RIGHT : CUBE_DARK);
+        diamond(raised, HALF_X, HALF_Y, state.touched[index] ? tg::color::MINT : CUBE_WALL);
+        outlineDiamond(raised, HALF_X, HALF_Y, CUBE_GRID);
+        line({raised.x - HALF_X, raised.y}, {raised.x, raised.y - HALF_Y}, tg::color::SILVER);
     }
 
     void drawBall(const State& state) {
+        if (state.stage == Stage::Over) return;
         Point p = boardPoint(state.x, state.y);
         if (state.stage == Stage::TractorSave) {
             p = boardPoint(4.0f, 4.0f);
         }
         if (state.safety > 0.0f && static_cast<int>(state.safety * 12.0f) % 2 == 0) return;
+        int radius = 4;
+        int clip_bottom = tg::HEIGHT;
+        std::uint16_t color = fb::rgb565(tg::color::WHITE);
+        if (state.stage == Stage::Falling) {
+            const float progress = std::clamp(1.0f - state.timer / FALL_SECONDS, 0.0f, 1.0f);
+            if (state.fall_hole) {
+                const Point center = boardPoint(std::floor(state.x) + 0.5f,
+                                                std::floor(state.y) + 0.5f);
+                const float settle = std::min(progress * 4.0f, 1.0f);
+                p.x += (center.x - p.x) * settle;
+                p.y += (center.y - p.y) * settle;
+                clip_bottom = static_cast<int>(p.y + 2);
+                p.y += progress * progress * 12.0f;
+                radius = std::max(1, static_cast<int>(4.0f * (1.0f - progress * 0.7f)));
+            } else {
+                p = boardPoint(state.x + state.vx * progress * 0.22f,
+                               state.y + state.vy * progress * 0.22f);
+                p.y += progress * progress * 58.0f;
+            }
+            color = BALL_FADE.step[rampStep(progress)];
+        } else {
+            box(static_cast<int>(p.x) - 5, static_cast<int>(p.y) + 4, 10, 3, SHADOW);
+            if (state.airborne > 0.0f) {
+                box(static_cast<int>(p.x) - 6, static_cast<int>(p.y) + 6, 12, 1, tg::color::YELLOW);
+                p.y -= 10.0f + 5.0f * std::sin(state.airborne * 3.14159265f);
+            }
+        }
         const int x = static_cast<int>(std::lround(p.x));
         const int y = static_cast<int>(std::lround(p.y));
-        box(x - 5, y + 4, 10, 3, SHADOW);
-        box(x - 4, y - 3, 8, 6, tg::color::WHITE);
-        box(x - 3, y - 4, 6, 9, tg::color::WHITE);
-        if (state.laser_armed) pixel(x, y - 4, tg::color::ORANGE);
-        if (state.airborne > 0.0f) {
-            box(x - 6, y + 6, 12, 1, tg::color::YELLOW);
+        for (int row = -radius; row <= radius; ++row) {
+            if (y + row > clip_bottom) continue;
+            const int half = std::abs(row) == radius ? radius - 1 : radius;
+            fb_.span(x - half, x + half, y + row, color);
         }
+        if (state.laser_armed && state.stage != Stage::Falling) pixel(x, y - radius, tg::color::ORANGE);
     }
 
     void drawMonster(const State& state) {
@@ -487,27 +585,23 @@ private:
              {static_cast<float>(x), y + 22.0f}, tg::color::SKY, 2);
     }
 
-    void drawGameOver(const State& state, std::uint32_t best) {
-        box(64, 54, 192, 66, tg::color::SURFACE);
-        boxOutline(64, 54, 192, 66, tg::color::BAD);
-        text(124, 61, "GAME OVER", tg::color::BAD, 2);
-        char score[20];
-        char best_text[20];
-        std::snprintf(score, sizeof(score), "SCORE %lu", static_cast<unsigned long>(state.score));
-        std::snprintf(best_text, sizeof(best_text), "BEST %lu", static_cast<unsigned long>(best));
-        text(100, 80, score, tg::color::TEXT);
-        text(104, 91, best_text, tg::color::WARN);
-        text(72, 131, "CLICK: MODE   HOLD: PAUSE", tg::color::TEXT_DIM);
-    }
-
     lv_obj_t* canvas_ = nullptr;
     lv_draw_buf_t* buffer_ = nullptr;
     fb::Framebuffer fb_;
     fb::Rect shown_scene_;
-    fb::Rect shown_hud_;
-    fb::Rect hud_drawn_;
-    std::uint32_t hud_sum_ = 0;
-    bool force_hud_ = true;
+    lv_obj_t* hud_ = nullptr;
+    lv_obj_t* score_ = nullptr;
+    lv_obj_t* level_ = nullptr;
+    lv_obj_t* lives_ = nullptr;
+    lv_obj_t* tractor_ = nullptr;
+    lv_obj_t* laser_ = nullptr;
+    lv_obj_t* clear_ = nullptr;
+    lv_obj_t* clear_title_ = nullptr;
+    lv_obj_t* over_ = nullptr;
+    bool chrome_ready_ = false;
+    std::uint32_t shown_score_ = 0, shown_best_ = 0;
+    int shown_level_ = 0, shown_layer_ = 0, shown_lives_ = 0;
+    Stage shown_stage_ = Stage::ModeSelect;
     const State* state_ = nullptr;
     int camera_x_ = 0;
     int camera_y_ = 0;
