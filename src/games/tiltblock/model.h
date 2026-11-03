@@ -17,6 +17,10 @@ inline constexpr float BALL_RADIUS = 0.18f;
 inline constexpr float MAX_SPEED = 4.5f;
 inline constexpr float FALL_SECONDS = 0.8f;
 inline constexpr float BEAM_SECONDS = 1.0f;
+inline constexpr float LASER_SECONDS = 0.22f;
+inline constexpr float BURST_SECONDS = 0.45f;
+inline constexpr float FEEDBACK_SECONDS = 0.9f;
+inline constexpr int FEEDBACK_SLOTS = 12;
 
 enum class Mode : std::uint8_t { Tilt, Twist };
 enum class Stage : std::uint8_t {
@@ -31,6 +35,16 @@ enum class Stage : std::uint8_t {
     Over
 };
 enum class Bonus : std::uint8_t { None, Life, Zone, Boing, Quake, Tractor, Laser };
+enum class Message : std::uint8_t {
+    None, Life, LifeFull, Zone, Boing, Quake, Tractor, Laser, Kill, Saved, Lost, Aim
+};
+
+struct Feedback {
+    Message message = Message::None;
+    float x = 0.0f;
+    float y = 0.0f;
+    float remaining = 0.0f;
+};
 
 enum Event : unsigned {
     NO_EVENT = 0,
@@ -73,6 +87,10 @@ struct State {
     float laser_y1 = 0.0f;
     float laser_x2 = 0.0f;
     float laser_y2 = 0.0f;
+    float monster_burst = 0.0f;
+    float burst_x = 0.0f;
+    float burst_y = 0.0f;
+    Feedback feedback[FEEDBACK_SLOTS] = {};
     std::uint32_t score = 0;
     std::uint32_t best = 0;
     int lives = START_LIVES;
@@ -84,7 +102,6 @@ struct State {
     bool laser_armed = false;
     bool monster_pending = false;
     bool monster_alive = false;
-    bool monster_preview = false;
     bool fall_edge = false;
     bool fall_hole = false;
 };
@@ -100,6 +117,7 @@ public:
     static float stackDepthLayersForView(const State& state);
     static void tiltAcceleration(float tilt_x, float tilt_y, float& x, float& y);
     static void twistAcceleration(float left_angle, float right_angle, float& x, float& y);
+    static const char* messageText(Message message);
 
 private:
     std::uint32_t random();
@@ -120,6 +138,8 @@ private:
     void spawnMonster();
     void moveMonster(float dt, unsigned& events);
     void fireLaser(unsigned& events);
+    void sweepLaser(unsigned& events);
+    void feedback(Message message, float x, float y);
     int safeCell(int preferred) const;
     int cornerCell(int corner) const;
 

@@ -34,7 +34,10 @@ Clear all eight to start a harder level.
   bright wave sweeps across them, and they shrink into rising beams of light
   before the block drops to the next layer. The last layer beams away too.
 - Click either knob to fire an armed laser. Hold either knob for the console's
-  pause menu.
+  pause menu. Each shot lasts 0.22 seconds, follows the ball's current rolling
+  direction as you steer, and reaches the screen edge. Brake to a stop during
+  a shot and it keeps its last direction. Shots that miss need three seconds
+  to recharge; click while stopped and "ROLL TO AIM" reminds you to move.
 - After game over, click either knob to choose a mode and start again.
 
 ## Special cubes
@@ -48,23 +51,33 @@ Clear all eight to start a harder level.
 | Purple | Tractor | Saves one fall from an outer edge |
 | Orange | Laser | Arms the ball while an alien is on the layer |
 
+Brief text floats above pickups: **+1 LIFE** (or **LIFE FULL** at nine),
+**ZONE**, **BOING**, **QUAKE**, **TRACTOR READY** and **LASER READY**.
+A Zone still touches surrounding cubes; it does not teleport the ball.
+**SAVED** marks a Tractor rescue, **-1 LIFE** marks a lost life, and
+**ALIEN +500** accompanies a hit. Feedback rises for 0.9 seconds; a killed
+alien bursts into white and cyan rays for 0.45 seconds, then vanishes.
+
 ## Level 1: eight lessons
 
-Each layer introduces one feature, in the order you play it:
+The first seven layers introduce features; the eighth combines them:
 
 | Layer | Lesson |
 |---|---|
 | 1 | Plain cubes, just like before |
-| 2 | Exactly one random hole to avoid |
-| 3 | Exactly one random wall to bounce against and touch |
+| 2 | Five random holes to avoid |
+| 3 | Five random walls to bounce against and touch |
 | 4 | Three random bonus cubes: Life, Zone and Tractor |
 | 5 | One Boing cube for hopping |
 | 6 | One Quake cube to experience the shaking trap |
-| 7 | A blue, smiling alien marked FRIEND: it stays still and cannot hurt you; no Laser |
-| 8 | A live alien and an orange Laser cube, ready from the start |
+| 7 | A live alien and an orange Laser cube, ready from the start |
+| 8 | Five holes, five walls, Life/Zone/Tractor, Boing, Quake, a live alien and Laser |
 
-Each feature appears only on its introduction layer, not on later Level 1
-layers. A collected Tractor still saves one outer-edge fall as usual.
+Features appear on their introduction layer and again in the finale.
+A collected Tractor still saves one outer-edge fall as usual; if you already
+have one, the finale does not add another Tractor cube.
+Seeded layouts keep a safe middle spawn, clear corners for the alien and
+Laser, connected safe floor cubes, and a reachable side of every wall.
 The Level 1 HUD counts lessons from 1 to 8 while the block gets shorter.
 
 From level 2 onward, the original difficulty progression is unchanged:
@@ -87,7 +100,7 @@ in `test/`, and so is `framebuffer.cpp`. Run `python3 tools/tg.py test`, `python
 For simulator playtests only, send `turn right 1233` on the mode screen to
 start with four layers remaining (Level 1 lesson 5), or `turn right 1234` to
 start at level 6 with an alien on the first layer. Use `turn right 1235` for
-the friendly preview lesson or `turn right 1236` for the Laser lesson.
+the live alien/Laser lesson or `turn right 1236` for the mixed-feature finale.
 A physical knob cannot produce that many transitions in one
 update.
 
@@ -99,6 +112,9 @@ puts it on the screen. Each frame erases only last frame's pixels and
 invalidates only what changed. The HUD and messages are separate LVGL objects
 using the shared fonts: small HUD text, medium clear messages and score, and
 a large game-over title. Label text is updated only when its values change.
+Floating feedback uses a fixed pool of twelve small shared-font labels,
+including simultaneous pickups triggered by a Zone. No objects are created
+per frame.
 The display flush, not the drawing, is the expensive part. Lower-layer fades,
 ball fades and cyan glow ramps are precomputed colours in `fade.h`, not
 per-pixel alpha blending. Floors draw first, then the ball and raised walls
