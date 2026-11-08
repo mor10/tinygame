@@ -110,8 +110,13 @@ The camera fills more of the screen with the same 8x8 board: the surface stays
 225 pixels wide instead of the original 180 (25% wider). One fixed magnification
 uniformly scales cubes, holes, walls, actors, Laser and effects. The play pivot
 stays below the HUD; turning in TWIST changes the surface slope, never the zoom.
-Visual tilt is deliberately subtle to leave room for walls, hops and shake;
-knob angles and rolling physics are unchanged. Walls, hops, layer count and
+Visual tilt uses a coefficient of 0.0388 (up from 0.015), just below the measured
+0.038824 limit for legal walls, edge shadows, 3px shake and 1.25px raster margins.
+Opposing full TWIST positions change the surface height from about 97 to 128
+pixels, while width stays 225 pixels. The pivot stays fixed at screen y=93.985.
+A hop near the HUD has its drawn lift capped to keep the ball visible;
+normal hops retain their full lift. Hop physics, duration, knob angles and
+rolling physics are unchanged. Walls, hops, layer count and
 effects cannot resize or recenter the scene. The layer-drop transition retains
 its existing surface framing. The lower
 stack still fades off-screen and departing beams still reach the screen edge.

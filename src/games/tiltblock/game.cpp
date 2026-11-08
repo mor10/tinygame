@@ -624,7 +624,7 @@ private:
             box(static_cast<int>(p.x) - 5, static_cast<int>(p.y) + 4, 10, 3, SHADOW);
             if (state.airborne > 0.0f) {
                 box(static_cast<int>(p.x) - 6, static_cast<int>(p.y) + 6, 12, 1, tg::color::YELLOW);
-                p.y -= 10.0f + 5.0f * std::sin(state.airborne * 3.14159265f);
+                p.y -= camera_.hopLift(p, 10.0f + 5.0f * std::sin(state.airborne * 3.14159265f));
             }
         }
         const int x = static_cast<int>(std::lround(p.x));

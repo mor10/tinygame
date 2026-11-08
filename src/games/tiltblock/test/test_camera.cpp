@@ -12,7 +12,8 @@ void fitsSurface(const State& state) {
         for (int col = 0; col <= SIDE; ++col) {
             const auto p = camera.project(boardPoint(state, col, row));
             assert(p.x >= 12.0f && p.x <= 308.0f);
-            assert(p.y >= 24.0f && p.y <= 164.0f);
+            assert(p.y - 3 - 1.25f >= 18.0f);
+            assert(p.y + 3 + 1.25f <= 171.0f);
         }
     }
     for (int row = 0; row < SIDE; ++row) {
@@ -21,7 +22,7 @@ void fitsSurface(const State& state) {
             for (int y : {row, row + 1}) {
                 for (int x : {col, col + 1}) {
                     const auto p = camera.project(boardPoint(state, x, y, CUBE_HEIGHT));
-                    assert(p.y >= 24.0f && p.y <= 164.0f);
+                    assert(p.y >= 22.0f && p.y <= 167.0f);
                 }
             }
         }
@@ -95,7 +96,11 @@ int main() {
     assert(std::fabs(camera.project(boardPoint(tilted, SIDE, SIDE)).y -
                      camera.project(boardPoint(state, SIDE, SIDE)).y) >= 2.9f);
     for (bool walls : {false, true}) {
-        for (bool& wall : state.wall) wall = walls;
+        for (int i = 0; i < CELLS; ++i) {
+            const bool corner = (i % SIDE == 0 || i % SIDE == SIDE - 1) &&
+                                (i / SIDE == 0 || i / SIDE == SIDE - 1);
+            state.wall[i] = walls && !corner;
+        }
         for (int left_angle = -20; left_angle <= 20; ++left_angle) {
             for (int right_angle = -20; right_angle <= 20; ++right_angle) {
                 state.left_angle = left_angle;
@@ -108,7 +113,11 @@ int main() {
                         state.y = y;
                         state.airborne = 0.5f;
                         const Camera hop = Camera::fit(state);
-                        assert(hop.project(boardPoint(state, x, y, 15)).y >= 24.0f - 0.001f);
+                        const auto floor = boardPoint(state, x, y);
+                        const float lift = hop.hopLift(floor, 15);
+                        assert(lift >= 0 && lift <= 15);
+                        assert(hop.project(boardPoint(state, x, y, lift)).y - 4 * hop.zoom -
+                               3 - 1.25f >= 18.0f - 0.001f);
                         stableScale(state);
                         fitsSurface(state);
                     }
@@ -121,22 +130,36 @@ int main() {
             }
         }
     }
-    // Actors at the playable radius limit, including a hop and 3px shake,
-    // stay below the 18px HUD and above the bottom screen edge.
+    // Actors reach the full 0..8 domain before falling, not a radius inset.
+    // Include maximum hop lift, screen shake and raster rounding.
     for (int angle : {-20, 20}) {
         state.left_angle = -angle;
         state.right_angle = angle;
         const Camera view = Camera::fit(state);
-        for (float y : {BALL_RADIUS, SIDE - BALL_RADIUS}) {
-            for (float x : {BALL_RADIUS, SIDE - BALL_RADIUS}) {
-                const auto p = view.project(boardPoint(state, x, y));
+        for (float y : {0.0f, float(SIDE)}) {
+            for (float x : {0.0f, float(SIDE)}) {
+                const auto floor = boardPoint(state, x, y);
+                const auto p = view.project(floor);
                 assert(p.x - 6 * view.zoom - 3 >= 0);
                 assert(p.x + 6 * view.zoom + 3 < 320);
-                assert(p.y - (15 + 4) * view.zoom - 3 >= 18);
-                assert(p.y + 7 * view.zoom + 3 < 172);
+                assert(p.y - (view.hopLift(floor, 15) + 4) * view.zoom - 3 - 1.25f >= 18);
+                assert(p.y + 7 * view.zoom + 3 + 1.25f <= 171);
             }
         }
     }
+    // Backmost legal wall (0,1) and front shadow at (8,8) span 15 tile
+    // half-heights plus a wall and shadow, growing by 300*tilt.
+    const float scene_budget = (171.0f - 18.0f - 2 * (3 + 1.25f)) / SCENE_ZOOM;
+    const float neutral_envelope = 15 * HALF_Y + CUBE_HEIGHT + 7;
+    const float maximum = (scene_budget - neutral_envelope) / 300;
+    assert(VISUAL_TILT <= maximum);
+    assert(VISUAL_TILT + 0.00003f > maximum);
+    assert(std::fabs(maximum - 0.038824f) < 1e-6f);
+    // Normal hops remain full height; only HUD-adjacent hops are bounded.
+    assert(camera.hopLift(boardPoint(state, 4, 4), 15) == 15);
+    state.left_angle = -20;
+    state.right_angle = 20;
+    assert(camera.hopLift(boardPoint(state, 0, 0), 15) < 15);
     stateAndEffectInvariance();
     std::puts("tiltblock camera tests passed");
 }
