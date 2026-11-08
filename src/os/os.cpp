@@ -21,9 +21,11 @@
 #include "rgb_led.h"
 #include "shell_state.h"
 #include "shell_ui.h"
+#include "sleep_gesture.h"
 #include "status_light.h"
 #include "storage.h"
 #include "tinygame.h"
+#include "tg_os_version.h"
 
 namespace os {
 
@@ -43,8 +45,10 @@ settings::Settings applied_settings;
 std::uint32_t last_update_us = 0;
 std::uint32_t last_input_log_at = 0;
 Screen logged_screen = Screen::Welcome;
+bool logged_sleep_confirmation = false;
 input_adapter::Adapter input_adapter;
 power_state::State power_state;
+sleep_gesture::Gesture sleep_gesture;
 lv_obj_t* controller_screen = nullptr;
 lv_obj_t* controller_previous_screen = nullptr;
 bool controller_resume_game = false;
@@ -146,6 +150,10 @@ void handleSettings() {
 }
 
 void logState(const input::State& hw, std::uint32_t now_ms) {
+    if (shell_state.sleepConfirming() != logged_sleep_confirmation) {
+        logged_sleep_confirmation = shell_state.sleepConfirming();
+        Serial.printf("[APP] sleep confirmation=%s\n", logged_sleep_confirmation ? "open" : "closed");
+    }
     if (shell_state.screen() != logged_screen) {
         logged_screen = shell_state.screen();
         Serial.printf("[APP] screen=%s\n", shell::screenName(logged_screen));
@@ -184,6 +192,7 @@ void logState(const input::State& hw, std::uint32_t now_ms) {
 bool initialize() {
     Serial.begin(115200);
     Serial.println("[BOOT] TinyGame starting");
+    Serial.printf("[BOOT] %s\n", os_version::LABEL);
     Serial.printf("[BOOT] PSRAM: %lu bytes\n", static_cast<unsigned long>(ESP.getPsramSize()));
 
     if (!power::initialize()) return false;
@@ -238,7 +247,8 @@ void update() {
     const bool controlling = devtools::controlling();
     if (controlling && controller_screen == nullptr) {
         controller_previous_screen = lv_screen_active();
-        controller_resume_game = shell_state.screen() == Screen::Game && running.game != nullptr;
+        controller_resume_game = shell_state.screen() == Screen::Game &&
+                                 !shell_state.sleepConfirming() && running.game != nullptr;
         if (controller_resume_game) running.game->paused(true);
         controller_screen = lv_obj_create(nullptr);
         auto* label = tg::ui::label(controller_screen, "CONTROLLING SIMULATOR", tg::Font::S,
@@ -289,9 +299,20 @@ void update() {
     const bool left_handed = shell_state.settings().leftHanded();
     const std::uint8_t events = hw.left.button.events | dev.left.events |
                                 hw.right.button.events | dev.right.events;
-    const tg::Input in = input_adapter.read(hw, imu::reading(), dev, now_ms, left_handed);
+    tg::Input in = input_adapter.read(hw, imu::reading(), dev, now_ms, left_handed);
+    const bool sleep_requested = sleep_gesture.update(in.left.down, in.right.down, now_ms);
+    if (sleep_gesture.blocked()) {
+        in.left.click = in.right.click = in.click = false;
+        in.left.pressed = in.right.pressed = in.pressed = false;
+        in.left.released = in.right.released = in.released = false;
+        in.left.down = in.right.down = in.down = false;
+        in.left.held_ms = in.right.held_ms = in.held_ms = 0;
+        in.main = left_handed ? in.left : in.right;
+    }
 
-    Action action = shell_state.update(in.main.delta, in.click, (events & input::EVENT_LONG_PRESS) != 0);
+    Action action = sleep_requested ? shell_state.confirmSleep() :
+        shell_state.update(sleep_gesture.blocked() ? 0 : in.main.delta, in.click,
+                           !sleep_gesture.blocked() && (events & input::EVENT_LONG_PRESS) != 0);
     if (dev.launch >= 0) {
         action = shell_state.launch(static_cast<std::uint8_t>(dev.launch));
         if (action == Action::Launch && running.game != nullptr) {
@@ -350,7 +371,8 @@ void update() {
     destroy(old);
 
     // A click that just launched or resumed a game is not passed to it.
-    if (shell_state.screen() == Screen::Game && action == Action::None) {
+    if (shell_state.screen() == Screen::Game && !shell_state.sleepConfirming() &&
+        action == Action::None) {
         running.game->update(in, dt);
     }
 

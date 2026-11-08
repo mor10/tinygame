@@ -17,6 +17,9 @@ globalThis.localStorage = {
   setItem: (key, value) => saved.set(key, value),
 };
 const wasmBinary = fs.readFileSync(new URL("../web/build/tinygame.wasm", import.meta.url));
+const versionHeader = fs.readFileSync(new URL("../../include/tg_os_version.h", import.meta.url), "utf8");
+const firmwareVersion = versionHeader.match(/^#define TG_FIRMWARE_VERSION "((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))"$/m)?.[1];
+assert(firmwareVersion, "Firmware uses a maintained MAJOR.MINOR.PATCH value");
 
 function advance(ms = 96) {
   for (let elapsed = 0; elapsed < ms; elapsed += 16) {
@@ -37,6 +40,8 @@ async function boot() {
   });
   advance();
   assert.match(serial.join(""), /ready, 4 games/);
+  assert(serial.join("").includes(`[BOOT] Firmware ${firmwareVersion}\n`));
+  assert.doesNotMatch(serial.join(""), /\[BOOT\] OS [0-9a-f]{12}/);
   const framebuffer = engine._tg_sim_framebuffer();
   assert(framebuffer > 0);
   assert(engine.HEAPU8.subarray(framebuffer, framebuffer + 320 * 172 * 2)
@@ -63,6 +68,20 @@ function hold(engine, side = 1) {
   advance(64);
 }
 
+function sleepChord(engine) {
+  engine._tg_sim_button(0, 1);
+  advance(320);
+  engine._tg_sim_button(1, 1);
+  advance(3104);
+}
+
+function releaseChord(engine) {
+  engine._tg_sim_button(0, 0);
+  advance(80);
+  engine._tg_sim_button(1, 0);
+  advance(80);
+}
+
 let { engine, serial, wake } = await boot();
 assert.doesNotMatch(serial.join(""), /\[STORAGE\] error/);
 assert.equal(engine._tg_sim_brightness(), 90);
@@ -79,6 +98,25 @@ click(engine); // Edit brightness.
 engine._tg_sim_turn(1, -4);
 advance();
 assert.equal(engine._tg_sim_brightness(), 80);
+
+// The global chord must beat the 650 ms pause/back events, including in an edit.
+sleepChord(engine);
+assert.match(serial.join(""), /sleep confirmation=open/);
+assert.equal(engine._tg_sim_sleeping(), 0);
+advance(4000); // Holding longer cannot confirm or retrigger.
+assert.equal(engine._tg_sim_sleeping(), 0);
+releaseChord(engine);
+assert.equal(engine._tg_sim_sleeping(), 0); // Release clicks cannot confirm Yes.
+engine._tg_sim_turn(1, 4); // No.
+advance();
+click(engine);
+assert.match(serial.join(""), /sleep confirmation=closed/);
+assert.equal(engine._tg_sim_brightness(), 80);
+engine._tg_sim_turn(1, 4); // Still editing brightness, not navigating settings.
+advance();
+assert.equal(engine._tg_sim_brightness(), 90);
+engine._tg_sim_turn(1, -4);
+advance();
 click(engine); // Confirm the edit.
 assert.deepEqual(JSON.parse(saved.get("tinygame.sim.settings.v3")), [80, 50, 0, 1, 1]);
 
@@ -133,6 +171,20 @@ assert.match(serial.join(""), /screen=PAUSE/);
 hold(engine, 0);
 assert.match(serial.join(""), /screen=GAME/);
 assert(engine._tg_sim_led() >= 0 && engine._tg_sim_led() <= 0xffffff);
+const startsBeforeSleep = serial.filter(line => line.includes("[APP] start ")).length;
+const beforeChord = serial.length;
+sleepChord(engine);
+assert.match(serial.slice(beforeChord).join(""), /sleep confirmation=open/);
+assert.doesNotMatch(serial.slice(beforeChord).join(""), /screen=PAUSE/);
+releaseChord(engine);
+engine._tg_sim_turn(1, 4);
+advance();
+click(engine); // Cancel returns to the same running game, without restarting it.
+assert.equal(engine._tg_sim_sleeping(), 0);
+assert.equal(serial.filter(line => line.includes("[APP] start ")).length, startsBeforeSleep);
+hold(engine);
+assert.match(serial.slice(beforeChord).join(""), /screen=PAUSE/);
+click(engine); // Resume still works after cancel.
 command(engine, "info");
 assert.match(serial.join(""), /\[DEV\] ok\n/);
 
@@ -154,6 +206,14 @@ engine._tg_sim_stop();
 assert.equal(engine._tg_sim_sleeping(), 0);
 assert.equal(engine._tg_sim_brightness(), 80);
 assert.doesNotMatch(serial.join(""), /start (maze|brickbreaker|rockrain)/);
+sleepChord(engine); // Welcome supports the same confirmation, with Yes default.
+releaseChord(engine);
+assert.equal(engine._tg_sim_sleeping(), 0);
+click(engine);
+advance(256);
+assert.equal(engine._tg_sim_sleeping(), 1);
+engine._tg_sim_stop();
+({ engine, serial } = await boot());
 assert.equal(typeof engine.pauseMainLoop, "function");
 engine.pauseMainLoop();
 advance();

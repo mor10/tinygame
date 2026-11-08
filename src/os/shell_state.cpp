@@ -44,12 +44,34 @@ void State::go(Screen screen) {
 
 Action State::launch(std::uint8_t game_index) {
     if (game_index >= game_count_) return Action::None;
+    sleep_confirming_ = false;
     game_ = game_index;
     go(Screen::Game);
     return Action::Launch;
 }
 
+Action State::confirmSleep() {
+    if (sleep_confirming_) return Action::None;
+    sleep_confirming_ = true;
+    sleep_selected_ = 0;
+    sleep_remainder_ = 0;
+    return screen_ == Screen::Game ? Action::Pause : Action::None;
+}
+
 Action State::update(std::int32_t transitions, bool click_event, bool hold_event) {
+    if (sleep_confirming_) {
+        const auto prior_remainder = remainder_;
+        remainder_ = sleep_remainder_;
+        sleep_selected_ = move(sleep_selected_, 2, transitions);
+        sleep_remainder_ = remainder_;
+        remainder_ = prior_remainder;
+        if (hold_event || click_event) {
+            if (!hold_event && sleep_selected_ == 0) return Action::Sleep;
+            sleep_confirming_ = false;
+            return screen_ == Screen::Game ? Action::Resume : Action::None;
+        }
+        return Action::None;
+    }
     if (screen_ == Screen::Settings) {
         updateSettings(transitions, click_event, hold_event);
         return Action::None;

@@ -33,6 +33,9 @@ public:
     Action update(std::int32_t transitions, bool click, bool hold);
     // Jumps straight into a game (used by the dev tools).
     Action launch(std::uint8_t game_index);
+    Action confirmSleep();
+    bool sleepConfirming() const { return sleep_confirming_; }
+    std::uint8_t sleepSelected() const { return sleep_selected_; }
 
     Screen screen() const { return screen_; }
     std::uint8_t selected() const { return selected_; }
@@ -61,6 +64,9 @@ private:
     settings::Settings settings_;
     settings::Settings settings_before_edit_;
     std::int32_t remainder_ = 0;
+    bool sleep_confirming_ = false;
+    std::uint8_t sleep_selected_ = 0;
+    std::int32_t sleep_remainder_ = 0;
 };
 
 const char* screenName(Screen screen);

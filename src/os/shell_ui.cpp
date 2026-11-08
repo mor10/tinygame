@@ -7,6 +7,7 @@
 #include "registry.h"
 #include "storage.h"
 #include "tg_style.h"
+#include "tg_os_version.h"
 
 namespace shell_ui {
 
@@ -35,6 +36,8 @@ ui::Menu menu;
 lv_obj_t* blink_label = nullptr;
 lv_obj_t* footer_label = nullptr;
 lv_obj_t* best_label = nullptr;
+lv_obj_t* sleep_overlay = nullptr;
+ui::Menu sleep_menu;
 
 // Launcher data, loaded when the launcher opens.
 ui::MenuItem launcher_items[registry::MAX_GAMES + 1];
@@ -61,7 +64,7 @@ void buildWelcome(lv_obj_t* scr) {
     ui::panel(scr, 16, 20, 288, 132);
     ui::block(scr, 32, 18, 48, 4, color::ACCENT);
     ui::block(scr, 240, 150, 48, 4, color::ACCENT);
-    lv_obj_t* edition = ui::label(scr, "SYSTEM 01", Font::S, color::TEXT_DIM);
+    lv_obj_t* edition = ui::label(scr, os_version::LABEL, Font::S, color::TEXT_DIM);
     lv_obj_set_pos(edition, 32, 28);
     for (int i = 0; i < 3; ++i) {
         ui::block(scr, 268 + (i % 2) * 8, 28 + (i / 2) * 8, 4, 4, color::ACCENT);
@@ -172,6 +175,36 @@ void buildPause(lv_obj_t* game_screen) {
     menu.create(overlay, tg::GAP_S, 36, W - 2 * tg::GAP_S, shell::PAUSE_COUNT);
     lv_obj_t* hint = ui::label(overlay, "HOLD: RESUME", Font::S, color::TEXT_DIM);
     lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -tg::GAP_S - 2);
+}
+
+void showSleepConfirmation(const shell::State& state) {
+    static std::uint8_t shown_sleep_selected = 0;
+    if (!state.sleepConfirming()) {
+        if (sleep_overlay != nullptr) {
+            lv_obj_delete(sleep_overlay);
+            sleep_overlay = nullptr;
+        }
+        return;
+    }
+    if (sleep_overlay != nullptr && state.sleepSelected() == shown_sleep_selected) return;
+    if (sleep_overlay == nullptr) {
+        constexpr int W = 264;
+        constexpr int H = 144;
+        sleep_overlay = ui::panel(lv_screen_active(), (tg::WIDTH - W) / 2,
+                                  (tg::HEIGHT - H) / 2, W, H);
+        lv_obj_set_style_border_color(sleep_overlay, lv_color_hex(color::ACCENT), LV_PART_MAIN);
+        auto* title = ui::label(sleep_overlay, "SLEEP?", Font::L, color::ACCENT);
+        lv_obj_align(title, LV_ALIGN_TOP_MID, 0, tg::GAP_S);
+        auto* note = ui::label(sleep_overlay, "WAKING RESTARTS THE CONSOLE", Font::S, color::TEXT_DIM);
+        lv_obj_align(note, LV_ALIGN_TOP_MID, 0, 36);
+        sleep_menu.create(sleep_overlay, tg::GAP_S, 52, W - 2 * tg::GAP_S, 2);
+        auto* hint = ui::label(sleep_overlay, "RELEASE, THEN CLICK TO CONFIRM", Font::S, color::TEXT_DIM);
+        lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -tg::GAP_S);
+    }
+    static const ui::MenuItem items[2] = {{"YES", nullptr, color::ACCENT},
+                                         {"NO", nullptr, color::SILVER}};
+    sleep_menu.show(items, 2, state.sleepSelected());
+    shown_sleep_selected = state.sleepSelected();
 }
 
 // ---- Page refreshers -------------------------------------------------------------
@@ -329,6 +362,10 @@ void update(const shell::State& state, lv_obj_t* game_screen, const Live& live,
     const Screen screen = state.screen();
     const bool screen_changed = !has_shown || screen != shown_screen;
     if (screen_changed) {
+        if (sleep_overlay != nullptr) {
+            lv_obj_delete(sleep_overlay);
+            sleep_overlay = nullptr;
+        }
         changeScreen(has_shown ? shown_screen : Screen::Game, screen, game_screen);
     }
     const bool content_changed = screen_changed || state.selected() != shown_selected ||
@@ -364,6 +401,7 @@ void update(const shell::State& state, lv_obj_t* game_screen, const Live& live,
     if (screen == Screen::Diagnostics) {
         refreshDiagnostics(live, now_ms);
     }
+    showSleepConfirmation(state);
 }
 
 }  // namespace shell_ui
