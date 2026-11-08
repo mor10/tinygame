@@ -59,13 +59,13 @@ test("loopback server scopes routes, validates posts and handles action replies"
   const events = await fetch(new URL("events", instance.url), { signal: abort.signal });
   const reader = events.body.getReader();
   await reader.read();
-  const action = instance.action("launch", { game: "maze" });
+  const action = instance.action("launch", { game: "brickbreaker" });
   let text = "";
   while (!text.includes("event: request")) text += new TextDecoder().decode((await reader.read()).value);
   const request = JSON.parse(text.split("data: ").at(-1).trim());
-  assert.equal(request.input.game, "maze");
-  assert.equal((await post("reply", { id: request.id, result: { game: "maze" } })).status, 200);
-  assert.deepEqual(await action, { game: "maze" });
+  assert.equal(request.input.game, "brickbreaker");
+  assert.equal((await post("reply", { id: request.id, result: { game: "brickbreaker" } })).status, 200);
+  assert.deepEqual(await action, { game: "brickbreaker" });
   assert.equal((await post("reply", { id: request.id, result: {} })).status, 409);
   const secondAbort = new AbortController();
   const second = await fetch(new URL("events", instance.url), { signal: secondAbort.signal });

@@ -26,7 +26,7 @@ int main() {
         assert(state.left.delta == before);
     }
     assert(devtools::inputCommand("click", "left extra", state) == CommandResult::Error);
-    assert(devtools::inputCommand("launch", "maze", state) == CommandResult::NotInput);
+    assert(devtools::inputCommand("launch", "brickbreaker", state) == CommandResult::NotInput);
     state.clearFrame();
     assert(state.left.delta == 0 && state.right.events == 0);
     state.left.delta = INT32_MAX;
