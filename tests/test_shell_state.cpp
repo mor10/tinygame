@@ -167,6 +167,60 @@ void launchAndSettingsRemainValid() {
     assert(settings::sanitize(bad) == settings::Settings{});
 }
 
+void sleepConfirmationPreservesGamesAndMenus() {
+    auto s = launcher();
+    assert(s.launch(1) == Action::Launch);
+    assert(s.confirmSleep() == Action::Pause);
+    assert(s.sleepConfirming() && s.sleepSelected() == 0);
+    assert(s.screen() == Screen::Game && s.game() == 1);
+    assert(s.confirmSleep() == Action::None); // No resetting or double-pausing.
+    assert(s.update(3, false, false) == Action::None);
+    assert(s.sleepSelected() == 0);
+    assert(s.update(1, true, false) == Action::Resume);
+    assert(!s.sleepConfirming() && s.screen() == Screen::Game && s.game() == 1);
+    assert(s.confirmSleep() == Action::Pause);
+    assert(s.update(0, false, false) == Action::None); // No automatic Yes.
+    assert(s.update(0, true, false) == Action::Sleep);
+    assert(s.sleepConfirming()); // Failed sleep preparation can retry or cancel.
+    assert(s.update(4, true, false) == Action::Resume);
+
+    s = paused();
+    s.update(4, false, false);
+    assert(s.confirmSleep() == Action::None);
+    assert(s.update(4, true, false) == Action::None);
+    assert(s.screen() == Screen::Pause && s.selected() == shell::PAUSE_RESTART);
+
+    s = system();
+    s.update(0, true, false); // Settings.
+    s.update(0, true, false); // Editing brightness.
+    s.update(-4, false, false);
+    const auto edited = s.settings();
+    s.update(3, false, false); // Preserve partial knob movement too.
+    assert(s.confirmSleep() == Action::None);
+    assert(s.update(4, true, false) == Action::None);
+    assert(s.screen() == Screen::Settings && s.editing() && s.settings() == edited);
+    s.update(1, false, false);
+    assert(s.settings().brightness() == edited.brightness() + 10);
+    assert(s.confirmSleep() == Action::None);
+    s.update(0, false, true); // A single hold cancels; it never confirms Yes.
+    assert(!s.sleepConfirming() && s.editing());
+
+    s.begin(2, {});
+    assert(s.confirmSleep() == Action::None);
+    s.update(4, true, false);
+    assert(s.screen() == Screen::Welcome);
+    s = launcher();
+    s.update(4, false, false);
+    s.confirmSleep();
+    s.update(4, true, false);
+    assert(s.screen() == Screen::Launcher && s.selected() == 1);
+    s = system();
+    s.update(4, true, false); // Diagnostics.
+    s.confirmSleep();
+    s.update(4, true, false);
+    assert(s.screen() == Screen::Diagnostics);
+}
+
 int main() {
     relativeMovementIsClampedAndKeepsFractions();
     pauseSupportsAllActionsAndIgnoresOpeningMovement();
@@ -174,5 +228,6 @@ int main() {
     settingsAreRelativeAndCancelRestoresValue();
     modeChangesResetFractionalMovement();
     launchAndSettingsRemainValid();
+    sleepConfirmationPreservesGamesAndMenus();
     std::puts("shell_state tests passed");
 }

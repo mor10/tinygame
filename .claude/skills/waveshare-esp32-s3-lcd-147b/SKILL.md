@@ -39,6 +39,9 @@ capture uses both A/B edges with atomic snapshots; never apply the 25 ms switch
 debounce to encoder A/B.
 
 The main encoder (right by default; left when Settings > HANDEDNESS = LEFT) navigates menus (four transitions/step, clamped). A click on either encoder selects, and a 650 ms hold on either pauses/goes back. Both clicks remain on Diagnostics; either hold exits. Games get `tg::Input::main/left/right` transition deltas plus merged button state, without long-press or sleep events.
+Holding both switches together for 3 seconds opens the OS sleep confirmation
+instead of pause/back. Chord presses and releases are swallowed; confirmation
+requires releasing both and then clicking again. No resumes the prior state.
 
 ## Deep sleep
 

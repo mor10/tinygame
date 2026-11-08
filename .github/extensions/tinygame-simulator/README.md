@@ -30,6 +30,10 @@ rotate it (80 transitions per revolution), scroll over it, or press its centre.
 Arrow keys or dragging the screen tilt the console; releasing springs back to
 level. The little dot below the LED shows tilt. Input is released when the
 browser loses focus so a key cannot become stuck.
+Hold S and K together for 3 seconds for the OS sleep prompt. Release both
+before clicking to confirm Yes, or turn the main knob to No and click to cancel.
+The same gesture can be exercised with `down left`, `down right`, `wait 3.1`,
+`up left`, `up right`; `hold` alone injects the ordinary single-knob action.
 
 ## Agent actions
 

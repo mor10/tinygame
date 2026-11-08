@@ -34,6 +34,10 @@ requests deep sleep. AUTO-OFF defaults to ON; OFF AFTER offers 1, 5 (default),
 automatic sleep, but USB power without an open serial connection does not.
 Closing the serial connection starts a fresh idle countdown. Manual Sleep
 remains available while connected.
+Holding both encoder switches together for 3 seconds opens a sleep confirmation,
+defaulting to Yes. The simultaneous hold takes priority over ordinary 650 ms
+pause/back handling. Both switches must release before a fresh click can confirm;
+No restores the previous game or menu, including any settings edit.
 Either normally open encoder switch (GPIO6 or GPIO7 to GND) wakes to normal
 startup. No additional wiring is needed; GPIO10 is unused.
 
@@ -51,5 +55,20 @@ on serial open, cleared on close), independently of RTS flow control.
 Hardware CDC mode 1 only latches
 traffic until unplug/reset, so it cannot detect a closed serial monitor reliably.
 No VBUS sensing or wiring changes are needed.
+
+## USB power and lights
+
+The [official board schematic](https://files.waveshare.com/wiki/ESP32-S3-LCD-1.47B/ESP32-S3-LCD-1.47B_schematic_diagram.pdf)
+routes USB VBUS to the supply, ETA6098 charger and header, not to an ESP32 input.
+GPIO1's BAT_ADC divider measures the battery, not VBUS; battery voltage cannot
+reliably identify a plugged-in charger. TinyUSB's mounted state identifies an
+enumerated USB host, not a power-only cable or wall charger. CDC DTR only identifies
+an open serial app. Neither is an all-USB-power detector.
+
+LED1 is wired directly to the ETA6098 STAT output and is not software-controlled.
+LED2 is the addressable RGB on GPIO38, owned by the OS/game status-light policy
+and brightness setting. Its current behavior is unchanged: a reliable red
+indicator for every plugged-in power source is unsupported on the unmodified
+board. Do not invent a sensing pin or connect 5 V VBUS directly to a GPIO.
 
 GPIO2, GPIO3, and GPIO10 are unused.
