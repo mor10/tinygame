@@ -22,6 +22,7 @@ What TinyGame will you build?
 
 - **Turn the right knob** to choose; **click either knob** to open, **hold either** to go back. Left-handed? Set **System > Settings > HANDEDNESS** to LEFT and the left knob takes over. Menus stop at their ends instead of wrapping.
 - In any game, **hold either knob** to pause: Resume, Restart or Quit.
+- Game cartridges all use yellow badges and highlights; the filled yellow row is the selected game.
 - **Hold both knobs together for 3 seconds** to ask **SLEEP?** from any game or menu. Release both, then click to confirm **YES**, or turn the main knob to **NO** and click to keep playing. The prompt pauses a running game; **NO** restores your game or menu without losing progress. A single-knob hold also cancels the prompt.
 - **System** (the last item in the game list) has Settings (screen and LED brightness, handedness, auto-off), Diagnostics (live knob, switch and tilt readings), the Style preview and Sleep. On Diagnostics, clicks stay on the page so you can inspect them; **hold either knob** to exit.
 - **Sleep:** System > Sleep, or 5 minutes without knob activity by default (even in a game), enters deep sleep. In System > Settings, set **AUTO-OFF** to ON or OFF and **OFF AFTER** to **1, 5, 10, 15 or 30 minutes**. Click either knob to wake to the welcome screen. That restarts the console, not the previous game. Saved scores and confirmed settings stay saved.
@@ -33,17 +34,17 @@ The knobs turn continuously without detents. Firmware measures electrical moveme
 
 ### Screenshots
 
-The launcher and four games are currently included: Brick Breaker, Maze, Rock
-Rain, and TiltBlock. TiltBlock is an isometric cube puzzle where the ball rolls
+The launcher and three games are currently included: Brick Breaker, Rock Rain,
+and TiltBlock. TiltBlock is an isometric cube puzzle where the ball rolls
 as you tilt the console or turn the two knobs.
 
 | Launcher | Brick Breaker |
 |---|---|
 | ![TinyGame game launcher](docs/screenshots/launcher.png) | ![Brick Breaker in play](docs/screenshots/brickbreaker.png) |
 
-| Maze | Rock Rain |
-|---|---|
-| ![Maze gameplay](docs/screenshots/maze.png) | ![Rock Rain gameplay](docs/screenshots/rockrain.png) |
+| Rock Rain |
+|---|
+| ![Rock Rain gameplay](docs/screenshots/rockrain.png) |
 
 ## Testing the controls
 
@@ -77,14 +78,14 @@ On Diagnostics, the `L/R HW` rows show physical counts and A/B levels. `C` is to
 
 Open this folder in GitHub Copilot, Claude Code or Codex, and say what you want:
 
-> "Make a game where you tilt the console to roll a marble through a maze, and clicking opens doors."
+> "Make a game where you tilt the console to roll a marble around obstacles, and clicking opens doors."
 
 The agent uses the `make-a-game` skill. It creates `src/games/<your_game>/`, then builds and tests it, and the game appears in the menu automatically. With the console plugged in, it can also flash the game and check screenshots. Without one, use the browser simulator as well as the host tests.
 
 Doing it by hand:
 
 ```bash
-python3 tools/tg.py new marble "MARBLE MAZE"
+python3 tools/tg.py new marble "MARBLE RUN"
 python3 tools/tg.py flash
 ```
 
@@ -94,7 +95,7 @@ Then edit `src/games/marble/game.cpp`.
 
 **No console needed to start making games.** Play and test the real firmware in
 a browser, then try it on the console when you're ready. In GitHub Copilot,
-ask: **"Open the TinyGame simulator and launch Maze."** In any other coding
+ask: **"Open the TinyGame simulator and launch Brick Breaker."** In any other coding
 tool, or to play without an agent:
 
 ```bash
@@ -144,8 +145,8 @@ fails, the page shows the error and keeps the previous working firmware;
 fix the error before treating the preview as your latest code.
 
 Expand **Serial log** to see game logs and send dev commands. For example,
-send `launch brickbreaker`, then `click` to launch the ball, or `launch maze`,
-then `click` and `tilt 0.5 0` to roll. Send each command separately. Return an
+send `launch brickbreaker`, then `click` to launch the ball, or `launch rockrain`,
+then `turn right 8` to move. Send each command separately. Return an
 injected tilt to level with `tilt off`; release any held input with `up left`
 and `up right`. The canvas agent can send a whole command sequence and save
 a native-resolution screenshot.

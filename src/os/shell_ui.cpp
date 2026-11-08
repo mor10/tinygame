@@ -87,7 +87,7 @@ void buildLauncher(lv_obj_t* scr) {
 
     for (std::uint8_t i = 0; i < count; ++i) {
         const tg::GameInfo& g = registry::get(i);
-        launcher_items[i] = {g.name, nullptr, g.color, true};
+        launcher_items[i] = {g.name, nullptr, color::YELLOW, true};
         launcher_best[i] = storage::loadBest(g.id);
     }
     launcher_items[count] = {"SYSTEM", nullptr, color::SILVER, false};

@@ -48,7 +48,8 @@ These are one 8×8 pixel face, scaled by whole pixels so they stay crisp.
   medium-size row and keeps the best/action hint separate. `popupValue` is
   available for other counts. Do not concatenate every value into one long line.
 - **Launcher:** `ui::Menu` derives letter badges from game names; no game list
-  or icon manifest is needed. The best-score row is separate from controls.
+  or icon manifest is needed. All game cartridges use `YELLOW`; the selected
+  row uses an inverted yellow fill. The best-score row is separate from controls.
 - Font widths are 8/16/24/32 px per character, but line boxes are taller.
   Leave room for the line box, borders and padding, not just glyph pixels.
   Cartridge rows use 1 px outlines so an 18 px text line fits a 20 px row;

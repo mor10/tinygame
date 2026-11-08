@@ -112,7 +112,7 @@ void updateLed(std::uint32_t now_ms) {
             break;
         case Screen::Launcher: {
             const std::uint8_t s = shell_state.selected();
-            led.setBase(status_light::fromHex(s < registry::count() ? registry::get(s).color
+            led.setBase(status_light::fromHex(s < registry::count() ? tg::color::YELLOW
                                                                     : tg::color::SILVER));
             break;
         }

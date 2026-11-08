@@ -39,7 +39,9 @@ async function boot() {
     onWake: side => wake.push(side),
   });
   advance();
-  assert.match(serial.join(""), /ready, 4 games/);
+  assert.match(serial.join(""), /ready, 3 games/);
+  assert.deepEqual(serial.filter(line => line.startsWith("[BOOT] game ")),
+    ["[BOOT] game brickbreaker\n", "[BOOT] game rockrain\n", "[BOOT] game tiltblock\n"]);
   assert(serial.join("").includes(`[BOOT] Firmware ${firmwareVersion}\n`));
   assert.doesNotMatch(serial.join(""), /\[BOOT\] OS [0-9a-f]{12}/);
   const framebuffer = engine._tg_sim_framebuffer();
@@ -88,6 +90,24 @@ assert.equal(engine._tg_sim_brightness(), 90);
 assert.equal(engine._tg_sim_sleeping(), 0);
 click(engine);
 assert.match(serial.join(""), /screen=LAUNCHER/);
+const pixel = (x, y) => engine.HEAPU16[engine._tg_sim_framebuffer() / 2 + y * 320 + x];
+const yellow565 = 0xfe8c;
+const surface565 = 0x10c5;
+const cartridgeLed = engine._tg_sim_led();
+for (let selected = 0; selected < 3; ++selected) {
+  for (let row = 0; row < 3; ++row) {
+    assert.equal(pixel(280, 42 + row * 20), row === selected ? yellow565 : surface565,
+      "All selected cartridge rows use yellow, with a distinct filled focus state");
+    if (row !== selected) assert.equal(pixel(10, 36 + row * 20), yellow565,
+      "Unselected cartridge badges also use yellow");
+  }
+  assert.equal(engine._tg_sim_led(), cartridgeLed, "Launcher LED no longer changes with game identity");
+  engine._tg_sim_turn(1, 4);
+  advance();
+}
+command(engine, "launch maze");
+assert.match(serial.join(""), /\[DEV\] error: no game with id maze/);
+assert.doesNotMatch(serial.join(""), /\[APP\] start maze/);
 engine._tg_sim_turn(1, 1000); // Clamp to System regardless of installed game count.
 advance();
 click(engine);
@@ -149,11 +169,11 @@ click(engine); // Restore five-minute default.
 assert.deepEqual(JSON.parse(saved.get("tinygame.sim.settings.v3")), [80, 50, 0, 1, 1]);
 
 // Store scores through the real HAL data layout, then confirm a reboot keeps them.
-saved.set("tinygame.sim.best.maze", JSON.stringify([0x78, 0x56, 0x34, 0x12]));
+saved.set("tinygame.sim.best.rockrain", JSON.stringify([0x78, 0x56, 0x34, 0x12]));
 engine._tg_sim_stop();
 ({ engine, serial, wake } = await boot());
 assert.equal(engine._tg_sim_brightness(), 80);
-for (const id of ["brickbreaker", "maze", "rockrain"]) {
+for (const id of ["brickbreaker", "rockrain", "tiltblock"]) {
   command(engine, `launch ${id}`);
   assert.match(serial.join(""), new RegExp(`start ${id}`));
   engine._tg_sim_turn(0, -8);
@@ -205,7 +225,7 @@ engine._tg_sim_stop();
 ({ engine, serial } = await boot());
 assert.equal(engine._tg_sim_sleeping(), 0);
 assert.equal(engine._tg_sim_brightness(), 80);
-assert.doesNotMatch(serial.join(""), /start (maze|brickbreaker|rockrain)/);
+assert.doesNotMatch(serial.join(""), /start (brickbreaker|rockrain|tiltblock)/);
 sleepChord(engine); // Welcome supports the same confirmation, with Yes default.
 releaseChord(engine);
 assert.equal(engine._tg_sim_sleeping(), 0);

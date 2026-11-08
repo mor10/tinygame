@@ -7,7 +7,7 @@ are included automatically.
 Open this repository in the GitHub Copilot app and ask to open the **TinyGame
 simulator** canvas. After adding the extension to an already-running session,
 reload project extensions or reopen the session so it is discovered. Its canvas
-id is `tinygame-simulator`; optional open input `{ "game": "maze" }` launches a
+id is `tinygame-simulator`; optional open input `{ "game": "brickbreaker" }` launches a
 game after boot. First open downloads the pinned Emscripten toolchain and LVGL
 if needed, then builds the firmware. The build requires macOS or Linux
 (Windows: WSL), Python 3.10+, Git, curl and Node.js 22+.
@@ -42,7 +42,7 @@ The same gesture can be exercised with `down left`, `down right`, `wait 3.1`,
 | `reload` | `{}` | Restarts the firmware |
 | `launch` | `{ "game": "brickbreaker" }` | Launch acknowledgement |
 | `send` | `{ "commands": ["turn right 4", "click", "wait 1"] }` | Number sent after firmware acknowledgements |
-| `screenshot` | `{ "label": "maze" }` | Native 320x172 PNG path in session `files/tinygame-simulator/` |
+| `screenshot` | `{ "label": "brickbreaker" }` | Native 320x172 PNG path in session `files/tinygame-simulator/` |
 | `get_output` | `{ "since": 0 }` | Status, build error, connection, indexed serial lines and next cursor |
 | `connect_device` | `{ "port": "/dev/cu.usbmodem..." }` or `{}` | USB connection status |
 | `disconnect_device` | `{}` | Releases the serial port |
