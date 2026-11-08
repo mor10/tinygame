@@ -106,11 +106,14 @@ update.
 
 ### Drawing
 
-The camera fills more of the screen with the same 8x8 board: the level surface
-is about 254 pixels wide instead of 180 (41% larger). It uniformly scales
-cubes, holes, walls, actors, Laser and effects, and centers the playable surface
-below the HUD. Framing adapts to raised walls, TWIST angles and hops so the
-board edges stay visible, with margin for shake and falling effects. The lower
+The camera fills more of the screen with the same 8x8 board: the surface stays
+225 pixels wide instead of the original 180 (25% wider). One fixed magnification
+uniformly scales cubes, holes, walls, actors, Laser and effects. The play pivot
+stays below the HUD; turning in TWIST changes the surface slope, never the zoom.
+Visual tilt is deliberately subtle to leave room for walls, hops and shake;
+knob angles and rolling physics are unchanged. Walls, hops, layer count and
+effects cannot resize or recenter the scene. The layer-drop transition retains
+its existing surface framing. The lower
 stack still fades off-screen and departing beams still reach the screen edge.
 HUD and overlay fonts keep their original sizes.
 
