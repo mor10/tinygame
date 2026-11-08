@@ -20,7 +20,6 @@ import shutil
 import subprocess
 import sys
 import tarfile
-from os_version import write_header
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -153,10 +152,8 @@ def main() -> int:
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     staged = objects_dir / "linked-engine"
     staged.mkdir(parents=True, exist_ok=True)
-    generated = objects_dir / "generated"
-    write_header(ROOT, generated / "tg_os_version.h")
 
-    include_dirs = [generated, ROOT / "sim" / "arduino", ROOT / "sim" / "hal",
+    include_dirs = [ROOT / "sim" / "arduino", ROOT / "sim" / "hal",
                     ROOT / "include", ROOT / "src" / "hal", ROOT / "src" / "os", lvgl]
     common = ["-O2", "-DLV_CONF_INCLUDE_SIMPLE", "-DTINYGAME_SIM=1",
               *[f"-I{path}" for path in include_dirs]]

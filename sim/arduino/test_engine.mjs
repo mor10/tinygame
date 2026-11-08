@@ -17,6 +17,9 @@ globalThis.localStorage = {
   setItem: (key, value) => saved.set(key, value),
 };
 const wasmBinary = fs.readFileSync(new URL("../web/build/tinygame.wasm", import.meta.url));
+const versionHeader = fs.readFileSync(new URL("../../include/tg_os_version.h", import.meta.url), "utf8");
+const firmwareVersion = versionHeader.match(/^#define TG_FIRMWARE_VERSION "((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))"$/m)?.[1];
+assert(firmwareVersion, "Firmware uses a maintained MAJOR.MINOR.PATCH value");
 
 function advance(ms = 96) {
   for (let elapsed = 0; elapsed < ms; elapsed += 16) {
@@ -37,7 +40,8 @@ async function boot() {
   });
   advance();
   assert.match(serial.join(""), /ready, 4 games/);
-  assert.match(serial.join(""), /\[BOOT\] OS [0-9a-f]{12}/);
+  assert(serial.join("").includes(`[BOOT] Firmware ${firmwareVersion}\n`));
+  assert.doesNotMatch(serial.join(""), /\[BOOT\] OS [0-9a-f]{12}/);
   const framebuffer = engine._tg_sim_framebuffer();
   assert(framebuffer > 0);
   assert(engine.HEAPU8.subarray(framebuffer, framebuffer + 320 * 172 * 2)
