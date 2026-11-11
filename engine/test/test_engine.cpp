@@ -5,6 +5,8 @@
 #include "../core/hash.h"
 #include "../core/random.h"
 #include "engine_helpers.h"
+#include "game_cases.h"
+#include "golden_game.h"
 #include "tg_test.h"
 
 using namespace tg;
@@ -425,6 +427,25 @@ TG_TEST(the_camera_follows_the_player_through_a_wide_level) {
     ActorProbe p;
     CHECK(e.player(p));
     CHECK(p.x > 10.0f);
+}
+
+TG_TEST(engine_frames_match_golden_fingerprints) {
+    const int cases = sizeof(GAME_CASES) / sizeof(GAME_CASES[0]);
+    const int goldens = sizeof(golden::GAME) / sizeof(golden::GAME[0]);
+    CHECK_EQ(cases, goldens);
+    const Bytes bundle = caveHopBundle();
+    for (int i = 0; i < cases && i < goldens; ++i) {
+        const GameCase& c = GAME_CASES[i];
+        CHECK(std::strcmp(c.name, golden::GAME[i].name) == 0);
+        Engine e;
+        CHECK(e.load(bundle.data(), bundle.size(), c.width, c.height));
+        for (int t = 0; t < c.tick; ++t) e.tick(goldenInput(t));
+        std::vector<gfx::Color> pixels(static_cast<std::size_t>(c.width) * c.height);
+        gfx::Canvas canvas({pixels.data(), c.width, c.height, c.width});
+        e.draw(canvas);
+        if (hashPixels(pixels.data(), pixels.size()) != golden::GAME[i].hash)
+            tg::test::fail(__FILE__, __LINE__, std::string("frame differs from golden: ") + c.name);
+    }
 }
 
 int main() { return tg::test::run(); }
