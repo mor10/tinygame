@@ -176,11 +176,12 @@ window.addEventListener("resize", fitZoom);
 // ---- game bundle from the server (sim/server.mjs) ----
 // The server says when the bundle file changed; fetch it and hand it to the
 // engine. The WebAssembly itself is not rebuilt or reloaded.
-async function loadBundle() {
+async function loadBundle(quietIfMissing = false) {
   if (!engine) return;
   const notice = $("notice");
   try {
     const response = await fetch("bundle", { cache: "no-store" });
+    if (quietIfMissing && response.status === 404) return;   // no game given: keep the demo
     if (!response.ok) throw new Error(`The server has no bundle (${response.status})`);
     const bytes = new Uint8Array(await response.arrayBuffer());
     const answer = engine.loadBundle(bytes);
@@ -227,5 +228,6 @@ async function start() {
   restart();
   listenToServer();
   requestAnimationFrame(frame);
+  await loadBundle(true);   // a game given to the server starts right away
 }
 start();

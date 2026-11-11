@@ -81,11 +81,11 @@ const fs = require("node:fs");
     await page.mouse.up();
     await page.screenshot({ path: path.join(out, "controls.png") });
 
-    // The bundle path: a change on disk reaches the page (the engine says "not yet").
+    // The bundle path: a change on disk reaches the page (a file that is not a game is refused, readably).
     fs.writeFileSync(bundle, "TGB-test");
     await page.waitForFunction(() => Number(document.body.dataset.bundleLoads || 0) >= 1);
     const notice = await page.textContent("#notice");
-    expect(/cannot run here yet/.test(notice), `bundle change reaches the page (${notice})`);
+    expect(/could not be loaded/.test(notice) && /could not be loaded/.test(await page.textContent("#error")), `bundle change reaches the page (${notice})`);
     expect(problems.length === 0, `no console errors ${JSON.stringify(problems)}`);
   } finally {
     await browser.close();
