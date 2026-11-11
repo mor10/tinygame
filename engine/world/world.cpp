@@ -58,7 +58,8 @@ bool World::start(const GameData& game, int level) {
         const float w = static_cast<float>(sprite.width) / ART_BLOCK;
         const float h = static_cast<float>(sprite.height) / ART_BLOCK;
         const float x = static_cast<float>(spawn.col);
-        const float y = static_cast<float>(spawn.row + 1) - h;  // bottom-left block on the cell
+        float y = static_cast<float>(spawn.row + 1) - h;  // bottom-left block on the cell
+        if (y < 0) y = 0;  // a tall actor on the top row would start inside the ceiling
         const int index = pool_.spawn(spawn.kind, x, y, w, h);
         if (index < 0) break;  // the pool is full: later spawns are dropped
         Actor& actor = pool_.at(index);

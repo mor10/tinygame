@@ -46,6 +46,10 @@ struct Arena {
         const Bytes b = arenaBundle(rows);
         ok = engine.load(b.data(), b.size(), w, h);
     }
+    explicit Arena(const BundleSpec& spec, int w = 320, int h = 172) {
+        const Bytes b = buildBundle(spec);
+        ok = engine.load(b.data(), b.size(), w, h);
+    }
     ActorProbe player() const {
         ActorProbe p;
         engine.player(p);
