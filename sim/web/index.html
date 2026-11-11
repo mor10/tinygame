@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TinyGame simulator</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="simulator.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>TinyGame</h1>
+      <div class="switches">
+        <div class="switch" role="group" aria-label="Board">
+          <button type="button" data-board="a" aria-pressed="true">Board A <small>320×172</small></button>
+          <button type="button" data-board="b" aria-pressed="false">Board B <small>280×240</small></button>
+        </div>
+        <div class="switch" role="group" aria-label="View">
+          <button type="button" data-view="standard" aria-pressed="true">Standard</button>
+          <button type="button" data-view="fill" aria-pressed="false">Fill</button>
+        </div>
+      </div>
+    </header>
+
+    <section class="console" aria-label="TinyGame console">
+      <canvas id="screen" width="320" height="172" aria-label="Console screen"></canvas>
+      <div class="controls">
+        <div class="knob-group">
+          <div class="knob" data-side="0" tabindex="0" role="button" aria-pressed="false"
+               aria-label="Left knob: drag the rim or scroll to turn, press the middle to click">
+            <span class="marker"></span><span class="centre"></span>
+          </div>
+          <span>LEFT KNOB</span>
+        </div>
+        <div class="tilt" aria-label="Tilt"><span id="tilt-dot"></span></div>
+        <div class="knob-group">
+          <div class="knob" data-side="1" tabindex="0" role="button" aria-pressed="false"
+               aria-label="Right knob: drag the rim or scroll to turn, press the middle to click">
+            <span class="marker"></span><span class="centre"></span>
+          </div>
+          <span>RIGHT KNOB</span>
+        </div>
+      </div>
+    </section>
+
+    <p id="status" role="status">Starting…</p>
+    <p id="notice" hidden></p>
+    <div id="error" role="alert" hidden></div>
+
+    <div class="legend">
+      <p><b>Left knob</b> <kbd>A</kbd> turn left · <kbd>S</kbd> click · <kbd>D</kbd> turn right</p>
+      <p><b>Right knob</b> <kbd>J</kbd> turn left · <kbd>K</kbd> click · <kbd>L</kbd> turn right</p>
+      <p><b>Tilt</b> arrow keys. Let go and the console is level again.</p>
+      <p>With the mouse: drag a knob's rim or scroll on it to turn; press its middle to click.</p>
+    </div>
+  </main>
+  <script type="module" src="simulator.js"></script>
+</body>
+</html>
