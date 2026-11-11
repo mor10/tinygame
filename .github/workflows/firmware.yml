@@ -1,0 +1,40 @@
+name: Firmware
+on:
+  push:
+    branches: [v2, 'v2-**']
+  pull_request:
+    branches: [v2, 'v2-**']
+permissions:
+  contents: read
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Host tests (engine, then hal/ and os/)
+        run: |
+          python3 tools/tg.py test
+          python3 tools/os_tests.py
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-${{ runner.os }}-
+      - name: Install PlatformIO
+        run: python3 -m pip install platformio
+      - name: Build board_a
+        run: pio run -e board_a
+      - name: Binary size
+        run: ls -l .pio/build/board_a/firmware.bin .pio/build/board_a/bootloader.bin .pio/build/board_a/partitions.bin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-board_a
+          path: |
+            .pio/build/board_a/firmware.bin
+            .pio/build/board_a/bootloader.bin
+            .pio/build/board_a/partitions.bin

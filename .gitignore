@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 .pio/
 .DS_Store
+sim/web/build/
