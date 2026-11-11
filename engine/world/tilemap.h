@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "../game/game_data.h"
 #include "../gfx/art.h"
 #include "../gfx/canvas.h"
 #include "../gfx/palette.h"
@@ -22,6 +23,12 @@ public:
     // Renders every tile. Called at level load, not per frame. Returns false
     // (and stays empty) if the art is invalid or the tiles differ in size.
     bool build(const TileDef* tiles, int count, const gfx::Palette& palette, int scale, bool bevel);
+    // The same, from a loaded game: tile i draws sprites[tiles[i].sprite] and
+    // counts as solid (for the bevel) when it has TILE_SOLID. A game with no
+    // tiles gives an empty cache and true. Returns false (and stays empty) if
+    // a sprite index is out of range or the tile sprites differ in size.
+    bool build(const std::vector<SpriteData>& sprites, const std::vector<TileData>& tiles,
+               const gfx::Palette& palette, int scale, bool bevel);
 
     int block() const { return block_; }  // screen pixels per tile side
     int count() const { return count_; }
