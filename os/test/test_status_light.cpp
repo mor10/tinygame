@@ -1,5 +1,6 @@
-#include <cassert>
-#include <cstdio>
+// Carried over from v1.0 tests/test_status_light.cpp. Converted to the v2 harness (engine/test/tg_test.h):
+// assert() became CHECK(), so one failure no longer stops the others.
+#include "../../engine/test/tg_test.h"
 
 #include "status_light.h"
 
@@ -16,56 +17,48 @@ bool off(Rgb c) {
     return c.r == 0 && c.g == 0 && c.b == 0;
 }
 
-void percentScalesAndCapsOutput() {
+TG_TEST(percentScalesAndCapsOutput) {
     StatusLight light;
     light.setBase(WHITE);
     const Rgb full = light.output(0, 100);
-    assert(full.r == status_light::MAX_CHANNEL);
+    CHECK(full.r == status_light::MAX_CHANNEL);
     const Rgb dim = light.output(0, 10);
-    assert(dim.r < full.r && !off(dim));
-    assert(off(light.output(0, 0)));
+    CHECK(dim.r < full.r && !off(dim));
+    CHECK(off(light.output(0, 0)));
 }
 
-void blinkTurnsOffHalfTheTime() {
+TG_TEST(blinkTurnsOffHalfTheTime) {
     StatusLight light;
     light.setBase(RED, Pattern::Blink);
-    assert(!off(light.output(100, 100)));
-    assert(off(light.output(status_light::BLINK_PERIOD_MS / 2 + 100, 100)));
+    CHECK(!off(light.output(100, 100)));
+    CHECK(off(light.output(status_light::BLINK_PERIOD_MS / 2 + 100, 100)));
 }
 
-void breatheVariesBrightness() {
+TG_TEST(breatheVariesBrightness) {
     StatusLight light;
     light.setBase(RED, Pattern::Breathe);
     const Rgb low = light.output(0, 100);
     const Rgb high = light.output(status_light::BREATHE_PERIOD_MS / 2, 100);
-    assert(low.r < high.r);
+    CHECK(low.r < high.r);
 }
 
-void flashOverridesBaseThenEnds() {
+TG_TEST(flashOverridesBaseThenEnds) {
     StatusLight light;
     light.setBase(RED);
     light.flash(WHITE, 100, 1000);
-    assert(light.output(1050, 100).g > 0);
-    assert(light.output(1100, 100).g == 0);
+    CHECK(light.output(1050, 100).g > 0);
+    CHECK(light.output(1100, 100).g == 0);
 }
 
-void shortFlashDoesNotCutOffLongerFlash() {
+TG_TEST(shortFlashDoesNotCutOffLongerFlash) {
     StatusLight light;
     light.flash(RED, 400, 0);
     light.flash(WHITE, 60, 10);
-    assert(light.output(20, 100).g == 0);  // still red
+    CHECK(light.output(20, 100).g == 0);  // still red
     light.flash(WHITE, 600, 30);           // longer flash replaces it
-    assert(light.output(40, 100).g > 0);
+    CHECK(light.output(40, 100).g > 0);
 }
 
 }  // namespace
 
-int main() {
-    percentScalesAndCapsOutput();
-    blinkTurnsOffHalfTheTime();
-    breatheVariesBrightness();
-    flashOverridesBaseThenEnds();
-    shortFlashDoesNotCutOffLongerFlash();
-    std::puts("status_light tests passed");
-    return 0;
-}
+int main() { return tg::test::run(); }
