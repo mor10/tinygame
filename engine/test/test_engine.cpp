@@ -276,11 +276,11 @@ TG_TEST(probe_text_has_the_documented_lines) {
     const std::size_t n = e.probeText(text, sizeof(text));
     CHECK_EQ(n, std::strlen(text));
     const std::string s = text;
-    CHECK(s.rfind("tick 0\nscore 0\nhurts 0\n", 0) == 0);
+    CHECK(s.rfind("tick 0\nscore 0\nhurts 0\nsparkles 0\n", 0) == 0);
     CHECK(s.find("actor 5 player x=2.00 y=7.00 vx=0.00 vy=0.00 ground=1\n") != std::string::npos);
     CHECK(s.find("actor 6 slime x=16.00 y=8.00 vx=0.00 vy=0.00 ground=1\n") != std::string::npos);
     CHECK(s.find("actor 0 coin x=8.00 y=6.00 vx=0.00 vy=0.00 ground=0\n") != std::string::npos);
-    CHECK_EQ(std::count(s.begin(), s.end(), '\n'), 3 + 10);
+    CHECK_EQ(std::count(s.begin(), s.end(), '\n'), 4 + 10);
     CHECK_EQ(s.back(), '\n');
     e.tick(Input{});
     e.probeText(text, sizeof(text));

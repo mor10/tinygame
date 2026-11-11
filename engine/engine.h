@@ -44,8 +44,9 @@ public:
     int actorCount() const;                 // living actors
     bool actor(int n, ActorProbe& out) const;      // n-th living actor
     bool player(ActorProbe& out) const;
-    // Writes lines such as "tick 120", "score 10", "hurts 0",
-    // "actor 0 player x=2.00 y=6.00 vx=0.00 vy=0.00 ground=1".
+    // Writes lines such as "tick 120", "score 10", "hurts 0", "sparkles 0",
+    // "actor 0 player x=2.00 y=6.00 vx=0.00 vy=0.00 ground=1". "sparkles N" counts
+    // fx.sparkle calls.
     // Returns the number of characters written (always NUL-terminated).
     std::size_t probeText(char* buffer, std::size_t capacity) const;
 
