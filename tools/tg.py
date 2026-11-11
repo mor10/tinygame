@@ -22,12 +22,33 @@ ROOT = Path(__file__).resolve().parents[1]
 ENGINE = ROOT / "engine"
 BUILD = ROOT / ".build"
 CXXFLAGS = ["-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror"]
+# Vendored C libraries (currently Lua) live in third_party/<name>/src. They are
+# built with the C compiler, without -Werror, and linked into every program.
+THIRD_PARTY = ROOT / "third_party"
+VENDOR_DEFINES = ["-DLUA_32BITS=1"]
+CFLAGS = ["-std=c99", "-O1", *VENDOR_DEFINES]
 # Engine folders that are programs or tests, not part of the engine library.
 NOT_LIBRARY = {"test", "host"}
 
 
 def compiler():
     return os.environ.get("CXX", "c++")
+
+
+def c_compiler():
+    return os.environ.get("CC", "cc")
+
+
+def vendor_dirs():
+    return sorted(p for p in THIRD_PARTY.glob("*/src") if p.is_dir()) if THIRD_PARTY.exists() else []
+
+
+def vendor_sources():
+    return sorted(source for folder in vendor_dirs() for source in folder.glob("*.c"))
+
+
+def include_flags():
+    return [f"-I{folder}" for folder in vendor_dirs()]
 
 
 def engine_sources():
@@ -38,7 +59,8 @@ def engine_sources():
 def header_digest():
     """One digest of every engine header: any header edit rebuilds everything."""
     digest = hashlib.sha256()
-    for header in sorted(ENGINE.rglob("*.h")):
+    headers = [*ENGINE.rglob("*.h"), *(h for d in vendor_dirs() for h in d.glob("*.h"))]
+    for header in sorted(headers):
         digest.update(str(header.relative_to(ROOT)).encode())
         digest.update(header.read_bytes())
     return digest.hexdigest()
@@ -46,8 +68,11 @@ def header_digest():
 
 def compile_object(source, headers):
     """Compiles one source to a cached object; returns its path, or None on error."""
+    is_c = source.suffix == ".c"
+    command = [c_compiler(), *CFLAGS] if is_c else [compiler(), *CXXFLAGS, *VENDOR_DEFINES]
+    command += include_flags()
     key = hashlib.sha256()
-    key.update(" ".join([compiler(), *CXXFLAGS]).encode())
+    key.update(" ".join(command).encode())
     key.update(headers.encode())
     key.update(str(source.relative_to(ROOT)).encode())
     key.update(source.read_bytes())
@@ -56,7 +81,7 @@ def compile_object(source, headers):
         return obj
     obj.parent.mkdir(parents=True, exist_ok=True)
     partial = obj.with_suffix(".tmp.o")
-    result = subprocess.run([compiler(), *CXXFLAGS, "-c", str(source), "-o", str(partial)])
+    result = subprocess.run([*command, "-c", str(source), "-o", str(partial)])
     if result.returncode != 0:
         partial.unlink(missing_ok=True)
         return None
@@ -73,7 +98,8 @@ def link(name, objects):
 
 def build_program(name, main_source):
     headers = header_digest()
-    objects = [compile_object(s, headers) for s in [*engine_sources(), main_source]]
+    objects = [compile_object(s, headers)
+               for s in [*engine_sources(), *vendor_sources(), main_source]]
     if None in objects:
         return None
     return link(name, objects)
