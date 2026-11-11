@@ -1,5 +1,7 @@
 #include "tilemap.h"
 
+#include "../gfx/sprite.h"
+
 namespace tg {
 
 namespace {
@@ -33,6 +35,48 @@ bool TileCache::build(const TileDef* tiles, int count, const gfx::Palette& palet
             for (int x = 0; x < block; ++x) {
                 const char c = tiles[i].art.pixels[(y / scale) * art_size + x / scale];
                 const bool solid = gfx::artIndex(c) > 0;
+                mask_[i * per_tile + y * block + x] = solid ? 1 : 0;
+                if (!solid) opaque_[i] = 0;
+            }
+        }
+    }
+    block_ = block;
+    count_ = count;
+    return true;
+}
+
+bool TileCache::build(const std::vector<SpriteData>& sprites, const std::vector<TileData>& tiles,
+                      const gfx::Palette& palette, int scale, bool bevel) {
+    block_ = count_ = 0;
+    pixels_.clear();
+    mask_.clear();
+    opaque_.clear();
+    if (scale < 1) return false;
+    const int count = static_cast<int>(tiles.size());
+    if (count == 0) return true;
+    int art_size = 0;
+    for (int i = 0; i < count; ++i) {
+        if (tiles[i].sprite < 0 || tiles[i].sprite >= static_cast<int>(sprites.size())) return false;
+        const SpriteData& sprite = sprites[tiles[i].sprite];
+        if (i == 0) art_size = sprite.width;
+        if (!gfx::spriteValid(sprite) || sprite.width != art_size || sprite.height != art_size)
+            return false;
+    }
+    const int block = art_size * scale;
+    const std::size_t per_tile = static_cast<std::size_t>(block) * block;
+    pixels_.assign(per_tile * count, 0);
+    mask_.assign(per_tile * count, 0);
+    opaque_.assign(count, 1);
+    for (int i = 0; i < count; ++i) {
+        const SpriteData& sprite = sprites[tiles[i].sprite];
+        gfx::Canvas canvas({pixels_.data() + i * per_tile, block, block, block});
+        gfx::DrawOptions options;
+        options.scale = scale;
+        options.bevel = bevel && (tiles[i].flags & TILE_SOLID) != 0;
+        gfx::drawSprite(canvas, sprite, palette, 0, 0, options);
+        for (int y = 0; y < block; ++y) {
+            for (int x = 0; x < block; ++x) {
+                const bool solid = sprite.pixels[(y / scale) * art_size + x / scale] != 0;
                 mask_[i * per_tile + y * block + x] = solid ? 1 : 0;
                 if (!solid) opaque_[i] = 0;
             }
