@@ -1,0 +1,64 @@
+# Stock-parts registry: the single source of truth for what a game can select
+# or tune (spec section 10). Generators for the engine header, the checker and
+# the API sheet arrive with the integration step; until then this file is the
+# reference the packer and engine are written against.
+#
+# Each part: id (the table name), group, since (api version), text (one line a
+# child can read), and params with type, unit, default and range.
+
+[movement.none]
+since = 1
+text = "Stays where it is put."
+
+[movement.platformer]
+since = 1
+text = "Falls with gravity, stands on solid blocks, and can jump."
+
+[behaviour.none]
+since = 1
+text = "Does nothing by itself."
+
+[behaviour.walker]
+since = 1
+text = "Walks along the ground and turns round at walls and ledges."
+params.speed = { type = "number", unit = "blocks per second", default = 2, min = 0, max = 12 }
+
+[behaviour.pickup]
+since = 1
+text = "Disappears when the player touches it and adds to the score."
+params.points = { type = "integer", unit = "points", default = 10, min = 0, max = 100000 }
+
+[touch_player.nothing]
+since = 1
+text = "Touching the player does nothing."
+
+[touch_player.hurt]
+since = 1
+text = "Touching the player hurts them: they go back to the start of the level."
+
+[tile_property.solid]
+since = 1
+text = "Nothing can pass through it."
+
+[tile_property.one_way]
+since = 1
+text = "You can jump up through it and stand on top."
+
+[tile_property.hazard]
+since = 1
+text = "Touching it hurts the player."
+
+[tuning.gravity]
+since = 1
+text = "How hard things are pulled down."
+params.value = { type = "number", unit = "blocks per second squared", default = 30, min = 0, max = 120 }
+
+[tuning.jump_height]
+since = 1
+text = "How high a full jump goes."
+params.value = { type = "number", unit = "blocks", default = 3, min = 0, max = 8 }
+
+[tuning.run_speed]
+since = 1
+text = "How fast the player runs."
+params.value = { type = "number", unit = "blocks per second", default = 6, min = 0, max = 20 }

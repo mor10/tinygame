@@ -73,7 +73,7 @@ TinyGame is a pocket game console that kids (around 10) and adults make games fo
 
 ```
 engine/      C++ engine (portable; no Arduino or LVGL includes)
-engine/parts.yaml   stock-parts registry (source of truth for the kit)
+engine/parts.toml   stock-parts registry (source of truth for the kit)
 hal/         board drivers; hal/boards/<board>/ for per-board config
 os/          shell, power, settings, dev protocol, main loop
 sim/         browser and Node hosts for the WebAssembly engine
@@ -161,7 +161,7 @@ A game is a folder of text files. `tg pack` turns it into one binary bundle; the
 
 ```
 games/<id>/
-  game.toml      name, author, api version, starter kind, view, controls, tuning, kinds, status
+  game.toml      id, name, author, api version, starter, view, controls, tuning, kinds, status
   sprites.txt    text-art sprites
   levels.txt     text-grid levels with a legend
   rules.lua      optional; what is unique to this game
@@ -194,8 +194,9 @@ P.......####....s...
 
 ```toml
 api = 1
+id = "cave_hop"
 name = "CAVE HOP"
-kind = "platformer"
+starter = "platformer"
 
 [tuning]
 gravity = 30        # blocks per second squared
@@ -223,7 +224,7 @@ Constraints: id is `[a-z][a-z0-9_]{0,14}`; name is 1–13 printable ASCII; `api`
 
 ## 10. Engine kit (stock parts)
 
-**The registry.** `engine/parts.yaml` is the single source of truth for everything a game can select or tune: movement kinds, behaviours, tile properties, events, effects, sound presets, status elements and tuning keys. Each entry has an id, a one-line kid-readable description, its parameters with type, unit, default and allowed range, and the API version that introduced it.
+**The registry.** `engine/parts.toml` is the single source of truth for everything a game can select or tune: movement kinds, behaviours, tile properties, events, effects, sound presets, status elements and tuning keys. Each entry has an id, a one-line kid-readable description, its parameters with type, unit, default and allowed range, and the API version that introduced it.
 
 Generated from the registry, never written by hand:
 - the engine's lookup tables and parameter validation (a build step emits a C++ header);
@@ -258,7 +259,7 @@ The lists below are the initial contents.
 - **Save:** per-game key-value store with a size cap, plus best score.
 - **Sound:** named presets (`jump`, `coin`, `hit`, `boom`); silent where there is no buzzer.
 - **Road module:** a scanline pseudo-3D road for driving games, separate from tile maps.
-- **Raw drawing:** rectangles, lines, sprites and text at block or pixel coordinates, for games that fit no stock part.
+- **Raw drawing:** rectangles, lines (with a thickness), filled convex polygons, sprites and text at block or pixel coordinates, for games that fit no stock part.
 
 **Input.** v1 rules stand: two knobs (80 transitions per turn, clockwise positive), click on either knob is the action, a long press belongs to the OS (pause), holding both for 3 seconds opens the sleep prompt, handedness selects the main knob. Games read input through named controls. Each movement kind has a default mapping, overridable in `game.toml`:
 
@@ -369,7 +370,7 @@ Do not start before M7 passes.
 | M1 | Test card firmware for Board A: three block densities, candidate palettes, bevel on and off, text sizes | **GATE:** maintainer picks density and palette with kids on real hardware |
 | M2 | Board abstraction; Board B bring-up after its schematic GATE; DMA display driver; carried-over drivers and logic with tests | Test card on both boards; present time measured and reported; sleep, wake, knobs and IMU verified on each |
 | M3 | Engine core: fixed loop, renderer, tile cache, camera, stage layout, text; headless host; simulator shows engine output at both sizes | Golden-image tests pass; a scrolling test level runs at the reported frame rate on both boards |
-| M4 | Bundle format, `tg pack`, Lua host with limits, actors, movement kinds, tile collision, events, input mapping; `engine/parts.yaml` with its generators and CI check; `tg check`, `tg run`, `tg part`, `tg verify`, hot reload | A hand-written platformer level is playable in the simulator and on a board; an infinite loop in Lua produces the error screen; every part implemented so far is in the registry and CI fails when they disagree; **GATE:** control defaults play-tested |
+| M4 | Bundle format, `tg pack`, Lua host with limits, actors, movement kinds, tile collision, events, input mapping; `engine/parts.toml` with its generators and CI check; `tg check`, `tg run`, `tg part`, `tg verify`, hot reload | A hand-written platformer level is playable in the simulator and on a board; an infinite loop in Lua produces the error screen; every part implemented so far is in the registry and CI fails when they disagree; **GATE:** control defaults play-tested |
 | M5 | Remaining stock parts (each added through the registry), effects, flow, status, save, sound, road module; six starters | Each starter is playable from `tg new` with no edits, passes `tg verify`, and has `.steps` tests |
 | M6 | Port Brick Breaker, Rock Rain and TiltBlock | All three run from data and Lua. Any drop to C++ is reported as a kit gap, with a proposal |
 | M7 | `tg push`, `describe`, `set`, `doctor`; tool server; simulator editors and sliders driven by the registry; full skill set behind the `AGENTS.md` index; benchmark with baseline results | A new game goes from request to running on a console without a firmware build; benchmark report published |

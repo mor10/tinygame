@@ -1,0 +1,47 @@
+api = 1
+id = "cave_hop"
+name = "CAVE HOP"
+author = "TinyGame"
+starter = "platformer"
+view = "standard"
+
+[tuning]
+gravity = 30
+jump_height = 3
+run_speed = 6
+
+[tile.ground]
+sprite = "ground"
+solid = true
+
+[tile.brick]
+sprite = "brick"
+solid = true
+
+[tile.ledge]
+sprite = "ledge"
+one_way = true
+
+[tile.spikes]
+sprite = "spikes"
+hazard = true
+
+[kind.player]
+sprite = "hero"
+movement = "platformer"
+player = true
+
+[kind.slime]
+sprite = "slime"
+movement = "platformer"
+behaviour = "walker"
+speed = 2
+on_touch_player = "hurt"
+
+[kind.coin]
+sprite = "coin"
+behaviour = "pickup"
+points = 10
+
+[kind.gem]
+sprite = "gem"
