@@ -8,6 +8,10 @@
   python3 tools/tg.py check [game]         look for mistakes in a game (or in every game)
   python3 tools/tg.py pack <game> [-o F]   pack a game into one .tgb bundle file
   python3 tools/tg.py new <id> --kind platformer [--name "NAME"]   start a new game
+  python3 tools/tg.py run <game> --steps F [--board a|b|both] [--probe] [--shot P] [--json]
+                                           play a steps script on a game and check it
+  python3 tools/tg.py sim [game] [--port N] [--no-open]   pack a game and play it in the browser
+  python3 tools/tg.py verify [game]        the whole gate: check, tests, golden, every steps file
 
 More commands arrive with later milestones (see docs/spec.md, section 12).
 """
@@ -384,6 +388,141 @@ def cmd_pack(args):
     return 0
 
 
+BOARDS = {"a": (320, 172), "b": (280, 240)}
+
+
+def pack_for_run(folder):
+    """Checks and packs a game into .build/run. Returns (bundle path, problem lines)."""
+    from tgpack import PackError, check_game, pack_game
+    problems = check_game(folder)
+    if problems:
+        return None, [p.text(shown_path(folder)) for p in problems]
+    try:
+        data = pack_game(folder)
+    except PackError as error:
+        return None, [p.text(shown_path(folder)) for p in error.problems]
+    out = BUILD / "run" / f"{folder.resolve().name}.tgb"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(data)
+    return out, []
+
+
+def play_steps(bundle, steps, boards, probe=False, shot=None):
+    """Plays a steps file on a packed game at each board. Returns a list of result
+    dicts: board, width, height, ok, ticks, score, hurts, error, failures, probe,
+    syntax (a list of {line, text}), shot (path or None), message (a fatal problem)."""
+    exe = build_program("run_host", ENGINE / "host" / "run_main.cpp")
+    if exe is None:
+        return None
+    results = []
+    for board in boards:
+        width, height = BOARDS[board]
+        raw = BUILD / "run" / f"shot_{board}.rgb565"
+        command = [str(exe), "--bundle", str(bundle), "--steps", str(steps), "--size",
+                   str(width), str(height)]
+        if probe:
+            command.append("--probe")
+        if shot:
+            raw.parent.mkdir(parents=True, exist_ok=True)
+            command += ["--raw", str(raw)]
+        done = subprocess.run(command, capture_output=True, text=True)
+        result = {"board": board, "width": width, "height": height, "ok": done.returncode == 0,
+                  "ticks": 0, "score": 0, "hurts": 0, "error": "", "failures": [], "probe": "",
+                  "syntax": [], "shot": None, "message": ""}
+        in_probe = False
+        for line in done.stdout.splitlines():
+            part = line.split("\t")
+            if in_probe:
+                if line == "probe-end":
+                    in_probe = False
+                else:
+                    result["probe"] += line + "\n"
+            elif line == "probe-begin":
+                in_probe = True
+            elif part[0] == "syntax":
+                result["syntax"].append({"line": int(part[1]), "text": part[2]})
+            elif part[0] == "fail":
+                result["failures"].append({"line": int(part[1]), "expected": part[2],
+                                           "found": part[3]})
+            elif part[0] == "result":
+                result["ticks"], result["score"], result["hurts"] = map(int, part[1:4])
+                result["error"] = part[4] if len(part) > 4 else ""
+        if done.returncode not in (0, 1) and not result["syntax"]:
+            result["message"] = done.stderr.strip() or f"the runner stopped (exit {done.returncode})"
+        if result["error"]:
+            result["ok"] = False
+        if shot and raw.exists() and done.returncode in (0, 1):
+            target = Path(shot)
+            if len(boards) > 1:
+                target = target.with_name(f"{target.stem}_{board}{target.suffix or '.png'}")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(png_bytes(width, height, rgb565_to_rgb(raw.read_bytes())))
+            result["shot"] = str(target)
+        results.append(result)
+    return results
+
+
+def print_run(results, steps_name):
+    problems = 0
+    for r in results:
+        print(f"board {r['board']} ({r['width']}x{r['height']}), {steps_name}")
+        for mistake in r["syntax"]:
+            print(f"  {steps_name}:{mistake['line']}: {mistake['text']}")
+            problems += 1
+        if r["message"]:
+            print(f"  {r['message']}")
+            problems += 1
+        for f in r["failures"]:
+            print(f"  FAIL {steps_name}:{f['line']}: {f['expected']}, found {f['found']}")
+            problems += 1
+        if r["error"]:
+            print(f"  GAME STOPPED: {r['error']}")
+            problems += 1
+        if not r["syntax"] and not r["message"]:
+            print(f"  {r['ticks']} ticks, score {r['score']}, hurts {r['hurts']}"
+                  + (" ok" if r["ok"] else ""))
+        if r["probe"]:
+            print("  probe:")
+            print("".join("    " + line + "\n" for line in r["probe"].splitlines()), end="")
+        if r["shot"]:
+            print(f"  screenshot: {r['shot']}")
+    return problems
+
+
+def cmd_run(args):
+    folder = game_folder(args.game)
+    steps = Path(args.steps)
+    if not folder.is_dir():
+        print(f"Error: there is no game '{args.game}' (looked in games/ and starters/)")
+        return 1
+    if not steps.is_file():
+        print(f"Error: cannot find the steps file {args.steps}")
+        return 1
+    bundle, problems = pack_for_run(folder)
+    if bundle is None:
+        if args.json:
+            print(json.dumps({"ok": False, "game": folder.resolve().name, "problems": problems,
+                              "runs": []}, indent=2))
+        else:
+            print("\n".join(problems))
+            print("not run: fix the problems above first (python3 tools/tg.py check)")
+        return 1
+    boards = ["a", "b"] if args.board == "both" else [args.board]
+    results = play_steps(bundle, steps, boards, args.probe, args.shot)
+    if results is None:
+        print("Error: the runner could not be built")
+        return 1
+    ok = all(r["ok"] for r in results)
+    if args.json:
+        print(json.dumps({"ok": ok, "game": folder.resolve().name, "steps": shown_path(steps),
+                          "runs": results}, indent=2))
+    else:
+        print(f"{folder.resolve().name}:")
+        count = print_run(results, shown_path(steps))
+        print("all steps held" if ok else f"run failed: {count} problem{'s' if count != 1 else ''}")
+    return 0 if ok else 1
+
+
 def cmd_new(args):
     from tgpack.newgame import NewGameError, new_game
     try:
@@ -434,6 +573,14 @@ def main():
     new.add_argument("--games-dir", help="where to make the game (default: games/)")
     new.add_argument("--json", action="store_true", help="print the result as JSON")
     new.set_defaults(run=cmd_new)
+    run = sub.add_parser("run", help="play a steps script on a game and check it")
+    run.add_argument("game", help="game id or folder")
+    run.add_argument("--steps", required=True, help="steps file (docs/formats/steps.md)")
+    run.add_argument("--board", choices=["a", "b", "both"], default="both")
+    run.add_argument("--probe", action="store_true", help="print the final probe text")
+    run.add_argument("--shot", help="write the final frame to this PNG")
+    run.add_argument("--json", action="store_true", help="print the result as JSON")
+    run.set_defaults(run=cmd_run)
     args = parser.parse_args()
     try:
         sys.exit(args.run(args))
