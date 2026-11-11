@@ -42,7 +42,8 @@ def run_all():
     # The engine is linked into every test (the demo scene tests need it); its
     # objects come from tg.py's cache, so this is cheap after `tg.py test`.
     headers = tg.header_digest()
-    engine_objects = [tg.compile_object(s, headers) for s in tg.engine_sources()]
+    engine_objects = [tg.compile_object(s, headers)
+                      for s in [*tg.engine_sources(), *tg.vendor_sources()]]
     failed = []
     for test in tests:
         name = str(test.relative_to(ROOT))
