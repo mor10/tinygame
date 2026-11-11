@@ -14,10 +14,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Engine host tests
-        run: python3 tools/tg.py test
-      - name: Golden fingerprints are current
-        run: python3 tools/tg.py golden
+      - name: Verify (checks, tests, golden frames, game steps)
+        run: python3 tools/tg.py verify
       - name: Render test cards and demo frames
         run: python3 tools/tg.py testcard && python3 tools/tg.py demo
       - uses: actions/upload-artifact@v4

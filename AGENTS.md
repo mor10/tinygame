@@ -4,19 +4,24 @@ TinyGame is a pocket game console (ESP32-S3, two knobs with click, tilt sensor,
 two tiny screens: 320x172 and 280x240). Kids around 10 and adults make games
 for it by talking to a coding agent. Explain things simply.
 
-This is the v2 rebuild. It is at an early stage: the drawing core, stage
-layout, tile maps, camera and a scrolling demo exist, on the host only. There
-are no games, no Lua and no firmware yet. [docs/spec.md](docs/spec.md) is the
-plan of record.
+This is the v2 rebuild. On a computer it works end to end: the engine, Lua
+rules, game folders (`games/`), a packer and a browser simulator (`sim/`). The
+firmware compiles but is untested on hardware. [docs/spec.md](docs/spec.md) is
+the plan of record.
 
-**The gate:** `python3 tools/tg.py test` must pass before you say a change is
-done. (`tg verify` replaces it when games exist; spec section 12.)
+**The gate:** `python3 tools/tg.py verify` must pass before you say a change is
+done (checks, all tests, golden frames, every game's `test/*.steps`).
 
 Open the page that owns the task:
 
 - What to build, and in what order: [docs/spec.md](docs/spec.md), section 17
 - Why something was decided: [docs/decisions/](docs/decisions/). Read the
   record before proposing to change a decision.
+- File formats (bundle, Lua API, motion rules, steps files): [docs/formats/](docs/formats/)
+- Games: `games/<id>/` (`tg new`, `tg check`, `tg pack`); tests as `test/*.steps`
+- `python3 tools/tg.py run <game> --steps F [--probe] [--shot P]` plays a steps
+  script headlessly and checks it
+- `python3 tools/tg.py sim <game>` plays a game in the browser; simulator code is `sim/`
 - Drawing code: `engine/gfx/`; stage, camera and tile maps: `engine/world/`;
   clock, random and input: `engine/core/`; tests: `engine/test/`
 - A renderer change altered a golden frame: look at `python3 tools/tg.py demo`,

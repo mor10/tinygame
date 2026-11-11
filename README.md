@@ -9,26 +9,23 @@ as text files (art, levels, settings and small Lua rules) on two boards.
 
 ## What exists today
 
-The first slices, running on a computer only: a portable renderer, the test
-card used to choose the block size and palette, and the engine core (fixed
-60 Hz clock, stage layout for both screens, tile maps, camera) shown by a
-scrolling demo with golden-image tests.
+On a computer: a portable renderer, the engine (60 Hz clock, stage layout,
+tile maps, camera, platformer physics, a sandboxed Lua rules host), a packer
+for game folders, one sample game (`games/cave_hop/`) and a browser simulator
+that plays packed games. The firmware for Board A compiles (it runs the
+scrolling demo) but has not been tried on hardware.
 
 ```bash
-python3 tools/tg.py test
+python3 tools/tg.py verify          # the gate: checks, tests, golden frames, game steps
+python3 tools/tg.py sim cave_hop    # play cave_hop in the browser simulator
+python3 tools/tg.py run cave_hop --steps games/cave_hop/test/play.steps --probe
 ```
 
-```bash
-python3 tools/tg.py testcard
-```
-
-```bash
-python3 tools/tg.py demo
-```
-
-`testcard` and `demo` write PNGs for both screens under `out/`. They need Python 3
-and a C++17 compiler (`c++`, or set `CXX`). Nothing here runs on the console
-yet.
+`tg run` plays a small script of inputs and checks, see
+[docs/formats/steps.md](docs/formats/steps.md). `testcard` and `demo` write PNGs
+for both screens under `out/`. You need Python 3 and a C++17 compiler (`c++`,
+or set `CXX`); the simulator also needs Node.js 22 and its Emscripten SDK
+(installed once by `python3 tools/sim_build.py`).
 
 ## Packing and checking
 
