@@ -122,3 +122,24 @@ wide and at least 10 rows tall. A character naming a tile fills the cell; a
 character naming a kind leaves the cell empty and adds a spawn.
 
 `rules.lua`: optional. See `lua-api.md`.
+
+## Details the packer settles
+
+- Sprite, tile and kind names match `[A-Za-z0-9_]{1,31}`. A tile and a kind may
+  not share a name, because a level legend could not tell them apart.
+- Sprite rows accept `.`, `0`-`9` and lowercase `a`-`f` only.
+- `TUNE` always lists all three keys. A key missing from `game.toml` takes its
+  default from `engine/parts.toml`.
+- A kind's `speed` and `points` take their default from `engine/parts.toml`
+  only when the kind's behaviour uses them; otherwise they are 0. A value
+  written in `game.toml` is range-checked and stored either way.
+- `[palette]` keys are `"1"` to `"15"`, `background` and `ink`, each a
+  `"#RRGGBB"` string. Entry 0 is always 0.
+- The spawn cell is the cell where the character is typed in the level. The
+  packer does not move it for taller sprites; the engine places the actor's
+  bottom-left block on that cell.
+- The engine's loader checks the binary format and its limits. The rules about
+  the text files (level at least 17 by 10, exactly one player per level, name
+  lengths) are enforced by `tg check`, not by the loader.
+- Sections are written in this order: META, PALT, SPRT, TILE, KIND, TUNE, LEVL,
+  then RULE when `rules.lua` exists.
