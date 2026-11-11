@@ -1,0 +1,30 @@
+name: sim
+
+# The browser simulator: build the engine as WebAssembly and run the Node tests.
+on:
+  push:
+    branches: [v2, "v2-**"]
+  pull_request:
+    branches: [v2, "v2-**"]
+
+permissions:
+  contents: read
+
+jobs:
+  sim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Cache the Emscripten SDK
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/tinygame-sim
+          key: emsdk-4.0.19-${{ runner.os }}-${{ hashFiles('tools/sim_build.py') }}
+          restore-keys: emsdk-4.0.19-${{ runner.os }}-
+      - name: Build the WebAssembly
+        run: python3 tools/sim_build.py
+      - name: Node tests
+        run: node --test "sim/test/*.test.mjs"
