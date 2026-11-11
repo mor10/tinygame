@@ -9,8 +9,10 @@ as text files (art, levels, settings and small Lua rules) on two boards.
 
 ## What exists today
 
-Only the first slice: a portable renderer and the test card used to choose the
-block size and palette.
+The first slices, running on a computer only: a portable renderer, the test
+card used to choose the block size and palette, and the engine core (fixed
+60 Hz clock, stage layout for both screens, tile maps, camera) shown by a
+scrolling demo with golden-image tests.
 
 ```bash
 python3 tools/tg.py test
@@ -20,6 +22,10 @@ python3 tools/tg.py test
 python3 tools/tg.py testcard
 ```
 
-`testcard` writes PNGs for both screens to `out/testcard/`. It needs Python 3
+```bash
+python3 tools/tg.py demo
+```
+
+`testcard` and `demo` write PNGs for both screens under `out/`. They need Python 3
 and a C++17 compiler (`c++`, or set `CXX`). Nothing here runs on the console
 yet.
