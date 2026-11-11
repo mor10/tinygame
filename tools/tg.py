@@ -113,11 +113,12 @@ def build_program(name, main_source):
     return link(name, objects)
 
 
-def cmd_test(_):
+def engine_tests():
+    """Builds and runs engine/test/test_*.cpp. Returns (failed names, number of files)."""
     tests = sorted((ENGINE / "test").glob("test_*.cpp"))
     if not tests:
         print("no tests found")
-        return 1
+        return ["engine/test (no tests found)"], 0
     failed = []
     for test in tests:
         name = str(test.relative_to(ROOT))
@@ -128,17 +129,33 @@ def cmd_test(_):
             failed.append(name)
         elif subprocess.run([str(exe)]).returncode != 0:
             failed.append(name)
-    # The packer and checker tests (Python, tools/tests).
-    tool_tests = "tools/tests (python unittest)"
-    print(tool_tests)
-    total = len(tests) + 1
-    if subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tools/tests"],
-                      cwd=ROOT).returncode != 0:
-        failed.append(tool_tests)
+    return failed, len(tests)
+
+
+def python_tests():
+    """The packer, checker and `tg run` tests (Python, tools/tests). True when they pass."""
+    print("tools/tests (python unittest)")
+    return subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tools/tests"],
+                          cwd=ROOT).returncode == 0
+
+
+def hardware_tests():
+    """The hal/ and os/ host tests. True when they pass."""
+    import os_tests
+    return os_tests.run_all() == 0
+
+
+def cmd_test(_):
+    failed, count = engine_tests()
+    if not python_tests():
+        failed.append("tools/tests (python unittest)")
+    if not hardware_tests():
+        failed.append("hal/ and os/ tests")
+    total = count + 2
     if failed:
-        print(f"FAILED: {len(failed)} of {total} test files: " + ", ".join(failed))
+        print(f"FAILED: {len(failed)} of {total} test groups: " + ", ".join(failed))
         return 1
-    print(f"all {total} test files passed")
+    print(f"all {total} test groups passed")
     return 0
 
 
@@ -523,6 +540,110 @@ def cmd_run(args):
     return 0 if ok else 1
 
 
+def steps_stage(folders, report):
+    """Plays every test/*.steps of the given games on both boards. Returns the
+    number of steps files run and the number that failed."""
+    ran = failed = 0
+    for folder in folders:
+        files = sorted((folder / "test").glob("*.steps"))
+        if not files:
+            continue
+        bundle, problems = pack_for_run(folder)
+        if bundle is None:
+            report("\n".join(problems))
+            ran += len(files)
+            failed += len(files)
+            continue
+        for steps in files:
+            ran += 1
+            results = play_steps(bundle, steps, ["a", "b"])
+            if results is None or not all(r["ok"] for r in results):
+                failed += 1
+                report(f"{shown_path(steps)} failed")
+                if results:
+                    import contextlib
+                    import io
+                    with contextlib.redirect_stdout(io.StringIO()) as text:
+                        print_run(results, shown_path(steps))
+                    report(text.getvalue().rstrip())
+    return ran, failed
+
+
+def cmd_verify(args):
+    """Everything that must hold before a change is done. One line per stage."""
+    class Quiet:  # a namespace for the golden check
+        update = False
+    folders = [game_folder(args.game)] if args.game else sorted(
+        p for parent in ("games", "starters") if (ROOT / parent).is_dir()
+        for p in (ROOT / parent).iterdir() if p.is_dir())
+    if args.game and not folders[0].is_dir():
+        print(f"Error: there is no game '{args.game}' (looked in games/ and starters/)")
+        return 1
+    summary = []
+    steps_notes = []
+
+    def stage(name, run):
+        print(f"\n== {name}", flush=True)
+        ok, detail = run()
+        summary.append((name, ok, detail))
+        print(f"-- {name}: {'ok' if ok else 'FAILED'}" + (f" ({detail})" if detail else ""),
+              flush=True)
+
+    def check_stage():
+        from tgpack import check_game
+        bad = 0
+        for folder in folders:
+            problems = check_game(folder)
+            report_problems(folder, problems)
+            bad += len(problems)
+        return bad == 0, f"{len(folders)} game{'s' if len(folders) != 1 else ''}"
+
+    def engine_stage():
+        failed, count = engine_tests()
+        return not failed, f"{count} test files" if not failed else ", ".join(failed)
+
+    def golden_stage():
+        return cmd_golden(Quiet) == 0 and cmd_golden_game(Quiet) == 0, ""
+
+    def steps_run():
+        ran, failed = steps_stage(folders, steps_notes.append)
+        for note in steps_notes:
+            print(note)
+        return failed == 0, f"{ran} steps file{'s' if ran != 1 else ''} on both boards"
+
+    stage("check", check_stage)
+    stage("engine tests", engine_stage)
+    stage("python tests", lambda: (python_tests(), ""))
+    stage("hal and os tests", lambda: (hardware_tests(), ""))
+    stage("golden frames", golden_stage)
+    stage("game steps", steps_run)
+    print("\nverify summary")
+    for name, ok, detail in summary:
+        print(f"  {'ok    ' if ok else 'FAILED'} {name}" + (f" ({detail})" if detail else ""))
+    if all(ok for _, ok, _ in summary):
+        print("verify: everything passed")
+        return 0
+    print("verify: FAILED")
+    return 1
+
+
+def cmd_sim(args):
+    command = [sys.executable, str(ROOT / "tools" / "sim_serve.py")]
+    if args.game:
+        pack = argparse.Namespace(game=args.game, output=None, json=False)
+        if cmd_pack(pack) != 0:
+            return 1
+        command.append(str(ROOT / "out" / f"{game_folder(args.game).resolve().name}.tgb"))
+    if args.port is not None:
+        command += ["--port", str(args.port)]
+    if args.no_open:
+        command.append("--no-open")
+    try:
+        return subprocess.run(command).returncode
+    except KeyboardInterrupt:
+        return 0
+
+
 def cmd_new(args):
     from tgpack.newgame import NewGameError, new_game
     try:
@@ -581,6 +702,14 @@ def main():
     run.add_argument("--shot", help="write the final frame to this PNG")
     run.add_argument("--json", action="store_true", help="print the result as JSON")
     run.set_defaults(run=cmd_run)
+    verify = sub.add_parser("verify", help="check, test and play everything (the gate)")
+    verify.add_argument("game", nargs="?", help="only check and play this game's steps")
+    verify.set_defaults(run=cmd_verify)
+    sim = sub.add_parser("sim", help="pack a game and play it in the browser simulator")
+    sim.add_argument("game", nargs="?", help="game id or folder (default: the scrolling demo)")
+    sim.add_argument("--port", type=int, help="port to serve on (default: any free port)")
+    sim.add_argument("--no-open", action="store_true", help="do not open a browser")
+    sim.set_defaults(run=cmd_sim)
     args = parser.parse_args()
     try:
         sys.exit(args.run(args))

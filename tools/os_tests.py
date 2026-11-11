@@ -30,10 +30,13 @@ LOGIC_SOURCES = [ROOT / "os" / "settings.cpp", ROOT / "os" / "status_light.cpp"]
 INCLUDES = [f"-I{ROOT / 'hal'}", f"-I{ROOT / 'os'}"]
 
 
-def run_all():
+def run_all(tests=None):
+    """Builds and runs the test programs. Returns 1 if any fails to build, link or pass.
+    `tests` replaces the default list (hal/test and os/test); used by the regression test."""
     tg = load_tg()
-    tests = sorted([*(ROOT / "hal" / "test").glob("test_*.cpp"),
-                    *(ROOT / "os" / "test").glob("test_*.cpp")])
+    if tests is None:
+        tests = sorted([*(ROOT / "hal" / "test").glob("test_*.cpp"),
+                        *(ROOT / "os" / "test").glob("test_*.cpp")])
     if not tests:
         print("no tests found")
         return 1
@@ -46,13 +49,14 @@ def run_all():
                       for s in [*tg.engine_sources(), *tg.vendor_sources()]]
     failed = []
     for test in tests:
-        name = str(test.relative_to(ROOT))
+        name = str(test.relative_to(ROOT)) if test.is_relative_to(ROOT) else str(test)
         print(name)
         exe = out / test.stem
+        exe.unlink(missing_ok=True)  # never run a program left over from an earlier build
         command = [tg.compiler(), *tg.CXXFLAGS, *INCLUDES,
                    str(test), *map(str, LOGIC_SOURCES), *map(str, engine_objects),
                    "-o", str(exe)]
-        if None in engine_objects or subprocess.run(command).returncode != 0:
+        if None in engine_objects or subprocess.run(command).returncode != 0 or not exe.exists():
             print("  build failed")
             failed.append(name)
         elif subprocess.run([str(exe)]).returncode != 0:
