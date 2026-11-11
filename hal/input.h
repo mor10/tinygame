@@ -1,5 +1,8 @@
 #pragma once
 
+// Carried over from v1.0 src/hal/input.h.
+// Unchanged apart from this comment.
+
 #include "input_logic.h"
 
 namespace input {

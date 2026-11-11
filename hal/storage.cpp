@@ -1,3 +1,6 @@
+// Carried over from v1.0 src/hal/storage.cpp.
+// Unchanged apart from this comment.
+
 #include "storage.h"
 
 #include <Arduino.h>

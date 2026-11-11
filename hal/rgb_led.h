@@ -1,5 +1,8 @@
 #pragma once
 
+// Carried over from v1.0 src/hal/rgb_led.h.
+// Unchanged apart from this comment.
+
 #include <cstdint>
 
 // Onboard RGB status LED driver.

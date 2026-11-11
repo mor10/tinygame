@@ -1,5 +1,8 @@
 #pragma once
 
+// Carried over from v1.0 src/hal/power.h.
+// Unchanged apart from this comment.
+
 namespace power {
 
 bool initialize();

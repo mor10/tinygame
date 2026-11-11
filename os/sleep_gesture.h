@@ -1,5 +1,8 @@
 #pragma once
 
+// Carried over from v1.0 src/os/sleep_gesture.h.
+// Unchanged apart from this comment.
+
 #include <cstdint>
 
 namespace sleep_gesture {

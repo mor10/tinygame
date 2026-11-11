@@ -1,3 +1,6 @@
+// Carried over from v1.0 src/hal/input.cpp.
+// Changed: includes "board.h" (the board selector) instead of "board_config.h".
+
 #include "input.h"
 
 #include <Arduino.h>
@@ -5,7 +8,7 @@
 #include "esp_intr_alloc.h"
 #include "soc/gpio_struct.h"
 
-#include "board_config.h"
+#include "board.h"
 
 namespace {
 

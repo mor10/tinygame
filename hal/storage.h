@@ -1,5 +1,8 @@
 #pragma once
 
+// Carried over from v1.0 src/hal/storage.h.
+// Unchanged apart from this comment.
+
 #include <cstdint>
 
 #include "settings.h"

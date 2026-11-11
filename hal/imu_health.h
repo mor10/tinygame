@@ -1,5 +1,8 @@
 #pragma once
 
+// Carried over from v1.0 src/hal/imu_health.h.
+// Unchanged apart from this comment.
+
 #include <cstdint>
 
 namespace imu {

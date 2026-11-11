@@ -1,10 +1,14 @@
+// Carried over from v1.0 src/hal/imu.cpp.
+// Changed: includes "board.h" (the board selector) instead of "board_config.h".
+// Registers, ranges, axis map and filter are untouched.
+
 #include "imu.h"
 #include "imu_health.h"
 
 #include <Arduino.h>
 #include <Wire.h>
 
-#include "board_config.h"
+#include "board.h"
 
 namespace {
 

@@ -1,5 +1,8 @@
 #pragma once
 
+// Carried over from v1.0 src/os/persistence.h.
+// Unchanged apart from this comment.
+
 #include "settings.h"
 
 namespace persistence {

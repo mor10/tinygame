@@ -1,5 +1,8 @@
 #pragma once
 
+// Carried over from v1.0 src/os/power_state.h.
+// Unchanged apart from this comment.
+
 #include "input_logic.h"
 #include "settings.h"
 

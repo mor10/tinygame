@@ -1,5 +1,8 @@
 #pragma once
 
+// Carried over from v1.0 src/os/status_light.h.
+// Unchanged apart from this comment.
+
 #include <cstdint>
 
 // Pure (host-testable) logic for the onboard RGB status LED: a base colour

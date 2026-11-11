@@ -1,5 +1,8 @@
 #pragma once
 
+// Carried over from v1.0 src/os/settings.h.
+// Unchanged apart from this comment.
+
 #include <cstdint>
 
 // Global console settings, edited under System > Settings. Each item is a

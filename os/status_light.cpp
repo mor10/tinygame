@@ -1,3 +1,6 @@
+// Carried over from v1.0 src/os/status_light.cpp.
+// Unchanged apart from this comment.
+
 #include "status_light.h"
 
 namespace status_light {

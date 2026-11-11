@@ -1,3 +1,6 @@
+// Carried over from v1.0 src/hal/power.cpp.
+// Changed: includes "board.h" (the board selector) instead of "board_config.h".
+
 #include "power.h"
 
 #include <Arduino.h>
@@ -5,7 +8,7 @@
 #include "driver/rtc_io.h"
 #include "esp_sleep.h"
 
-#include "board_config.h"
+#include "board.h"
 
 namespace {
 

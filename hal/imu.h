@@ -1,15 +1,24 @@
 #pragma once
 
-#include <cstdint>
+// Carried over from v1.0 src/hal/imu.h.
+// Changed: v1 took tg::Vec3 from include/tg_types.h, which is not part of v2
+// (it would clash with the engine's tg::Input). The same three-float struct
+// is declared here as imu::Vec3. Nothing else differs.
 
-#include "tg_types.h"
+#include <cstdint>
 
 // QMI8658 6-axis motion sensor (accelerometer + gyroscope), in screen axes.
 namespace imu {
 
+struct Vec3 {
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+};
+
 struct Reading {
-    tg::Vec3 accel_g;
-    tg::Vec3 gyro_dps;
+    Vec3 accel_g;
+    Vec3 gyro_dps;
     float tilt_x = 0.0f;  // smoothed, -1..1, see tg::Input
     float tilt_y = 0.0f;
 };

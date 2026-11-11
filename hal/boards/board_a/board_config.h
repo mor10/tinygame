@@ -1,8 +1,15 @@
 #pragma once
 
+// Board A: Waveshare ESP32-S3-LCD-1.47B with two EC11 knobs.
+// Carried over from v1.0 src/hal/board_config.h. Every pin and value below is
+// unchanged from v1 (verified on hardware there). Added for v2: NAME and the
+// capability flags at the end. Never edit a pin here without a schematic.
+
 #include <cstdint>
 
 namespace board {
+
+inline constexpr const char* NAME = "board_a";
 
 // Physical panel
 inline constexpr std::int16_t LCD_PHYSICAL_WIDTH = 172;
@@ -37,5 +44,10 @@ inline constexpr int RIGHT_DIRECTION = 1;
 inline constexpr int PIN_IMU_SDA = 48;
 inline constexpr int PIN_IMU_SCL = 47;
 inline constexpr std::uint8_t IMU_I2C_ADDRESS = 0x6B;
+
+// Capability flags (spec section 5). Code asks these instead of naming a board.
+inline constexpr bool has_rgb_led = true;   // GPIO38, above
+inline constexpr bool has_buzzer = false;   // none fitted; sound calls do nothing
+inline constexpr bool has_touch = false;    // the 1.47B panel has no touch layer
 
 }  // namespace board

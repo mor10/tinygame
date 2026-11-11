@@ -1,12 +1,20 @@
+// Carried over from v1.0 src/hal/display.cpp.
+// Unchanged from v1: writeCommand, resetPanel, initializePanel (every command
+// and value), the address-window arithmetic, the backlight PWM, prepareSleep.
+// Changed: the LVGL display, draw buffer and flush callback are replaced by
+// present(), which writes one whole engine frame with the same blocking SPI
+// write the v1 flush used. setAddressWindow takes a local Area struct with
+// the same x1/y1/x2/y2 fields LVGL's lv_area_t had.
+// NOT YET RUN ON HARDWARE in this form: v1's flush sent at most 16 lines per
+// call; present() sends all 172 in one call.
+
 #include "display.h"
 
 #include <Arduino.h>
 #include <SPI.h>
-#include <lvgl.h>
 #include "driver/gpio.h"
 
-#include "board_config.h"
-#include "display_config.h"
+#include "board.h"
 
 namespace {
 
@@ -16,10 +24,15 @@ constexpr std::uint8_t BACKLIGHT_PWM_CHANNEL = 0;
 constexpr std::uint8_t BOOT_BRIGHTNESS_PERCENT = 90;
 
 SPIClass display_spi(FSPI);
-lv_display_t* lv_display = nullptr;
-alignas(4) std::uint8_t draw_buffer[display_config::WIDTH *
-                                    display_config::DRAW_BUFFER_LINES *
-                                    sizeof(std::uint16_t)];
+std::uint32_t last_present_us = 0;
+
+// Inclusive pixel rectangle, like LVGL's lv_area_t which v1 used here.
+struct Area {
+    std::int32_t x1;
+    std::int32_t y1;
+    std::int32_t x2;
+    std::int32_t y2;
+};
 
 void writeCommand(std::uint8_t command, const std::uint8_t* data = nullptr,
                   std::size_t data_size = 0) {
@@ -59,6 +72,11 @@ void initializePanel() {
     const std::uint8_t pixel_format[] = {0x05};
     writeCommand(0x3A, pixel_format, sizeof(pixel_format));
 
+    // RAM control (0xB0). The second byte, 0xE8, sets the controller's
+    // little-endian bit: each 16-bit pixel is then expected low byte first.
+    // The ESP32 is little-endian, so an RGB565 frame can be sent byte for
+    // byte as it sits in memory, with no per-pixel swap. Changing this value
+    // without also swapping every pixel gives scrambled colours.
     const std::uint8_t b0[] = {0x00, 0xE8};
     writeCommand(0xB0, b0, sizeof(b0));
 
@@ -106,7 +124,9 @@ void initializePanel() {
     writeCommand(0x29);
 }
 
-void setAddressWindow(const lv_area_t* area) {
+void setAddressWindow(const Area* area) {
+    // Why 34: the controller addresses 240 lines but the glass shows 172, and
+    // the visible ones start 34 in ((240 - 172) / 2). v1's comment follows.
     // The panel's 34 px offset lies on the physical 172 px axis. In landscape,
     // MADCTL MV=1 already swaps axes in the controller, so CASET takes logical
     // x and RASET takes logical y; the offset therefore moves to the row axis.
@@ -132,31 +152,6 @@ void setAddressWindow(const lv_area_t* area) {
         static_cast<std::uint8_t>(y2 >> 8), static_cast<std::uint8_t>(y2)};
     writeCommand(0x2B, row_address, sizeof(row_address));
     writeCommand(0x2C);
-}
-
-void flush(lv_display_t* display, const lv_area_t* area, std::uint8_t* pixels) {
-    setAddressWindow(area);
-
-    const std::uint32_t width =
-        static_cast<std::uint32_t>(area->x2 - area->x1 + 1);
-    const std::uint32_t height =
-        static_cast<std::uint32_t>(area->y2 - area->y1 + 1);
-    const std::uint32_t pixel_bytes =
-        width * height * sizeof(std::uint16_t);
-
-    display_spi.beginTransaction(
-        SPISettings(display_config::SPI_FREQUENCY_HZ, MSBFIRST, SPI_MODE0));
-    digitalWrite(board::PIN_LCD_CS, LOW);
-    digitalWrite(board::PIN_LCD_DC, HIGH);
-    display_spi.writeBytes(pixels, pixel_bytes);
-    digitalWrite(board::PIN_LCD_CS, HIGH);
-    display_spi.endTransaction();
-
-    lv_display_flush_ready(display);
-}
-
-std::uint32_t getTickMilliseconds() {
-    return millis();
 }
 
 // Platform espressif32 6.x ships Arduino core 2.x, which uses LEDC channels.
@@ -204,6 +199,33 @@ void setBrightness(std::uint8_t percent) {
     writeBacklight(percent);
 }
 
+void present(const std::uint16_t* frame) {
+    const std::uint32_t started = micros();
+    const Area full = {0, 0, display_config::WIDTH - 1, display_config::HEIGHT - 1};
+    setAddressWindow(&full);
+
+    const std::uint32_t pixel_bytes = static_cast<std::uint32_t>(display_config::WIDTH) *
+                                      display_config::HEIGHT * sizeof(std::uint16_t);
+
+    // Same blocking write as v1's LVGL flush. The pixels go out as stored
+    // (see the 0xB0 comment in initializePanel). DMA or chunked transfers are
+    // a later step, taken only after this has been measured on the board.
+    display_spi.beginTransaction(
+        SPISettings(display_config::SPI_FREQUENCY_HZ, MSBFIRST, SPI_MODE0));
+    digitalWrite(board::PIN_LCD_CS, LOW);
+    digitalWrite(board::PIN_LCD_DC, HIGH);
+    display_spi.writeBytes(
+        const_cast<std::uint8_t*>(reinterpret_cast<const std::uint8_t*>(frame)), pixel_bytes);
+    digitalWrite(board::PIN_LCD_CS, HIGH);
+    display_spi.endTransaction();
+
+    last_present_us = micros() - started;
+}
+
+std::uint32_t presentMicros() {
+    return last_present_us;
+}
+
 bool initialize() {
     pinMode(board::PIN_LCD_CS, OUTPUT);
     pinMode(board::PIN_LCD_DC, OUTPUT);
@@ -217,26 +239,8 @@ bool initialize() {
     resetPanel();
     initializePanel();
 
-    lv_init();
-    lv_tick_set_cb(getTickMilliseconds);
-
-    lv_display = lv_display_create(display_config::WIDTH, display_config::HEIGHT);
-    if (lv_display == nullptr) {
-        Serial.println("[LVGL] Failed to create display");
-        return false;
-    }
-
-    lv_display_set_color_format(lv_display, LV_COLOR_FORMAT_RGB565);
-    lv_display_set_flush_cb(lv_display, flush);
-    lv_display_set_buffers(lv_display, draw_buffer, nullptr, sizeof(draw_buffer),
-                           LV_DISPLAY_RENDER_MODE_PARTIAL);
-
     Serial.println("[LCD] Waveshare ST7789 initialized");
     return true;
-}
-
-lv_display_t* lvDisplay() {
-    return lv_display;
 }
 
 }  // namespace display
