@@ -44,13 +44,14 @@ NOT_LIBRARY = {"test", "host"}
 
 # The C API in sim/wasm/sim_main.cpp.
 EXPORTS = ["_malloc", "_free", "_tg_sim_init", "_tg_sim_tick", "_tg_sim_draw",
-           "_tg_sim_width", "_tg_sim_height", "_tg_sim_load_bundle"]
+           "_tg_sim_width", "_tg_sim_height", "_tg_sim_load_bundle", "_tg_sim_error",
+           "_tg_sim_has_game", "_tg_sim_probe"]
 LINK_FLAGS = [
     "-O2", "-sMODULARIZE=1", "-sEXPORT_ES6=1", "-sEXPORT_NAME=createTinyGame",
     "-sENVIRONMENT=web,node", "-sALLOW_MEMORY_GROWTH=1", "-sNO_EXIT_RUNTIME=1",
     "-sFILESYSTEM=0", "--no-entry",
     "-sEXPORTED_FUNCTIONS=" + json.dumps(EXPORTS),
-    '-sEXPORTED_RUNTIME_METHODS=["HEAPU8","HEAPU16"]',
+    '-sEXPORTED_RUNTIME_METHODS=["HEAPU8","HEAPU16","UTF8ToString"]',
 ]
 
 

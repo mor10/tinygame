@@ -9,7 +9,7 @@ export const BOARDS = Object.freeze({
 export const VIEWS = Object.freeze({ standard: 0, fill: 1 });
 
 // Answers from Engine.loadBundle, the same numbers as in sim_main.cpp.
-export const BUNDLE_OK = 1, BUNDLE_FAILED = 0, BUNDLE_UNSUPPORTED = -1;
+export const BUNDLE_OK = 0, BUNDLE_FAILED = -1;
 
 // The same clock as engine/core/fixed_step.h. Feed it elapsed real time in
 // whole microseconds; it says how many game ticks to run. Time is counted in
@@ -71,7 +71,14 @@ export class Engine {
     return new Uint16Array(this.module.HEAPU8.buffer, address, this.width * this.height);
   }
 
-  // Gives the engine a game bundle (a Uint8Array). Returns one of BUNDLE_*.
+  // Why the last bundle was refused, or what stopped the running game ("" if nothing).
+  get error() { return this.module.UTF8ToString(this.module._tg_sim_error()); }
+  get hasGame() { return this.module._tg_sim_has_game() === 1; }
+  // The engine's probe text for a running game: "tick 120\nscore 10\n...".
+  get probe() { return this.module.UTF8ToString(this.module._tg_sim_probe()); }
+
+  // Gives the engine a game bundle (a Uint8Array) and starts it. Returns
+  // BUNDLE_OK (0), or a negative number with `error` telling why.
   loadBundle(bytes) {
     const address = this.module._malloc(Math.max(1, bytes.length));
     if (!address) throw new Error("Out of memory while loading the bundle");

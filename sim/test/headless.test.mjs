@@ -63,8 +63,13 @@ test("tick input is accepted and ignored by the demo", () => {
   assert.equal(hashPixels(engine.draw()), golden.get(c.name));
 });
 
-test("a bundle is stored but not supported yet", () => {
-  assert.equal(engine.loadBundle(new Uint8Array([1, 2, 3])), -1);
+test("a bundle that is not a game is refused and the demo keeps running", () => {
+  engine.init(320, 172);
+  assert.ok(engine.loadBundle(new Uint8Array([1, 2, 3])) < 0);
+  assert.notEqual(engine.error, "");
+  assert.equal(engine.hasGame, false);
+  engine.tick();
+  assert.equal(engine.draw().length, 320 * 172);
 });
 
 test("a bad board size is refused", () => {

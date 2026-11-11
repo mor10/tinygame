@@ -1,7 +1,7 @@
 // The simulator page: runs the WebAssembly engine at 60 ticks per second and
 // shows its frame on the canvas.
 
-import { BOARDS, BUNDLE_OK, BUNDLE_UNSUPPORTED, Engine, FixedStep } from "./engine.mjs";
+import { BOARDS, BUNDLE_OK, Engine, FixedStep } from "./engine.mjs";
 import { LEFT, RIGHT, TRANSITIONS_PER_TURN, Rotation, SimInput, angleAt, angleDelta } from "./input.mjs";
 
 const $ = id => document.getElementById(id);
@@ -76,7 +76,7 @@ function restart() {
   if (!engine) return;
   try {
     engine.init(board.width, board.height, view);
-    $("error").hidden = true;
+    if (document.body.dataset.game !== "failed") $("error").hidden = true;
     drawFrame();
   } catch (error) {
     showError(error.message);
@@ -189,11 +189,12 @@ async function loadBundle() {
     notice.hidden = false;
     if (answer === BUNDLE_OK) {
       notice.textContent = `Game loaded (${bytes.length} bytes).`;
+      document.body.dataset.game = "running";
       restart();
-    } else if (answer === BUNDLE_UNSUPPORTED) {
-      notice.textContent = `Got a game bundle (${bytes.length} bytes), but games cannot run here yet. Showing the demo.`;
     } else {
-      notice.textContent = "The engine could not read that game bundle.";
+      document.body.dataset.game = "failed";
+      notice.textContent = "The game could not be loaded, so the demo is showing.";
+      showError(`This game could not be loaded: ${engine.error}`);
     }
   } catch (error) {
     notice.hidden = false;
