@@ -1,0 +1,14 @@
+# Cave Hop: walking into the slime hurts. Hop onto the ledge, fall off it onto
+# the first brick and walk on into the pit where the slime lives. The player
+# goes back to the start and the hurt counter goes up.
+
+tilt 1 0
+expect hurts == 0
+wait 20
+press
+wait 30
+release
+wait 66
+expect hurts == 0
+wait 60
+expect hurts >= 1

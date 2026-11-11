@@ -1,0 +1,50 @@
+# Cave Hop, a clean run: hop onto the ledge for the coins, hop over the slime
+# pit and the spikes, hop up the bricks to the gem, then pick up the last
+# coins. Coins are 10 points each, the gem is 50, and nothing hurts.
+# (Jumps are "press, wait 30, release": hold the knob for a full-height jump.)
+
+tilt 1 0           # run right the whole way
+expect score == 0
+expect count.coin == 7
+
+# 1. Jump onto the ledge and run along it: all four ledge coins.
+wait 20
+press
+wait 30
+release
+wait 30
+expect player.ground == 1
+expect score == 40
+expect count.coin == 3
+
+# 2. Fall off the ledge onto the first brick, then jump the slime pit.
+wait 36
+press
+wait 30
+release
+wait 24
+expect player.ground == 1
+expect hurts == 0
+expect count.slime == 1
+
+# 3. Jump from the brick over the spikes onto the stairs.
+press
+wait 30
+release
+wait 30
+expect player.ground == 1
+expect hurts == 0
+
+# 4. Jump the stairs: the gem is worth 50 and goes away.
+press
+wait 30
+release
+wait 30
+expect score == 90
+expect count.gem == 0
+
+# 5. Run on to the coins on the ground.
+wait 60
+expect score == 120
+expect count.coin == 0
+expect hurts == 0
