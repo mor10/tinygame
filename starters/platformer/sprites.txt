@@ -1,0 +1,32 @@
+# The pictures. One character per pixel; '.' is see-through.
+# 1-9 and a-f are the 15 colours.
+
+== ground 8x8
+88888888
+87888878
+dddddddd
+ddfddddd
+dddddfdd
+dddddddd
+dfdddddd
+dddddddd
+
+== hero 8x8
+..aaaa..
+.aaaaaa.
+.a21a21.
+.aaaaaa.
+.aa44aa.
+.aaaaaa.
+..a..a..
+.11..11.
+
+== coin 8x8
+..6666..
+.662266.
+66266666
+66266666
+66666666
+66666656
+.665566.
+..6666..

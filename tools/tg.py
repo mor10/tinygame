@@ -5,12 +5,16 @@
   python3 tools/tg.py testcard [--out DIR] render every test-card variant to PNG
   python3 tools/tg.py demo [--out DIR]     render the scrolling demo frames to PNG
   python3 tools/tg.py golden [--update]    check (or accept) the golden-image fingerprints
+  python3 tools/tg.py check [game]         look for mistakes in a game (or in every game)
+  python3 tools/tg.py pack <game> [-o F]   pack a game into one .tgb bundle file
+  python3 tools/tg.py new <id> --kind platformer [--name "NAME"]   start a new game
 
 More commands arrive with later milestones (see docs/spec.md, section 12).
 """
 
 import argparse
 import hashlib
+import json
 import os
 import struct
 import subprocess
@@ -120,10 +124,17 @@ def cmd_test(_):
             failed.append(name)
         elif subprocess.run([str(exe)]).returncode != 0:
             failed.append(name)
+    # The packer and checker tests (Python, tools/tests).
+    tool_tests = "tools/tests (python unittest)"
+    print(tool_tests)
+    total = len(tests) + 1
+    if subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tools/tests"],
+                      cwd=ROOT).returncode != 0:
+        failed.append(tool_tests)
     if failed:
-        print(f"FAILED: {len(failed)} of {len(tests)} test files: " + ", ".join(failed))
+        print(f"FAILED: {len(failed)} of {total} test files: " + ", ".join(failed))
         return 1
-    print(f"all {len(tests)} test files passed")
+    print(f"all {total} test files passed")
     return 0
 
 
@@ -262,7 +273,101 @@ def cmd_golden(args):
     return 0
 
 
+def game_folder(text):
+    """Turns an id or a folder path given on the command line into a folder."""
+    path = Path(text)
+    if path.is_dir():
+        return path
+    for parent in ("games", "starters"):
+        if (ROOT / parent / text).is_dir():
+            return ROOT / parent / text
+    return ROOT / "games" / text
+
+
+def shown_path(path):
+    """A path relative to the repository when it is inside it."""
+    try:
+        return str(Path(path).resolve().relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
+def report_problems(folder, problems):
+    for problem in problems:
+        print(problem.text(shown_path(folder)))
+
+
+def cmd_check(args):
+    from tgpack import check_game
+    if args.game:
+        folders = [game_folder(args.game)]
+    else:
+        folders = sorted(p for parent in ("games", "starters") if (ROOT / parent).is_dir()
+                         for p in (ROOT / parent).iterdir() if p.is_dir())
+    results = [(folder, check_game(folder)) for folder in folders]
+    count = sum(len(problems) for _, problems in results)
+    if args.json:
+        print(json.dumps({"ok": count == 0, "games": [
+            {"id": folder.resolve().name, "folder": shown_path(folder), "ok": not problems,
+             "problems": [p.to_dict() for p in problems]} for folder, problems in results]},
+            indent=2))
+    else:
+        for folder, problems in results:
+            if problems:
+                report_problems(folder, problems)
+            else:
+                print(f"{shown_path(folder)}: ok")
+        if count:
+            print(f"{count} problem{'s' if count != 1 else ''} found")
+    return 1 if count else 0
+
+
+def cmd_pack(args):
+    from tgpack import PackError, pack_game
+    folder = game_folder(args.game)
+    try:
+        data = pack_game(folder)
+    except PackError as error:
+        if args.json:
+            print(json.dumps({"ok": False, "folder": shown_path(folder),
+                              "problems": [p.to_dict() for p in error.problems]}, indent=2))
+        else:
+            report_problems(folder, error.problems)
+            print("not packed: fix the problems above first")
+        return 1
+    out = Path(args.output) if args.output else ROOT / "out" / f"{folder.resolve().name}.tgb"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(data)
+    if args.json:
+        print(json.dumps({"ok": True, "folder": shown_path(folder), "output": shown_path(out),
+                          "bytes": len(data), "crc32": f"{zlib.crc32(data[16:]):08x}",
+                          "problems": []}, indent=2))
+    else:
+        print(f"packed {shown_path(folder)} into {shown_path(out)} ({len(data)} bytes)")
+    return 0
+
+
+def cmd_new(args):
+    from tgpack.newgame import NewGameError, new_game
+    try:
+        folder = new_game(args.id, args.kind, args.name, games_dir=args.games_dir)
+    except NewGameError as error:
+        if args.json:
+            print(json.dumps({"ok": False, "error": str(error)}, indent=2))
+        else:
+            print(f"Error: {error}")
+        return 1
+    if args.json:
+        print(json.dumps({"ok": True, "id": args.id, "folder": shown_path(folder),
+                          "files": sorted(p.name for p in folder.iterdir())}, indent=2))
+    else:
+        print(f"made a new {args.kind} game in {shown_path(folder)}")
+        print(f"next: python3 tools/tg.py check {args.id}")
+    return 0
+
+
 def main():
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -276,6 +381,22 @@ def main():
     golden = sub.add_parser("golden", help="check the golden-image fingerprints")
     golden.add_argument("--update", action="store_true", help="accept the current output")
     golden.set_defaults(run=cmd_golden)
+    check = sub.add_parser("check", help="look for mistakes in a game")
+    check.add_argument("game", nargs="?", help="game id or folder (default: every game)")
+    check.add_argument("--json", action="store_true", help="print the result as JSON")
+    check.set_defaults(run=cmd_check)
+    pack = sub.add_parser("pack", help="pack a game into one .tgb bundle")
+    pack.add_argument("game", help="game id or folder")
+    pack.add_argument("-o", "--output", help="file to write (default: out/<id>.tgb)")
+    pack.add_argument("--json", action="store_true", help="print the result as JSON")
+    pack.set_defaults(run=cmd_pack)
+    new = sub.add_parser("new", help="start a new game from a starter")
+    new.add_argument("id", help="id of the new game, like space_cat")
+    new.add_argument("--kind", required=True, help="which starter to copy (platformer)")
+    new.add_argument("--name", help="the name shown on the console (1-13 characters)")
+    new.add_argument("--games-dir", help="where to make the game (default: games/)")
+    new.add_argument("--json", action="store_true", help="print the result as JSON")
+    new.set_defaults(run=cmd_new)
     args = parser.parse_args()
     try:
         sys.exit(args.run(args))

@@ -1,0 +1,25 @@
+api = 1
+id = "platformer"
+name = "PLATFORMER"
+author = "TinyGame"
+starter = "platformer"
+view = "standard"
+
+[tuning]
+gravity = 30        # how hard things are pulled down
+jump_height = 3     # how many blocks high a full jump goes
+run_speed = 6       # how many blocks the player runs each second
+
+[tile.ground]
+sprite = "ground"
+solid = true
+
+[kind.player]
+sprite = "hero"
+movement = "platformer"
+player = true
+
+[kind.coin]
+sprite = "coin"
+behaviour = "pickup"
+points = 10
