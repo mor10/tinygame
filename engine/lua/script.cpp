@@ -10,15 +10,6 @@
 
 #include "script_internal.h"
 
-// tools/tg.py passes -DLUA_32BITS=1, but the vendored luaconf.h (unmodified
-// Lua 5.4.7) unconditionally runs `#define LUA_32BITS 0`, so the C files are
-// built with 64-bit numbers (the compiler only warns). Drop the command-line
-// value so this file sees exactly the configuration the C files get, instead
-// of failing on the redefinition. Reported in the hand-off notes.
-#ifdef LUA_32BITS
-#undef LUA_32BITS
-#endif
-
 extern "C" {
 #include "lauxlib.h"
 #include "lua.h"

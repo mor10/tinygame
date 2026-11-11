@@ -122,7 +122,11 @@
 /*
 @@ LUA_32BITS enables Lua with 32-bit integers and 32-bit floats.
 */
+/* TinyGame: the one local change to Lua. Let the build choose 32-bit numbers
+** with -DLUA_32BITS=1 (see third_party/lua/README.md). */
+#if !defined(LUA_32BITS)
 #define LUA_32BITS	0
+#endif
 
 
 /*

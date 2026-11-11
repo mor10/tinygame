@@ -5,14 +5,14 @@ The Lua interpreter used by the rules host (`engine/lua/script.cpp`).
 - Version: Lua 5.4.7
 - Source: `git clone --depth 1 --branch v5.4.7 https://github.com/lua/lua`
 - Tag commit: `1ab3208a1fceb12fca8f24ba57d6e13c5bff15e3`
-- The files in `src/` are unmodified, byte for byte. Do not edit them.
+- The files in `src/` are byte for byte the tag's, except the one change below. Do not edit them further.
   Lua is configured only by compiler flags and by which libraries the host
   opens.
-- Known problem: `tools/tg.py` passes `-DLUA_32BITS=1`, but the unmodified
-  `luaconf.h` of 5.4.7 runs `#define LUA_32BITS 0` unconditionally, so the flag
-  has no effect (the C compiler prints a "redefined" warning) and Lua is built
-  with 64-bit integers and doubles. `engine/lua/script.cpp` undefines the
-  flag before including Lua so it agrees with the C files.
+- **One local change:** `src/luaconf.h` wraps `#define LUA_32BITS 0` in
+  `#if !defined(LUA_32BITS)`, so the build's `-DLUA_32BITS=1` takes effect and
+  Lua uses 32-bit integers and 32-bit floats (the ESP32-S3 has only a
+  single-precision FPU). Every other file is byte-identical to the tag.
+  See `docs/decisions/0009-lua-32-bit-numbers.md`.
 
 ## Which files are here
 
