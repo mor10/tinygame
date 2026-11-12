@@ -48,10 +48,22 @@ usable backup was made. Automatic ROM entry failed, but a 1200-baud reset
 re-enumerated the same USB device in download mode. The reported security
 flags showed flash encryption and secure boot disabled, and flash size was
 16 MiB. Esptool wrote and verified the four approved files at the offsets
-below; it adjusted the bootloader flash parameters and its image digest during
-upload. Its hard-reset step reported success, but the port still appeared as
-the ROM USB interface afterward. Screen startup and diagnostic serial output
-are not yet confirmed; do not infer them from the upload result.
+below, but the manual command mistakenly forced QIO for the bootloader.
+PlatformIO resolves the board's QIO configuration to **DIO for upload**;
+the original bootloader image also specified DIO. The user reported a black
+screen after RESET and after a USB power cycle, and the USB port remained the
+ROM/JTAG interface.
+
+With the user's separate permission, the same approved bootloader was rewritten
+at `0x0000` using DIO and verified; the partition table, OTA data and
+application were not rewritten. The board then enumerated as application USB
+CDC, `info` reported `profile=147b screen=320x172 input=READY imu=OK`, and
+periodic diagnostic telemetry appeared. The user confirmed the test card was
+visible. This supports the incorrect boot mode as the cause of the black screen;
+it does not establish a full display, input, IMU or other physical gate pass.
+The earlier working test card was an older diagnostic image reported visible
+after a manual reset; its exact binary hash and upload command were not recorded
+in the checkpoint evidence. The standard test-card flash command uses PlatformIO.
 
 The smallest useful hardware image is the isolated `test-card-147b`, not the
 full application. On 2026-11-12 it built successfully from the current worktree:
