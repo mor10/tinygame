@@ -1,0 +1,199 @@
+# TinyGame v2 implementation roadmap
+
+This roadmap sequences the full first release in the [v2 rebuild specification](tinygame-v2-rebuild-spec.md). It optimizes for **early actionable physical evidence**, not fewer safety or acceptance gates. The release scope remains mandatory; the early diagnostic firmware, test card, and creator-loop spike are risk-retirement steps, not scope cuts.
+
+## Operating rules
+
+- Implement on the experimental branch only. Preserve v1 and the parked board-support branch; do not merge or tag either as part of this plan.
+- Reuse v1 drivers and state machines only after reviewing their source, dependencies, and tests. The parked branch is evidence/reference only; do not check it out, modify it, or merge it. Port only individually reviewed fixes with tests.
+- No physical flash or other hardware operation without explicit permission from the maintainer and an available hardware operator. This roadmap is not such permission. Simulation, compilation, and code inspection never count as a physical gate pass.
+- Assign one named flash owner and one serial-port operator at a time. Stop simulator USB bridging before physical serial operations; release injected inputs and the port afterward. Non-hardware CI, documentation, format design, and host tests can proceed in parallel.
+- Keep a dated evidence record for each gate: board identity/revision, firmware and profile hashes, test procedure, raw observations, pass/fail/unknown result, operator, and follow-up. Reuse valid Board B findings below rather than repeating them without cause.
+- Do not guess board identity, revision-dependent pins, or electrical behavior. Inspect the actual assembly and authoritative wiring/schematic before applying power or driving a signal.
+
+## Current execution status
+
+- **Pause for physical waypoints (2026-11-12):** stop feature expansion until the next hardware checkpoint is reviewed. The working tree is uncommitted: 45 modified tracked files, two deleted tracked files and 105 untracked files at the inventory point. It includes the diagnostic, board profiles, OS/input changes, engine/Lua/bundle/store foundations, simulator and tools, fixtures and tests, plus this specification and roadmap. A session-local snapshot preserves the tracked patch and untracked files; no commit, merge or tag has been made. The latest host suite passed 54 Python tests, 11 Node tests and all discovered C++/game test binaries; both application and WASM profiles built and passed simulator integration checks. These are software results, not physical gate signoffs.
+- **Board A (1.47B):** the user reports that the diagnostic screen appears after a manual reset and that knob input updates on screen; why a manual reset was needed is not established. They confirmed the palette, text-size samples, and readouts are visible without clipping; the profile label is at the top edge, content is about 1 mm from the left, and the bottom gap is about 2 mm. These observations inform the safe-viewport review but do not approve its final inset. Approximate clockwise readings were 71 transitions for the left knob and 72 for the right; the user noted the turns were not exact, so these do not establish fitted counts or polarity. The user also reports that five separate clicks on each knob each increased its click count by five and the button returned to UP. The earlier flashed diagnostic image did not answer `info`, so the prior `tg.py send info` received no acknowledgement; a prior 3-second monitor also captured no serial data. Current source now answers `info` with its compiled profile/dimensions and input/IMU health, but this response has not been observed on hardware and requires an authorized flash. On-screen observations do not establish the flashed image/profile hash or exact counts. Per-knob counts/polarity, IMU axes, serial telemetry, sleep/wake, and auto-off checks remain open. The revised diagnostic source performs standard power initialization and emits periodic telemetry only while the USB CDC host is active; both test-card profiles and both complete firmware profiles compile. The test screen has been user-observed after reset, but its exact flashed image/profile hash is unknown.
+- **Board B (1.69):** continue host/build work using the existing profile and prior partial physical observations as provisional development assumptions, as directed by the user. A connected board has not been identified; do not perform board-specific operations or flash it without confirmed identity and separate permission. Do not mark H/V/C or any other physical gate passed, and expect corrections after the outstanding revision, GPIO3, input, gyro, sleep/wake, and auto-off checks.
+- **Authorized 1.47B serial probe:** a read-only monitor and `info` query returned no serial lines from the single VID:303A port. It was opened with and without DTR; the DTR-open may have reset the board. No firmware flash or storage write occurred. USB VID/PID does not establish board identity, and the empty response has no established cause.
+- **Creator-loop source and runtime:** the deterministic bundle packer, source checker, golden vectors, bounded Lua runtime with candidate bundle-local `require`, `BundleScript`, adaptive `knob_dodge` prototype, and preallocated LVGL presenter are built and host-tested. `BundleView` validates binary structure, checksums, paths, text and required files; `ManifestView` validates required root metadata and agreement between manifest and store IDs, but is not a full TOML parser. The WASM build packages every valid `games/<id>` source through the shared C++ adapter/Lua runtime; the current tree contains only `knob_dodge`, and edits to game folders rebuild the preview.
+- **Device bundle store:** both firmware profiles compile with the selected custom partition table (preserving both OTA app slots and using the existing 3.375 MiB data region for LittleFS). Rollback-aware staged writes, boot recovery, free-space reporting, the versioned `install 1` protocol (ordered 768-byte base64 chunks, per-chunk and whole-bundle CRC32, 30-second timeout), and `tg.py push <id> --board 147b|169` are implemented. Push requires a physically confirmed model selection and matching firmware profile/API response before transfer; the response cannot identify the physical assembly. Boot scans installed bundles into the registry. Host tests exercise commit, failed rename, rollback, and backup recovery against a fault-injected in-memory store. Actual LittleFS power-loss behavior, measured capacity, and install/launch on either board remain unverified.
+- **Simulator bundle install:** arbitrary `.tgb` files can be uploaded, validated and persisted in browser localStorage, then registered/launched after restart. Integration tests cover persistence, launch, invalid bundles, and quota failure preserving an existing bundle. Browser quotas vary; this is not device-install evidence. A two-fixture generator test covers multi-game descriptors and stable ordering.
+- **Remaining creator loop:** asset/level/starter semantics and authoring editors are incomplete; Lua limits remain candidates, not an accepted API/resource freeze. Lua 5.4.9 is pinned to upstream commit `312b9efaa1061c2c4cad08554dbc1351c3270eef`. The host suite includes 54 Python tests, 11 Node tests and C++/game binaries. Both application and test-card profiles for 1.47B and 1.69 have built, as have both WASM profiles; no flash occurred in this waypoint preparation.
+- **Lua allocation failure:** callback lookup and input-table construction now run inside Lua's protected call, and module-cache initialization is protected too. A host regression retains input tables until the Lua heap is exhausted and confirms a fault with cleared drawing output rather than a process abort. Both firmware profiles and a clean WASM build compile; this does not establish hardware watchdog behavior or complete Gate R.
+- **Native Lua loop limits:** `string.rep`, `table.move`, `table.insert`, `table.remove` and `table.concat` have a candidate 4,096-iteration cap and charge the protected call's instruction budget, including empty-string, absent-element and table-shift cases. String byte operations, `tonumber`, `table.unpack`, `table.pack` and `string.char` also have candidate work bounds; unaudited binary string packing is unavailable. Native and WASM regressions exercise repeated byte copies and numeric conversions. Other native library paths and device watchdog behavior remain open for Gate R.
+- **Lua source checking:** `tg.py check`, `describe`, `pack` and `push` now parse rules and bundle-local modules with the pinned Lua parser in text-only mode, without executing game code. Parsing has candidate source and heap limits; the parser is cached after its first host build. Asset semantics, runtime behavior and on-device install validation are not covered by this check. On a Darwin arm64 host with Python 3.12.4, ten warm `check knob_dodge` subprocess runs (2,584 source bytes) took 55.9 ms median and 59.5 ms maximum; this small prototype is not yet a representative release workload.
+- **Game descriptions:** `tg.py describe <id> [--json]` summarizes validated text-source metadata, file counts and candidate declarations with bounded previews; JSON has a schema version. Controls and part semantics await the registry and are not inferred.
+- **Bundle/Lua parity:** the host packer and shared native/WASM bundle validator now reject module filenames that the sandbox's `require` cannot address, and Lua sources larger than the runtime's 64 KiB candidate cap. Checksum-correct invalid module names and oversized scripts are rejected in the WASM install path without replacing an installed game.
+- **Manifest compatibility:** the C++ manifest reader accepts literal strings, quoted root keys, valid integer spellings of API version 1, printable space-only names and TOML tabs in strings; it rejects embedded NULs in IDs and views. `BundleScript` also checks this metadata before executing Lua, including when used outside the installed-game store. Alternate valid TOML spellings install in WASM; complete TOML and semantic validation are still open.
+- **Control arbitration:** a host-testable button state machine now passes individual holds to games, captures both-knob chords, opens Pause on release before three continuous seconds, and opens Sleep at the three-second threshold. Chord presses/releases are suppressed and gameplay updates freeze while captured. Host tests and both application, diagnostic, and WASM builds pass; the behavior is not physically verified, and Gate C remains open on the 1.47B while 1.69 is unavailable.
+- **Engine timing:** the Lua host now uses a 60 Hz fixed-step runner and a candidate approximately 30 Hz presentation cadence; legacy games retain variable-step updates. Input is buffered by observation time, delivered once on a later tick, and discarded when an OS gesture captures the controls. Backlog, queue and ambiguous-edge limits fail explicitly rather than silently dropping events. Host tests and an actual WASM Lua-game test exercise catch-up, input delivery and Pause/resume; both application profiles build. CI compares native and WASM fixed-step traces and the Lua `knob_dodge` fixture's draw-command traces across two candidate viewport sizes, including movement, collision, reset and scoring. This is not a general Lua numeric or full-game determinism proof; other representative traces, sustained hardware timing and player acceptance remain open before API freeze.
+- **Random streams:** the provisional Lua `tg.cosmetic_random` uses a seeded stream separate from `math.random`, so visual-only calls do not advance gameplay randomness. Host regressions and native/WASM traces cover both streams and reset behavior. The current combined update/draw callback cannot enforce use of the cosmetic stream for rendering; a separate rendering lifecycle and complete replay contract remain open.
+- **Dual-profile simulator:** `tg.py sim --board 169` runs a separate real-firmware WASM profile at 280x240 with no simulated RGB LED; the default 1.47B remains 320x172. Shell layouts and Lua viewport adapt to screen dimensions, and profile-specific engine tests and browser screenshots cover boot and Lua gameplay. Legacy games still use 320x172 geometry and are not adapted to 1.69. Neither simulator profile establishes physical display or control acceptance.
+- **Presentation and preview reliability:** displayed Lua text is retained in preallocated presenter storage until the next presentation, independently of intermediate simulation ticks. Palette index 0 is transparent and viewport clipping preserves partially visible text positioning; actual WASM pixel regressions cover both profiles. The browser pauses simulated time while hidden, preventing a hidden-tab delay from becoming a fixed-step overload; readiness and failed boot reporting no longer treat a non-running firmware as ready. This is simulator behavior, not evidence of physical timing or watchdog recovery.
+- **Candidate engine lifecycle primitives:** `GenerationalPool<T, Capacity>` provides caller-selected fixed capacity, explicit full/stale results, slot reuse, and deterministic slot-order handle traversal. `DeferredQueue<T, Capacity>` provides bounded FIFO ordering, explicit overflow, and batch draining so callback-enqueued work waits for the next boundary. Both are host-tested; neither is integrated into gameplay yet, and neither freezes pool size, spawn policy, collision/event semantics, or overflow policy for decorative versus gameplay work.
+- **Candidate collision primitive:** `sweepAabb` computes swept AABB time-of-impact and normals for high-speed, diagonal and axis-aligned motion, while reporting starting overlap/touch separately for caller policy. Host tests cover both directions, corner contact, misses and invalid geometry. It is not integrated into a game, and does not freeze overlap phases, tile/actor ordering, collision response or numeric/API policy.
+- **Candidate camera primitive:** a bounded dead-zone camera follows a world-space target, clamps to world edges and keeps origin zero when the viewport exceeds the world. Host tests cover both axes, fractional movement, boundaries and invalid configuration; a two-viewport trace is compared between native and WASM. It is not integrated into a game and does not freeze viewport geometry or API.
+- **CI:** `.github/workflows/ci.yml` now runs the host suite, clean-run WASM simulator build and engine/storage integration test, plus application and isolated test-card builds for both board profiles. It has not yet been observed on a GitHub-hosted runner.
+- **TiltBlock 2D concept gate:** a hidden `turn right 1237` simulator-only mode draws the existing model as a front-on 8x8 field, including touched cells, holes, walls, bonuses, the player and alien. It preserves current game rules and controls; ordinary launches still use the existing renderer. The native firmware profiles, clean WASM build, engine checks, simulator movement, and Pause/resume passed. This is a playable presentation prototype for maintainer review, not approval of the final art/progression or physical performance; M5 remains open.
+- **Physical gate status:** simulator/build evidence does not substitute for either board's physical acceptance. Limit each board's next hardware session to outstanding checks; retain one flash owner and serial operator at a time.
+- **Host preflight:** `python3 tools/tg.py doctor` now reports Python, PlatformIO, the host C++ compiler, Node, Git, curl, pyserial, configured firmware profiles, and Espressif-VID USB ports without opening a port or inferring board identity. The current host sees one matching USB serial port; see the separately authorized probe below.
+
+## Next physical waypoint: 1.47B diagnostic
+
+The smallest useful hardware image is the isolated `test-card-147b`, not the
+full application. On 2026-11-12 it built successfully from the current worktree:
+`.pio/build/test-card-147b/firmware.bin`, SHA-256
+`5e897051ee5bed189b40b09bce13b60a4b26820397753fe812cec4541e5f4401`.
+The session preserves copies of this image and its matching bootloader,
+partition table and OTA boot data, plus the source snapshot. A later rebuild
+may produce a different image; recheck all hashes and obtain approval for the
+actual artifacts. The card displays 16 palette swatches, four text sizes,
+per-knob totals, clicks and errors, and tilt and gyro readings. It reports
+`info` and periodic telemetry over an open serial host. It does **not** run
+games, Pause, sleep, wake or auto-off tests.
+
+**Before any board operation:** the maintainer must physically identify the
+connected assembly as the 1.47B, agree on the backup/recovery approach and
+explicitly authorize this exact diagnostic image and its accompanying upload
+files. A profile string or USB port cannot identify the assembly. The 1.69
+remains deferred, and requires separate identification and authorization.
+One operator owns the port; disconnect the simulator bridge first.
+
+The PlatformIO upload writes bootloader at `0x0000`, partition table at
+`0x8000`, OTA boot data at `0xe000` and the test-card application at `0x10000`.
+It replaces the running application and OTA selection data; the custom table
+also changes how flash storage is mapped relative to v1. Existing games,
+settings or scores could become inaccessible or be damaged, and a failed
+upload could leave the device unbootable. The test card does not mount or
+format LittleFS, but that is not a guarantee about existing data.
+
+Before flashing, if preserving existing contents matters, obtain separate
+permission to make and verify a **private full 16 MiB flash backup**, including
+the current partition table and OTA data. Check security/readback restrictions:
+an encrypted or protected flash read may not produce a usable restore. Do not
+assume a backup exists or that rebuilding v1 recovers saved data. If a valid
+backup cannot be obtained, stop for the maintainer's explicit data-loss
+decision. Recovery requires an authorized restore of the matching full backup,
+or rebuilding and flashing v1 (`83620e31e61abe87269f9e69d3f932745b6bf063`)
+with its original partition layout; the latter does not restore lost data.
+ROM download recovery using BOOT/RESET may be needed after a failed flash.
+
+After identification, backup decision and authorization:
+
+1. Flash only the approved four-image set and record hashes, operator, board
+   model/revision, port and date. Capture upload output; if startup requires
+   RESET again, record it rather than treating automatic boot as verified.
+2. Record screen photo: `PROFILE 147b 320x172`, orientation, palette and text
+   visibility/insets. The label confirms the compiled profile only.
+3. Use `info` and a short serial capture to check input/IMU health and telemetry.
+   Record failures as failures; earlier `info` and monitor attempts had no reply.
+4. For each knob, measure signed total changes for several accurately marked
+   full clockwise and counterclockwise turns, click five times, and check UP,
+   hold, and error readings. Record counts and direction, not approximate
+   turns as an 80-transition pass.
+5. Slowly tilt each way and rotate around each axis; record display/telemetry
+   signs and level readings. Stop on missing IMU or unexpected electrical
+   behavior. Review palette and insets with the maintainer.
+
+This waypoint passes only its recorded display, input, serial and IMU checks
+when observations match the agreed orientation and stable measured behavior.
+It cannot pass H or V for both boards, nor C, R, sleep/wake, auto-off, or
+performance gates. No such result exists yet.
+
+## Subsequent waypoints
+
+1. **1.47B application and controls:** separately authorize the application
+   image and any installed-game writes. Check startup, standalone holds,
+   Pause/resume/restart, three-second sleep priority, release/fresh click, No,
+   wake from either knob, and host-open versus USB-power-only auto-off.
+   Record physical behavior and failures before accepting the control policy.
+2. **Editable game on 1.47B:** after application startup and storage safety,
+   separately authorize installation; push `knob_dodge`, restart, play, edit and
+   reinstall without firmware rebuild. Verify interrupted/invalid replacement
+   preserves the previous working game. Full TOML/assets/levels validation,
+   watchdog and independent host timeout remain open; this is a creator-loop
+   experiment, not Gate R.
+3. **1.69 physical regression:** when available and identified, with separate
+   flash permission and revision/strap safety review, run only outstanding
+   checks: exact knob counts/clicks, gyro, GPIO3 strap/wake, sleep/wake,
+   auto-off and display/HUD review. Reuse earlier documented display, direction
+   and tilt observations where still applicable.
+4. **Engine and content:** only after relevant physical decisions, integrate
+   and test the registered kit and six playable starters, then Brick Breaker,
+   Rock Rain and the reviewed 2D TiltBlock. Each needs actual play, control,
+   frame-time and resource evidence on both profiles; no API freeze until C,
+   R, display and performance requirements pass or an approved revision exists.
+5. **Creator tools and release:** complete format/reference validation,
+   bounded replay/verification, worker isolation and recovery, editors, MCP,
+   guidance, benchmark and release checks. Require end-to-end creator tests,
+   adversarial recovery, both physical boards and the complete specified
+   release scope before declaring v2 ready.
+
+## Dependency map
+
+```text
+M0 provenance + minimal CI + recorded decisions
+  └─ M1 dual-board diagnostic firmware + density test card
+       ├─ H: board identity, electrical safety, input/sensor/power checks
+       └─ V: screen density, palette, HUD and viewport review on both boards
+            └─ M2 format/bundle smoke test + smallest editable end-to-end game
+                 └─ M3 control/chord policy + presentation/resource budget
+                      ├─ C: real-board control and OS gesture acceptance
+                      ├─ R: bounded Lua/resource/recovery proof on WASM + hardware
+                      └─ M4 engine/registry + six playable starters
+                           └─ M5 Brick Breaker, Rock Rain, 2D TiltBlock
+                                └─ M6 CLI, editors, MCP, guidance, benchmark
+                                     └─ M7 release acceptance
+                                          └─ M8 distribution
+```
+
+Dependencies are gates, not a requirement to serialize all work. Work that does not assume a gate's unresolved behavior may proceed in parallel, provided it cannot silently freeze the blocked contract.
+
+## Milestones
+
+| Milestone | Work and dependencies | Evidence / pass criteria | Owner and stop condition |
+|---|---|---|---|
+| **M0 — Provenance and safe working baseline** | Confirm experimental branch and exact v1 SHA (`83620e31e61abe87269f9e69d3f932745b6bf063`); inspect current build/test status; preserve notices, fixtures, and history; add minimal CI and record confirmed decisions. Pin candidate tool versions before adopting them. This is prerequisite to code replacement, not a reason to delay independent source review. | CI builds/tests the unchanged baseline; v1 SHA and retained evidence are recorded; no branch merge, tag, or unreviewed toolchain migration. | Maintainer + implementation owner. Stop replacement work if provenance or baseline integrity cannot be established. Tag only later with explicit authorization. |
+| **M1 — Dual-board diagnostic and physical gates H/V** | First code deliverable is a very small test-only diagnostic firmware path using inspected, verified v1 drivers and explicit `147b`/`169` profiles. It must not depend on Lua, game registry, editor, or install tooling. Compile both profiles before requesting a flash window. Add one configurable test card for native landscape geometry, color swatches, text sizes, safe insets, compact HUD and candidate 8x8-at-2x art. Review it on both actual panels before selecting density or viewport rules. | On each identified assembly: native USB serial/ROM upload flow; correct selected software profile (not treated as proof of physical identity); display extent/orientation/colors/backlight; left/right rotation polarity, measured transition count per revolution, click/debounce; IMU level/tilt axes and gyro axes; button release handling; sleep confirmation/cancel/wake; USB-host versus power-only auto-off. Capture test-card photos/screenshots and measurement log. Pass H only after identity/electrical review and all required physical checks; pass V only after maintainer/user review and published safe rectangles/minimum viewport. | One authorized flash owner/operator, with maintainer for decisions. Only one flash/serial operator at a time. Stop before any flash without explicit permission; stop any revision-dependent pin work until physical revision and safe circuit are confirmed. A failed check blocks only dependent features, not independent documentation/host work. |
+| **M2 — Narrow creator-loop and toolchain split** | After M0, format and host-tool work may start in parallel with M1. Build the smallest complete path: text game -> validated manifest -> deterministic packed-bundle smoke test -> bounded Lua startup/tick -> shared native/WASM rendering -> validated staged install/restart on device. Keep bundle packing/unpacking testable on host and create valid/invalid golden fixtures. Build one tiny editable game rather than the kit or all starters. Keep the M1 diagnostic binary/path independent. | Reproducible pack/unpack round trip and rejection of malformed/truncated bundle; no firmware rebuild to edit the sample; WASM preview and board play use same engine/game source; invalid Lua and interrupted/invalid install recover to a usable launcher while preserving the previous game; warm reload and transfer measurements recorded. | Engine/format owner + toolchain owner; hardware install test requires the same authorized flash/serial window policy. Stop broad engine investment if sandbox, transfer/recovery, or no-firmware-rebuild promise is infeasible; return concrete evidence for a decision. |
+| **M3 — Controls, OS arbitration, presentation and resource contracts** | Immediately after the smallest loop runs, implement and playtest the proposed dual-button chord on real devices, before freezing game input APIs. A solo button remains game-owned; dual press captures/freeze; short chord opens Pause; continuous three-second chord opens Sleep; require full release and a fresh action to confirm; No restores prior state. Test the already-delivered-action tradeoff. In parallel, benchmark actual display ownership, frame completion, input latency, memory placement, Lua caps and recovery. V determines layout bounds; H determines available peripherals. | Gate C: both boards demonstrate solo press/hold, Pause timing, sleep priority, release suppression, fresh confirmation, No resume, wake and ordinary game actions with no accidental trigger. Gate R: bounded adversarial Lua, allocation, events, callbacks, draw commands and host timeouts recover safely on WASM and hardware. Measure full presentation completion (not enqueue time), render/logic/Lua cost, tail latency, memory and sustained workload; publish resource-cap table and overload policy. Gate targets in the spec pass or an explicit maintainer-approved revision is recorded. | Input/OS owner and renderer/runtime owner; maintainer accepts gesture and any budget revision. Stop API freeze and dependent content if C or R fails. Continue independent CI, parser fixtures, docs, and non-conflicting host work. |
+| **M4 — Shared engine, registry, six starters** | Requires M2 creator-loop feasibility, M3 contract freeze, and H/V/C/R evidence for any hardware-specific behavior. Implement portable C++ engine and bounded Lua host; versioned formats/protocol/replay; registry-generated schemas; deterministic actors/events/collision; profile-aware rendering, save and install contracts. Add all six complete playable starters: platformer, top-down adventure, shooter, driving, paddle, grid puzzle. | Native/WASM trace conformance; golden render fixtures at 320x172 and 280x240; valid/invalid format and resource-bound tests; each starter scaffolds and plays on both profiles; firmware builds for both profiles; tested typed controls and `.steps` scenarios. | Engine/kit owners. Stop API expansion when a required mechanic lacks tested semantics or either board regresses; do not replace physical evidence with simulator results. |
+| **M5 — Three required games** | Depends on M4 mechanics and accepted controls/layout. Port Brick Breaker and Rock Rain while retaining recognizable rules/controls and document/play-test presentation or unit changes. Prototype a small playable front-on 2D TiltBlock treatment first; obtain human acceptance of progression, feedback, and knob/tilt controls before full redesign. Preserve its safe-tile/hazard/layer progression core, not the legacy projection. | All three pass deterministic automated scenarios and human playability on both boards; collision, viewport/spawn fairness, control feel and performance pass; TiltBlock concept approval is recorded before full conversion. | Game owners + maintainer/player reviewers. Stop a title on missing kit behavior, performance/safety failure, or unaccepted TiltBlock treatment; file a decision rather than hiding a scope reduction. |
+| **M6 — Creator tools and evaluation** | Can proceed incrementally alongside M4/M5 once schemas/protocols stabilize. Complete `tg` CLI, editors, typed MCP operations, generated guidance/skills, simulator/headless host, compact errors, and conflict-safe writes. Start a small benchmark set during M2; keep tuning tasks separate from held-out evaluation. | End-to-end edit/preview/install without firmware rebuild; bounded and authorized file/device operations; simulator input release on switch/reload; accurate native dimensions; all 200+ benchmark tasks have declared scope and deterministic graders before improvement claims. | CLI/editor/tooling owners. Stop endpoint/hardware functions on path, origin/auth, permission, or serialization failures. |
+| **M7 — Full release acceptance** | Requires every prior mandatory deliverable, including all physical gates for each supported board. | Full automated matrix, both-board firmware builds and physical acceptance, upgrade/data-preservation tests, sandbox/recovery, supported host/browser matrix, 200-task benchmark report, no concealed blocker. Evidence distinguishes tested, failed, and unsupported behavior. | Maintainer/release owner. No release claim while a mandatory gate is failed/unknown. |
+| **M8 — Distribution** | After M7 and separate release authorization. | Tagged artifacts/manifests/partitions, compatible bundled games, hosted simulator, browser flasher/install instructions and clean-machine upgrade verification on supported combinations. | Maintainer/release owner. No tagging, publishing, or deployment is authorized by this roadmap. |
+
+## M1 physical test sequence and known evidence
+
+Run the diagnostic sequence on **both** boards, recording each result independently. Confirm model/revision from the assembled hardware and documentation before connecting or selecting a profile. No physical test is performed as part of this roadmap document.
+
+1. **Identity and safe setup:** confirm Board A is ESP32-S3-LCD-1.47B and Board B is the existing non-Touch ESP32-S3-LCD-1.69; inspect Board B hardware revision before any revision-dependent power/buzzer wiring. Confirm a known-safe power/USB setup and correct explicit profile.
+2. **Build/flash/serial smoke:** compile both profiles; with permission and a single operator, exercise native USB serial discovery, 1200-baud ROM entry, automatic upload, re-enumeration, boot log, and manual recovery path. Never infer physical board from USB identity.
+3. **Display/test card:** inspect full bounds, orientation, swatches/color order, backlight, font legibility, corner-safe text, compact HUD, candidate art density and gameplay area; get human review on both real screens before freezing viewport or HUD.
+4. **Inputs:** measure clockwise/counterclockwise totals per full revolution and click behavior for both knobs; verify polarity, missed/invalid transitions, debounce, held/press/release and safe release suppression. Use measured counts, not nominal 80 transitions/revolution, as the fitted hardware result.
+5. **Motion:** verify level reference, tilt axes/sign/scale and gyro axes/sign with documented orientation and repeatable observations. Don't infer gyro support from tilt pass.
+6. **Power/gestures:** verify short two-button Pause, long two-button sleep priority, release-before-confirmation, No restoring prior screen/game, wake from either button, and no stale wake press selecting an item. Safely validate GPIO3 strap/wake behavior on Board B before enabling that wake path.
+7. **Auto-off and current:** compare an open USB CDC host with USB power only; test fresh countdown after host close. Measure whole-board current only if making power claims. Treat battery startup/latching as unsupported until measured.
+8. **Record and review:** retain raw values, photos/log excerpts and firmware/profile hashes; mark each item pass/fail/unknown; file a decision for deviations. Do not repeat already accepted measurements without changed hardware/software or an evidence gap.
+
+**Previously confirmed for Board B (partial evidence only):** 280x240 landscape orientation and colors/backlight; clockwise-positive encoder direction; downhill tilt and level centering. Reuse this evidence with its provenance. Exact full-revolution counts, click feel, gyro signs, GPIO3 strap/wake behavior, sleep/wake, USB-host versus power-only auto-off, battery behavior and hardware revision remain outstanding.
+
+**Outstanding regression checks:** Board A 1.47B physical behavior; Board B sleep/wake and strap safety; exact knob counts/clicks; gyro axes; auto-off host/power distinction; any revision-dependent power/buzzer pins. Board B has no RGB LED capability; never drive GPIO38 as one. No touch hardware or features are in scope.
+
+## Dependency and parallel-work policy
+
+- **May proceed before H/V:** source/provenance audit; baseline CI; build scripts and native host tests; format/TOML decisions and fixtures; test-card code; toolchain pin research. Do not freeze any hardware-derived value.
+- **Must wait for H:** board-profile pin/power/wake acceptance, GPIO3 wake enablement, revision-dependent connections, device claims, and hardware-specific input/power API decisions.
+- **Must wait for V:** fixed viewport, text/sprite density, HUD placement, screen-space budgets, and geometry-sensitive game tuning.
+- **Must wait for C:** frozen button/hold contract, game controls that rely on dual-button arbitration, and pause/resume action boundaries.
+- **Must wait for R:** API freeze, broad kit investment, untrusted game execution claims, and release-like game installation.
+- **Must wait for human TiltBlock review:** full 2D redesign beyond a disposable concept prototype.
+- **Hardware scheduling:** one flash owner, one serial client and one board operation at a time. Keep hardware reservations short and scoped to a written test card; batch both-board tests to avoid setup churn. Non-hardware work may continue while waiting, but cannot claim a gate.
+
+## Decision records and deliverables
+
+For each gate, the owner should produce: test plan/card version; exact source and firmware hashes; board model/revision and profile; setup and safety checks; raw data/screenshots/logs; acceptance table with pass/fail/unknown; observed deviations and defect links; named reviewer and date; resulting decision record under `docs/decisions/`. Keep diagnostic firmware in a small dedicated path and do not entangle it with Lua/editor features.
+
+The [Lua runtime decision record](decisions/lua-runtime.md) records the current source pin and sandbox prototype without freezing its numeric model or limits. The roadmap does not decide other unresolved technical candidates (density, binary layout, exact resource limits, DMA strategy, or gesture tuning). It schedules the evidence that resolves them and preserves the explicit uncertainties in the normative specification.
