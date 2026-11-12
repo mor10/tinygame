@@ -37,6 +37,10 @@ constexpr std::uint32_t BEAM_CYAN = 0x86F8FF;
 constexpr ColorRamp GLOW_RAMP = makeRamp(tg::color::MINT, BEAM_CYAN);
 constexpr ColorRamp BEAM_FADE = makeRamp(BEAM_CYAN, tg::color::BG);
 constexpr ColorRamp BALL_FADE = makeRamp(tg::color::WHITE, tg::color::BG);
+constexpr int FLAT_GRID_X = 32;
+constexpr int FLAT_GRID_Y = 23;
+constexpr int FLAT_CELL_W = 32;
+constexpr int FLAT_CELL_H = 18;
 
 using Point = fb::Point;
 
@@ -128,14 +132,15 @@ public:
         if (buffer_) lv_draw_buf_destroy(buffer_);
     }
 
-    void render(const State& state, float raw_x, float raw_y, std::uint32_t best) {
+    void render(const State& state, float raw_x, float raw_y, std::uint32_t best,
+                bool flat_preview = false) {
         if (!canvas_ || !buffer_ || !fb_.valid()) return;
         updateChrome(state, best);
         // Chrome is separate LVGL objects: unchanged labels don't widen the
         // board's dirty rectangle into a full-screen display flush.
         fb_.clear(shown_scene_, BG565);
         fb_.resetDirty();
-        renderScene(state, raw_x, raw_y);
+        renderScene(state, raw_x, raw_y, flat_preview);
         const fb::Rect scene = fb_.dirty();
         const fb::Rect scene_area = fb::unite(shown_scene_, scene);
         shown_scene_ = scene;
@@ -212,8 +217,9 @@ private:
         chrome_ready_ = true;
     }
 
-    void renderScene(const State& state, float raw_x, float raw_y) {
+    void renderScene(const State& state, float raw_x, float raw_y, bool flat_preview) {
         state_ = &state;
+        flat_preview_ = flat_preview;
         scene_camera_ = false;
         camera_x_ = camera_y_ = 0;
         if (state.stage == Stage::Playing && state.earthquake > 0.0f) {
@@ -231,6 +237,15 @@ private:
             return;
         }
         camera_ = Camera::fit(state);
+        if (flat_preview_) {
+            drawFlatBoard(state);
+            if (state.stage == Stage::TractorSave) drawTractor(state);
+            if (state.monster_alive) drawMonster(state);
+            if (state.laser_flash > 0.0f) drawLaser(state);
+            if (state.monster_burst > 0.0f) drawBurst(state);
+            drawFeedback(state);
+            return;
+        }
         scene_camera_ = true;
         camera_x_ = static_cast<int>(std::lround(camera_x_ * camera_.zoom));
         camera_y_ = static_cast<int>(std::lround(camera_y_ * camera_.zoom));
@@ -246,8 +261,12 @@ private:
     }
 
     void drawLaser(const State& state) {
-        const Point start = camera_.project(boardPoint(state.laser_x1, state.laser_y1));
-        const Point ray = camera_.project(boardPoint(state.laser_x2, state.laser_y2));
+        const Point start = flat_preview_
+            ? flatPoint(state.laser_x1, state.laser_y1)
+            : camera_.project(boardPoint(state.laser_x1, state.laser_y1));
+        const Point ray = flat_preview_
+            ? flatPoint(state.laser_x2, state.laser_y2)
+            : camera_.project(boardPoint(state.laser_x2, state.laser_y2));
         const float dx = ray.x - start.x, dy = ray.y - start.y;
         float distance = 1.0f;
         if (dx > 0.0f) distance = std::min(distance, (tg::WIDTH - 1 - camera_x_ - start.x) / dx);
@@ -260,7 +279,9 @@ private:
     }
 
     void drawBurst(const State& state) {
-        const Point p = boardPoint(state.burst_x, state.burst_y, 2.0f);
+        const Point p = flat_preview_
+            ? flatPoint(state.burst_x, state.burst_y)
+            : boardPoint(state.burst_x, state.burst_y, 2.0f);
         const float progress = 1.0f - state.monster_burst / BURST_SECONDS;
         const float radius = 5.0f + progress * 22.0f;
         const std::uint32_t color = progress < 0.5f ? tg::color::WHITE : BEAM_CYAN;
@@ -286,13 +307,17 @@ private:
                 lv_obj_set_style_text_color(feedback_[i], lv_color_hex(color), 0);
                 shown_message_[i] = item.message;
             }
-            const Point p = camera_.project(boardPoint(std::clamp(item.x, 0.0f, 8.0f),
-                                                       std::clamp(item.y, 0.0f, 8.0f)));
+            const Point p = flat_preview_
+                ? flatPoint(std::clamp(item.x, 0.0f, 8.0f),
+                            std::clamp(item.y, 0.0f, 8.0f))
+                : camera_.project(boardPoint(std::clamp(item.x, 0.0f, 8.0f),
+                                             std::clamp(item.y, 0.0f, 8.0f)));
             const int width = static_cast<int>(std::strlen(Model::messageText(item.message))) * 8;
-            const float rise = (1.0f - item.remaining / FEEDBACK_SECONDS) * 14.0f * camera_.zoom;
+            const float zoom = flat_preview_ ? 1.0f : camera_.zoom;
+            const float rise = (1.0f - item.remaining / FEEDBACK_SECONDS) * 14.0f * zoom;
             lv_obj_set_pos(feedback_[i],
                 std::clamp(static_cast<int>(p.x) + camera_x_ - width / 2, 2, tg::WIDTH - width - 2),
-                std::clamp(static_cast<int>(p.y - 18.0f * camera_.zoom - rise) + camera_y_,
+                std::clamp(static_cast<int>(p.y - 18.0f * zoom - rise) + camera_y_,
                            20, tg::HEIGHT - 12));
         }
     }
@@ -377,6 +402,10 @@ private:
 
     Point boardPoint(float x, float y, float z = 0.0f) const {
         return tiltblock::boardPoint(*state_, x, y, z);
+    }
+
+    static Point flatPoint(float x, float y) {
+        return {FLAT_GRID_X + x * FLAT_CELL_W, FLAT_GRID_Y + y * FLAT_CELL_H};
     }
 
     static Point lower(Point point, float depth) {
@@ -575,6 +604,122 @@ private:
         if (!ball_drawn) drawBall(state);
     }
 
+    void drawFlatBoard(const State& state) {
+        if (state.stage == Stage::LevelClear) return;
+        const float beam_progress = state.stage == Stage::BeamUp
+            ? 1.0f - state.timer / BEAM_SECONDS : 0.0f;
+        for (int row = 0; row < SIDE; ++row) {
+            for (int col = 0; col < SIDE; ++col) {
+                const int index = Model::cell(col, row);
+                const int x = FLAT_GRID_X + col * FLAT_CELL_W;
+                const int y = FLAT_GRID_Y + row * FLAT_CELL_H;
+                if (state.stage == Stage::BeamUp) {
+                    const float diagonal = (col + row) / 14.0f;
+                    const float dissolve = std::clamp(
+                        (beam_progress - 0.25f - diagonal * 0.2f) / 0.65f, 0.0f, 1.0f);
+                    const float scale = 1.0f - dissolve;
+                    if (scale > 0.03f && !state.hole[index]) {
+                        const int width = std::max(1, static_cast<int>(28.0f * scale));
+                        const int height = std::max(1, static_cast<int>(14.0f * scale));
+                        const int left = x + (FLAT_CELL_W - width) / 2;
+                        const int top = y + (FLAT_CELL_H - height) / 2 -
+                                        static_cast<int>(dissolve * 12.0f);
+                        const std::uint32_t color = dissolve > 0.2f
+                            ? BEAM_CYAN : (state.touched[index] ? tg::color::MINT : CUBE_WALL);
+                        box(left, top, width, height, color);
+                        boxOutline(left, top, width, height, tg::color::WHITE);
+                    }
+                    continue;
+                }
+
+                std::uint32_t color = state.touched[index] ? tg::color::MINT : CUBE_DARK;
+                if (state.wall[index]) color = CUBE_WALL;
+                switch (state.bonus[index]) {
+                    case Bonus::Life: color = tg::color::LIME; break;
+                    case Bonus::Zone: color = tg::color::SKY; break;
+                    case Bonus::Boing: color = tg::color::YELLOW; break;
+                    case Bonus::Quake: color = tg::color::RED; break;
+                    case Bonus::Tractor: color = tg::color::PLUM; break;
+                    case Bonus::Laser: color = tg::color::ORANGE; break;
+                    case Bonus::None: break;
+                }
+                if (state.hole[index]) color = CUBE_HOLE;
+                box(x + 1, y + 1, FLAT_CELL_W - 2, FLAT_CELL_H - 2, color);
+                boxOutline(x, y, FLAT_CELL_W, FLAT_CELL_H, CUBE_GRID);
+                if (state.wall[index]) {
+                    box(x + 2, y + 2, FLAT_CELL_W - 4, 2, tg::color::SILVER);
+                }
+                if (state.hole[index]) {
+                    boxOutline(x + 7, y + 4, FLAT_CELL_W - 14, FLAT_CELL_H - 8, tg::color::LINE);
+                    line({static_cast<float>(x + 10), static_cast<float>(y + 6)},
+                         {static_cast<float>(x + FLAT_CELL_W - 10),
+                          static_cast<float>(y + FLAT_CELL_H - 6)}, tg::color::LINE);
+                    line({static_cast<float>(x + FLAT_CELL_W - 10),
+                          static_cast<float>(y + 6)},
+                         {static_cast<float>(x + 10),
+                          static_cast<float>(y + FLAT_CELL_H - 6)}, tg::color::LINE);
+                } else {
+                    const char icon = state.bonus[index] == Bonus::Life ? '+'
+                        : state.bonus[index] == Bonus::Zone ? 'Z'
+                        : state.bonus[index] == Bonus::Boing ? 'B'
+                        : state.bonus[index] == Bonus::Quake ? 'Q'
+                        : state.bonus[index] == Bonus::Tractor ? 'T'
+                        : state.bonus[index] == Bonus::Laser ? '!' : '\0';
+                    if (icon) glyphAt(x + FLAT_CELL_W / 2 - 1, y + FLAT_CELL_H / 2 - 2,
+                                      icon, tg::color::BG);
+                }
+            }
+        }
+        boxOutline(FLAT_GRID_X, FLAT_GRID_Y, FLAT_CELL_W * SIDE, FLAT_CELL_H * SIDE,
+                   tg::color::SILVER);
+        if (state.stage != Stage::BeamUp) drawFlatBall(state);
+    }
+
+    void drawFlatBall(const State& state) {
+        if (state.stage == Stage::Over) return;
+        Point p = flatPoint(state.x, state.y);
+        if (state.stage == Stage::TractorSave) p = flatPoint(4.0f, 4.0f);
+        if (state.safety > 0.0f && static_cast<int>(state.safety * 12.0f) % 2 == 0) return;
+        int radius = 4;
+        int clip_bottom = tg::HEIGHT;
+        std::uint16_t color = fb::rgb565(tg::color::WHITE);
+        if (state.stage == Stage::Falling) {
+            const float progress = std::clamp(1.0f - state.timer / FALL_SECONDS, 0.0f, 1.0f);
+            if (state.fall_hole) {
+                const Point center = flatPoint(std::floor(state.x) + 0.5f,
+                                               std::floor(state.y) + 0.5f);
+                const float settle = std::min(progress * 4.0f, 1.0f);
+                p.x += (center.x - p.x) * settle;
+                p.y += (center.y - p.y) * settle;
+                clip_bottom = static_cast<int>(p.y + 2);
+                p.y += progress * progress * 12.0f;
+                radius = std::max(1, static_cast<int>(4.0f * (1.0f - progress * 0.7f)));
+            } else {
+                p = flatPoint(state.x + state.vx * progress * 0.22f,
+                              state.y + state.vy * progress * 0.22f);
+                p.y += progress * progress * 58.0f;
+            }
+            color = BALL_FADE.step[rampStep(progress)];
+        } else {
+            box(static_cast<int>(p.x) - 5, static_cast<int>(p.y) + 4, 10, 2, SHADOW);
+            if (state.airborne > 0.0f) {
+                box(static_cast<int>(p.x) - 6, static_cast<int>(p.y) + 6,
+                    12, 1, tg::color::YELLOW);
+                p.y -= 10.0f + 5.0f * std::sin(state.airborne * 3.14159265f);
+            }
+        }
+        const int x = static_cast<int>(std::lround(p.x));
+        const int y = static_cast<int>(std::lround(p.y));
+        for (int row = -radius; row <= radius; ++row) {
+            if (y + row > clip_bottom) continue;
+            const int half = std::abs(row) == radius ? radius - 1 : radius;
+            box565(x - half, y + row, 2 * half + 1, 1, color);
+        }
+        if (state.laser_armed && state.stage != Stage::Falling) {
+            pixel(x, y - radius, tg::color::ORANGE);
+        }
+    }
+
     void drawWall(const State& state, int col, int row) {
         const int index = Model::cell(col, row);
         const Point raised = boardPoint(col + 0.5f, row + 0.5f, CUBE_HEIGHT);
@@ -638,7 +783,9 @@ private:
     }
 
     void drawMonster(const State& state) {
-        const Point p = boardPoint(state.monster_x, state.monster_y, 2.0f);
+        const Point p = flat_preview_
+            ? flatPoint(state.monster_x, state.monster_y)
+            : boardPoint(state.monster_x, state.monster_y, 2.0f);
         const int x = static_cast<int>(std::lround(p.x));
         const int y = static_cast<int>(std::lround(p.y));
         const std::uint32_t body = tg::color::FOREST;
@@ -654,7 +801,8 @@ private:
     }
 
     void drawTractor(const State& state) {
-        const Point p = boardPoint(4.0f, 4.0f, 18.0f);
+        const Point p = flat_preview_ ? flatPoint(4.0f, 4.0f)
+                                      : boardPoint(4.0f, 4.0f, 18.0f);
         const int x = static_cast<int>(std::lround(p.x));
         const int y = static_cast<int>(std::lround(p.y));
         box(x - 9, y - 3, 18, 5, tg::color::PLUM);
@@ -668,6 +816,7 @@ private:
     fb::Framebuffer fb_;
     Camera camera_;
     bool scene_camera_ = false;
+    bool flat_preview_ = false;
     fb::Rect shown_scene_;
     lv_obj_t* hud_ = nullptr;
     lv_obj_t* score_ = nullptr;
@@ -698,7 +847,7 @@ public:
         model_ = Model(seed_);
         model_.mutableState().best = tg::bestScore();
         view_.build(screen);
-        view_.render(model_.state(), 0.0f, 0.0f, model_.state().best);
+        view_.render(model_.state(), 0.0f, 0.0f, model_.state().best, flat_preview_);
         tg::led(tg::color::MINT);
     }
 
@@ -707,8 +856,13 @@ public:
         const std::int64_t t0 = esp_timer_get_time();
         bool rendered = false;
 #endif
+        tg::Input game_input = input;
+        if (model_.state().stage == Stage::ModeSelect && input.main.delta == 1237) {
+            flat_preview_ = true;
+            game_input.main.delta = 0;
+        }
         const State before = model_.state();
-        const unsigned events = model_.update(input, dt);
+        const unsigned events = model_.update(game_input, dt);
 #ifdef TILTBLOCK_PROFILING
         const std::int64_t t1 = esp_timer_get_time();
 #endif
@@ -727,7 +881,7 @@ public:
         draw_time_ += std::clamp(dt, 0.0f, 0.1f);
         if (draw_time_ >= 1.0f / 30.0f || events != NO_EVENT) {
             draw_time_ = std::fmod(draw_time_, 1.0f / 30.0f);
-            view_.render(state, input.tilt_x, input.tilt_y, state.best);
+            view_.render(state, input.tilt_x, input.tilt_y, state.best, flat_preview_);
 #ifdef TILTBLOCK_PROFILING
             rendered = true;
 #endif
@@ -738,6 +892,7 @@ public:
     }
 
 private:
+    bool flat_preview_ = false;
 #ifdef TILTBLOCK_PROFILING
     // Opt-in device timing: build with PLATFORMIO_BUILD_FLAGS=-DTILTBLOCK_PROFILE.
     // Aggregates are logged every 5 s; nothing is printed per frame.

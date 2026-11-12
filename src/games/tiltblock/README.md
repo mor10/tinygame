@@ -33,11 +33,14 @@ Clear all eight to start a harder level.
   Clearing a layer triggers a one-second cyan beam-up: the cubes pulse, a
   bright wave sweeps across them, and they shrink into rising beams of light
   before the block drops to the next layer. The last layer beams away too.
-- Click either knob to fire an armed laser. Hold either knob for the console's
-  pause menu. Each shot lasts 0.22 seconds, follows the ball's current rolling
-  direction as you steer, and reaches the screen edge. Brake to a stop during
-  a shot and it keeps its last direction. Shots that miss need three seconds
-  to recharge; click while stopped and "ROLL TO AIM" reminds you to move.
+- Click either knob to fire an armed laser. Hold both knobs together to open
+  Pause when released before three seconds, or keep holding for three seconds
+  to open the Sleep prompt. Release both knobs, then click to confirm Sleep;
+  choosing No returns to the game. Each shot lasts 0.22 seconds, follows the
+  ball's current rolling direction as you steer, and reaches the screen edge.
+  Brake to a stop during a shot and it keeps its last direction. Shots that
+  miss need three seconds to recharge; click while stopped and "ROLL TO AIM"
+  reminds you to move.
 - After game over, click either knob to choose a mode and start again.
 
 ## Special cubes
@@ -103,6 +106,11 @@ start at level 6 with an alien on the first layer. Use `turn right 1235` for
 the live alien/Laser lesson or `turn right 1236` for the mixed-feature finale.
 A physical knob cannot produce that many transitions in one
 update.
+
+For the front-on 2D presentation prototype, send `turn right 1237` on the
+mode screen, then click twice to select TILT and calibrate. It reuses the same
+game model and controls; ordinary launches keep the existing presentation
+while this prototype is reviewed.
 
 ### Drawing
 
