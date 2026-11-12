@@ -29,7 +29,7 @@ class State {
 public:
     void begin(std::uint8_t game_count, const settings::Settings& initial);
 
-    // One frame of input. `click` = short press, `hold` = long press.
+    // One frame of input. `click` = short press; `hold` = OS navigation/chord action.
     Action update(std::int32_t transitions, bool click, bool hold);
     // Jumps straight into a game (used by the dev tools).
     Action launch(std::uint8_t game_index);

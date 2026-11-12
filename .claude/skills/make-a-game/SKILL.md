@@ -68,7 +68,7 @@ TINYGAME(mygame::MyGame, "mygame", "MY GAME", tg::color::MINT)
 ## Rules (the console depends on them)
 
 - **Inputs:** games receive the two knobs and motion sensor through `tg::Input`. Never add other inputs or call `analogRead`, `digitalRead` or `Wire`.
-- **Long press is the OS pause menu.** Games never see it, so don't design a "hold" action. Use `down`/`held_ms` only for charge-up moves shorter than 0.6 s. After a long-press resume the knob is still held, so start actions from `pressed` or `click`, not `down` alone (see `references/input-recipes.md`).
+- **Individual holds are game input.** Use `down`, `held_ms`, and `released` for hold actions. When both knobs are down, the OS captures the chord and freezes the game; releasing both before three continuous seconds opens Pause (or goes back in menus), while three seconds opens Sleep confirmation. Chord input and releases are swallowed (see `references/input-recipes.md`).
 - **All mutable game state lives in your class.** Constants may be shared. Restart deletes the object and makes a new one, so there are no globals or `static` variables. Don't delete LVGL objects in the destructor; the OS deletes the screen first. Release separately owned buffers in the destructor.
 - **Create LVGL objects once in `start()`,** then move, hide, recolour or retext them in `update()`. Never create or delete objects every update, never `delay()`, and don't use `new` each update.
 - **Objects:** keep it under about 300. Pool and reuse bullets, particles and so on (see the recipes).

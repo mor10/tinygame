@@ -8,8 +8,8 @@ TinyGame is a tiny handheld game console: an ESP32-S3 with a 320×172 screen, tw
 - **Inputs** are the two knobs (turn + click) and the IMU (accelerometer and gyro). The RGB LED is the only extra output; there is no sound or touch.
 - **Main knob:** `tg::Input::main` is the right knob, or the left one when Settings > HANDEDNESS = LEFT. `left`/`right` are the physical knobs. Click, press, release and held state merge both knobs, so either click is the action button.
 - **Turning is continuous** (no detents): `delta` counts signed transitions, 80 per turn, clockwise positive. Menus take 4 per step and clamp at their ends. Steer positions with `tg::Steer` + `tg::glide` and choose options with `tg::Picker`, so every game feels the same.
-- **Long press belongs to the OS** (either knob): it opens the pause menu (Resume / Restart / Quit) or goes back in menus. Games never see it.
-- **Sleep shortcut:** holding both knobs together for 3 seconds takes priority over pause/back and opens a Yes/No sleep prompt. Release both, then make a fresh click to confirm. No restores the prior game/menu state.
+- **Individual holds belong to games.** A solo knob hold never pauses or navigates away; games may use `down`, `held_ms`, and `released`.
+- **Pause / Sleep chord:** when both knobs are down, the OS captures both inputs and freezes the game. Releasing both before three continuous seconds opens Pause (or goes back in menus); keeping both down for three seconds opens the Yes/No sleep prompt. The chord and its releases are swallowed. Release both, then make a fresh click to confirm; No restores the prior game/menu state.
 - **Sleep:** System > Sleep or the auto-off idle timeout enters deep sleep, and a knob click wakes it. Settings > AUTO-OFF defaults to ON; OFF AFTER offers 1, 5 (default), 10, 15 or 30 minutes. Turns, clicks and holds count as activity; tilt doesn't. An active USB CDC serial host suspends auto-off; USB power alone doesn't. Closing the host starts a fresh countdown. Manual Sleep still works. Game state isn't kept. Never add blocking wait loops; see the `waveshare-esp32-s3-lcd-147b` skill.
 - **Screen:** 320×172 landscape, dark mode only, styled by the style library (`include/tg_style.h`). Use its tokens. Raw hex colours are only for game-specific art inside a game folder.
 - **LVGL 9.6 APIs only.** Many examples online are LVGL 8.
@@ -66,8 +66,10 @@ docs/wiring.md          encoder wiring and the sleep/wake design
 
 ```bash
 python3 tools/tg.py new <id> "<NAME>"   # new game from the template
-python3 tools/tg.py build               # compile firmware
-python3 tools/tg.py flash               # compile + upload
+python3 tools/tg.py doctor              # check host prerequisites and USB discovery
+python3 tools/tg.py build               # compile default 1.47B firmware
+python3 tools/tg.py build --board 169   # compile 1.69 firmware
+python3 tools/tg.py flash --board 147b # compile + upload to the explicit profile
 python3 tools/tg.py test                # host unit tests (OS, tools, every game)
 python3 tools/tg.py monitor -s 10       # read the serial log
 python3 tools/tg.py send "launch <id>" "turn right 20" click "tilt 0.5 0" "wait 1"
@@ -77,7 +79,7 @@ python3 tools/tg.py sim --build-only   # build WebAssembly without serving
 python3 tools/tg.py bridge             # USB console as simulator controller
 ```
 
-`flash`, `monitor`, `send`, `shot` and `bridge` take `--port <device>`; it's required when several boards are connected. For `sim`, `--port` is an HTTP port number, not a serial device.
+`flash` requires `--board 147b|169`; `flash`, `monitor`, `send`, `shot` and `bridge` take `--port <device>`, required when several boards are connected. For `sim`, `--port` is an HTTP port number, not a serial device.
 
 Dev commands for `send`: `turn <left|right> <signed-transitions>`, `click|hold|down|up [left|right]` (default left), `tilt <x> <y>|off`, `launch <id>`, `info`, `log on|off`, `wait <seconds>`. Simulated input counts as activity for the idle timer but can't wake the board. Release held or injected input when done (a stuck `down` blocks idle sleep and hides that knob's real presses): `send "up left" "up right" "tilt off"`. System > Diagnostics shows live knob readings (see the README).
 
@@ -100,7 +102,8 @@ report the blocked check instead of claiming visual verification.
   in `send`, read logs incrementally using `next` as `since`, and save/inspect
   representative screenshots, not every intermediate frame.
   CLI `tg.py send/shot` target USB, not the browser.
-- Source saves trigger rebuild/reload. A compile error leaves the previous
+- Saves under `src/`, `include/`, `sim/`, or text game sources under `games/`
+  trigger rebuild/reload. A compile error leaves the previous
   firmware visible, so check `buildError` before calling a preview current.
   `reload` restarts loaded firmware, not a build. Reuse a successful watcher
   build; do not rebuild unchanged sources just to obtain the same evidence.
@@ -117,13 +120,13 @@ report the blocked check instead of claiming visual verification.
 
 1. For firmware/game changes, `tg.py test` and the firmware build pass with no
    new warnings. `tg.py test` has no game filter; run it once after the edit
-   batch. `tg.py flash` includes the build, so a separate `build` is unnecessary
+   batch. `tg.py flash --board <147b|169>` includes the build, so a separate `build` is unnecessary
    when flashing the same sources.
 2. For game/OS behaviour or visuals, the WebAssembly build passes (via
    `tg.py sim --build-only` or the simulator watcher); exercise the acceptance
    scenarios above and inspect saved screenshots. A boot alone is not enough.
 3. For firmware/game changes with a board attached, disconnect any controller
-   bridge, run `tg.py flash`, drive the change with `send` and inspect a `shot`.
+   bridge, run `tg.py flash --board <147b|169>`, drive the change with `send` and inspect a `shot`.
    Browser-only UI changes do not need a firmware flash.
 4. Say what remains physical: knob feel/direction, tilt direction, LED colours
    and gyro gestures. Documentation-only changes need a consistency/diff

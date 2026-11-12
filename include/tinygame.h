@@ -27,8 +27,9 @@
 // Rules of the console:
 //   * Inputs are only the two encoders (turns + clicks) and the motion sensor.
 //     Steer with in.main + tg::Steer + tg::glide; pick options with tg::Picker.
-//   * A long press always opens the OS pause menu (Resume / Restart / Quit).
-//     Your game never sees it, and update() is not called while paused.
+//   * Individual knob holds are game input. Holding both knobs starts an OS
+//     chord: release before three seconds for Pause, or hold three seconds for
+//     Sleep confirmation. The chord is swallowed and freezes game updates.
 //   * Restart and Quit delete your game object and its screen, and Restart
 //     makes a fresh one. Keep all state in your class (no globals), and don't
 //     delete LVGL objects in your destructor.
@@ -49,8 +50,14 @@ public:
     virtual void start(lv_obj_t* screen) = 0;
     // Called each OS update. `dt` = elapsed seconds, not a guaranteed frame rate.
     virtual void update(const Input& in, float dt) = 0;
+    // The OS supplies unclamped elapsed time separately for fixed-step hosts.
+    virtual void updateTimed(const Input& in, float dt, std::uint32_t /*elapsed_us*/) {
+        update(in, dt);
+    }
     // Optional: told when the pause menu opens (true) and closes (false).
     virtual void paused(bool /*is_paused*/) {}
+    // The OS has captured input for a system gesture.
+    virtual void inputBlocked() {}
 };
 
 // ---- Scores (saved in flash, per game) -------------------------------------

@@ -11,9 +11,11 @@
 
 #include "devtools.h"
 #include "display.h"
+#include "game_store.h"
 #include "imu.h"
 #include "input.h"
 #include "input_adapter.h"
+#include "lua_bundle_game.h"
 #include "persistence.h"
 #include "power.h"
 #include "power_state.h"
@@ -21,7 +23,7 @@
 #include "rgb_led.h"
 #include "shell_state.h"
 #include "shell_ui.h"
-#include "sleep_gesture.h"
+#include "button_gesture.h"
 #include "status_light.h"
 #include "storage.h"
 #include "tinygame.h"
@@ -48,11 +50,12 @@ Screen logged_screen = Screen::Welcome;
 bool logged_sleep_confirmation = false;
 input_adapter::Adapter input_adapter;
 power_state::State power_state;
-sleep_gesture::Gesture sleep_gesture;
+button_gesture::Gesture button_gesture;
 lv_obj_t* controller_screen = nullptr;
 lv_obj_t* controller_previous_screen = nullptr;
 bool controller_resume_game = false;
 bool controller_releasing = false;
+game_store::InstalledGame installed_games[registry::MAX_GAMES] = {};
 
 // The running game.
 struct Running {
@@ -83,7 +86,7 @@ void startGame(std::uint8_t index) {
     running.led_rgb = info.color;
     running.best.value = storage::loadBest(info.id);
     running.screen = lv_obj_create(nullptr);
-    running.game = info.create();
+    running.game = info.create != nullptr ? info.create() : info.createInstalled(info.id);
     running.game->start(running.screen);
     lv_screen_load(running.screen);
     Serial.printf("[APP] start %s heap=%lu\n", info.id,
@@ -199,6 +202,32 @@ bool initialize() {
     if (!input::initialize(millis())) return false;
     rgb_led::initialize();
     imu::initialize();
+    if (!game_store::initialize()) {
+        Serial.println("[STORE] game storage unavailable; game installation disabled");
+    } else {
+        Serial.printf("[STORE] total=%lu free=%lu max-bundle=%lu\n",
+                      static_cast<unsigned long>(game_store::totalBytes()),
+                      static_cast<unsigned long>(game_store::freeBytes()),
+                      static_cast<unsigned long>(game_store::maxBundleBytes()));
+    }
+    std::size_t installed_count = 0;
+    const auto installed_result = game_store::listInstalled(
+        installed_games, registry::MAX_GAMES, installed_count);
+    if (installed_result != game_store::Error::None) {
+        Serial.printf("[STORE] catalog failed: %s\n", game_store::errorMessage(installed_result));
+    }
+#ifdef __EMSCRIPTEN__
+    os::lua_game::registerSimulatorGames(installed_games, installed_count);
+#endif
+    for (std::size_t i = 0; i < installed_count; ++i) {
+        const tg::GameInfo info{
+            installed_games[i].id, installed_games[i].name, tg::color::MINT, nullptr,
+            os::lua_game::createInstalledGame};
+        if (!registry::add(info)) {
+            Serial.printf("[STORE] could not register installed game %s\n",
+                          installed_games[i].id);
+        }
+    }
     if (!display::initialize()) {
         Serial.println("[BOOT] display failed");
         return false;
@@ -227,7 +256,8 @@ bool initialize() {
 void update() {
     const std::uint32_t now_ms = millis();
     const std::uint32_t now_us = micros();
-    float dt = static_cast<float>(now_us - last_update_us) / 1'000'000.0f;
+    const std::uint32_t elapsed_us = now_us - last_update_us;
+    float dt = static_cast<float>(elapsed_us) / 1'000'000.0f;
     last_update_us = now_us;
     if (dt > MAX_FRAME_SECONDS) {
         dt = MAX_FRAME_SECONDS;
@@ -297,11 +327,11 @@ void update() {
         return;
     }
     const bool left_handed = shell_state.settings().leftHanded();
-    const std::uint8_t events = hw.left.button.events | dev.left.events |
-                                hw.right.button.events | dev.right.events;
     tg::Input in = input_adapter.read(hw, imu::reading(), dev, now_ms, left_handed);
-    const bool sleep_requested = sleep_gesture.update(in.left.down, in.right.down, now_ms);
-    if (sleep_gesture.blocked()) {
+    const auto gesture_event = button_gesture.update(in.left.down, in.right.down, now_ms);
+    const bool sleep_requested = gesture_event == button_gesture::Gesture::Event::Sleep;
+    if (button_gesture.blocked()) {
+        if (running.game != nullptr) running.game->inputBlocked();
         in.left.click = in.right.click = in.click = false;
         in.left.pressed = in.right.pressed = in.pressed = false;
         in.left.released = in.right.released = in.released = false;
@@ -311,8 +341,8 @@ void update() {
     }
 
     Action action = sleep_requested ? shell_state.confirmSleep() :
-        shell_state.update(sleep_gesture.blocked() ? 0 : in.main.delta, in.click,
-                           !sleep_gesture.blocked() && (events & input::EVENT_LONG_PRESS) != 0);
+        shell_state.update(button_gesture.blocked() ? 0 : in.main.delta, in.click,
+                           gesture_event == button_gesture::Gesture::Event::Pause);
     if (dev.launch >= 0) {
         action = shell_state.launch(static_cast<std::uint8_t>(dev.launch));
         if (action == Action::Launch && running.game != nullptr) {
@@ -372,8 +402,8 @@ void update() {
 
     // A click that just launched or resumed a game is not passed to it.
     if (shell_state.screen() == Screen::Game && !shell_state.sleepConfirming() &&
-        action == Action::None) {
-        running.game->update(in, dt);
+        action == Action::None && !button_gesture.blocked()) {
+        running.game->updateTimed(in, dt, elapsed_us);
     }
 
     handleSettings();

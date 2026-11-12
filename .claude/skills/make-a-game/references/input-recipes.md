@@ -41,9 +41,10 @@ if (in.down) charge_ += dt;              // while held
 if (in.released) shoot(charge_);         // the moment it comes up
 ```
 
-- A long press (about 0.65 s) always opens the OS pause menu. Keep charge-up moves shorter, or cap them at about 0.5 s.
+- Individual knob holds remain available to the game; there is no solo-hold timeout for Pause.
+- When both knobs are down, the OS captures the chord and pauses game updates. Releasing both before three continuous seconds opens Pause (or goes back in menus); holding both continuously for three seconds opens Sleep confirmation. The chord and its releases are swallowed.
 - `click` comes on release, so it feels about 0.1 s slower than `pressed`. For reaction games, use `pressed`.
-- If the player resumes from pause with a long press, that knob is still held: it reports `down` and a large `held_ms` (but no new `pressed`) until released, and then `released`. Start charge-ups from `pressed`, not from `down` alone.
+- After Pause or Sleep confirmation, release both knobs and use a fresh click to confirm or resume. Do not rely on the captured chord to trigger an in-game action.
 
 ## Tilt (motion sensor)
 
@@ -94,7 +95,8 @@ JavaScript version of the game. Source saves rebuild/reload to a fresh run.
 | Right | J | K | L |
 
 Each turn key tap sends four transitions; holding repeats. S/K stay down until
-released, so holding them past 650 ms tests the real OS pause/back path. Drag a
+released. Hold both together and release before three seconds to test the real
+OS pause/back path; hold both for three seconds to test Sleep. Drag a
 knob's rim or scroll to turn it, and press its centre to click/hold. Use arrow
 keys or drag the screen for tilt, returning to level on release.
 
@@ -135,6 +137,6 @@ python3 tools/tg.py shot
 python3 tools/tg.py send "up left" "up right" "tilt off"   # release anything still held
 ```
 
-`turn` is signed transitions (80 per revolution, clockwise positive) and `click` is a full press and release. `down` holds a knob until `up`, which exercises the held state. `hold` injects the OS long press, which opens pause. Each of these takes `left` or `right` (default `left`). Handedness decides which knob is `main`, so turn the right knob unless Settings says LEFT. The CLI exits non-zero if the board reports an error or doesn't answer.
+`turn` is signed transitions (80 per revolution, clockwise positive) and `click` is a full press and release. `down` holds a knob until `up`, which exercises the held state. To test Pause, hold both knobs with `down left` and `down right`, then release both with `up left` and `up right` before three seconds. Hold both for three seconds to test Sleep confirmation. `hold` injects a legacy long-press event for diagnostics; it does not open Pause. Each command takes `left` or `right` (default `left`) where applicable. Handedness decides which knob is `main`, so turn the right knob unless Settings says LEFT. The CLI exits non-zero if the board reports an error or doesn't answer.
 These CLI commands target the USB board, not a running simulator. Disconnect
 **Use connected console** first so the serial port is available.

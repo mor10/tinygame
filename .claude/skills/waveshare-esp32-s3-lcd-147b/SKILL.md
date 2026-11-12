@@ -38,10 +38,7 @@ Nominal 20-pulse encoders give 80 electrical transitions per revolution. ISR
 capture uses both A/B edges with atomic snapshots; never apply the 25 ms switch
 debounce to encoder A/B.
 
-The main encoder (right by default; left when Settings > HANDEDNESS = LEFT) navigates menus (four transitions/step, clamped). A click on either encoder selects, and a 650 ms hold on either pauses/goes back. Both clicks remain on Diagnostics; either hold exits. Games get `tg::Input::main/left/right` transition deltas plus merged button state, without long-press or sleep events.
-Holding both switches together for 3 seconds opens the OS sleep confirmation
-instead of pause/back. Chord presses and releases are swallowed; confirmation
-requires releasing both and then clicking again. No resumes the prior state.
+The main encoder (right by default; left when Settings > HANDEDNESS = LEFT) navigates menus (four transitions/step, clamped). A click on either encoder selects. Individual holds are delivered to games and do not pause or navigate. When both switches are down, the OS captures the chord and freezes gameplay; releasing both before three continuous seconds opens Pause or goes back in menus, while a continuous three-second hold opens Sleep confirmation. Chord presses and releases are swallowed; confirmation requires releasing both and then clicking again. No resumes the prior state.
 
 ## Deep sleep
 
@@ -94,7 +91,7 @@ See `.github/extensions/tinygame-simulator/README.md` for canvas setup/actions.
 - Physical totals already include the board's direction calibration. Forward
   differences directly to the simulator; don't apply direction a second time.
   `input::rawButtonDown(bool left)` supplies physical switch levels before
-  debounce; the simulator runs the shared button debounce/long-press logic.
+  debounce; the simulator runs the shared button debounce/held-state logic.
 - The bridge sends `stream ping` once a second. `stream off`, USB disconnect or
   3 seconds without a heartbeat returns the board to normal, swallowing held
   release events rather than accidentally selecting a menu item.
