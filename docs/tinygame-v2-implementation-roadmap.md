@@ -93,6 +93,55 @@ These are partial observations, not acceptance of the full display, input
 or IMU gates. Sleep/wake, auto-off, control policy, device performance and
 all outstanding 1.69 checks require their separate waypoints.
 
+**Encoder investigation, 2026-11-12:** with both knobs untouched and the
+serial host open, 151 samples over 15 seconds showed stable L=14/ERR=7 and
+R=-10/ERR=8. In a separate serial-host-closed trial, the user reported starting
+both totals and errors at zero and turning each knob five clockwise
+revolutions: L=365/ERR=17 and R=365/ERR=18. With the serial host open, the
+next trial ended at L=829/ERR=25 and R=750/ERR=26. The user was unsure whether
+the left knob made five or six revolutions in that second trial; exclude its
+count from a five-turn comparison. For the reported five turns on the right,
+the open-host change was +385/ERR+8. The closed- and open-host trials both
+show errors, but their different operator-controlled speeds and small sample
+size do not quantify a serial-host effect. No image was reflashed.
+
+`ERR` counts snapshots where both quadrature bits differ from the last
+sample; it is not a count of lost steps or a proof of their direction. A
+two-bit jump can result from missed intermediate edges, contact bounce,
+electrical noise or nearly simultaneous transitions. Ordinary one-bit bounce
+can cancel in the decoder. The diagnostic displays a cumulative copy of
+the same ISR counter sent over serial; the repeated idle readings rule out
+continuous stationary drift during that interval, not intermittent noise.
+For 1.47B both signals are sampled together from the same GPIO register.
+The v1 decoder and interrupt capture use the same quadrature logic; v2 adds
+a high-bank register read for the other board. The available evidence does
+not isolate a regression, establish the waveform, or justify inferring and
+adding missing counts. Do not mask errors, apply the button debounce to knob
+signals, or change the decoder until the cause is measured.
+
+**Repeatable retest:** use a visible index mark and note starting/ending
+totals and ERR without resetting during each trial. For each knob separately,
+record three five-turn trials clockwise and three counterclockwise at a
+steady slow pace, then repeat at normal play speed, with USB serial closed
+and open. Record elapsed time, signed count change and ERR change for every
+trial. The nominal 20-pulse encoder implies 400 transitions per five turns,
+but verify the fitted encoder and indexing before treating this as an exact
+requirement. Target correct direction, repeatable measured counts and no new
+invalid transitions; any discrepancy remains open, not auto-corrected. If
+errors persist, correlate the two 3.3 V A/B signals with an independent,
+appropriately connected logic analyzer or oscilloscope and compare its edges
+with the firmware observations; only a time-resolved reference can help
+separate contact/electrical effects from software sampling loss. Hardware
+connection changes require operator review. The user reports no analyzer or
+oscilloscope is available. As a software-only next experiment, assess an
+independent ESP32 pulse-counter comparison in the diagnostic image without
+changing the gameplay decoder; verify its pin routing and overflow behavior
+before use. Such a counter may distinguish firmware sampling loss from its
+own count, but cannot independently establish contact waveform quality.
+Any new image requires separate flash authorization. Retest any justified
+correction against the same reference on the 1.47B and later on the deferred
+1.69.
+
 The smallest useful hardware image is the isolated `test-card-147b`, not the
 full application. On 2026-11-12 it built successfully from the current worktree:
 `.pio/build/test-card-147b/firmware.bin`, SHA-256
