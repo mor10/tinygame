@@ -6,7 +6,7 @@
 
 - **Main knob** (right knob, or left knob in left-handed mode): move the paddle. Turn slowly to aim precisely, spin fast to cross the screen
 - **Click** (either knob): launch the ball; with the Laser power-up, fire
-- **Hold:** pause menu (Resume / Restart / Quit)
+- **Press both knobs together, then release:** pause menu (Resume / Restart / Quit)
 - Clear every brick to reach the next level. Grey bricks take two hits.
 
 ## Power-ups

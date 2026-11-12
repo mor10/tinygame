@@ -119,28 +119,12 @@ not isolate a regression, establish the waveform, or justify inferring and
 adding missing counts. Do not mask errors, apply the button debounce to knob
 signals, or change the decoder until the cause is measured.
 
-**Repeatable retest:** use a visible index mark and note starting/ending
-totals and ERR without resetting during each trial. For each knob separately,
-record three five-turn trials clockwise and three counterclockwise at a
-steady slow pace, then repeat at normal play speed, with USB serial closed
-and open. Record elapsed time, signed count change and ERR change for every
-trial. The nominal 20-pulse encoder implies 400 transitions per five turns,
-but verify the fitted encoder and indexing before treating this as an exact
-requirement. Target correct direction, repeatable measured counts and no new
-invalid transitions; any discrepancy remains open, not auto-corrected. If
-errors persist, correlate the two 3.3 V A/B signals with an independent,
-appropriately connected logic analyzer or oscilloscope and compare its edges
-with the firmware observations; only a time-resolved reference can help
-separate contact/electrical effects from software sampling loss. Hardware
-connection changes require operator review. The user reports no analyzer or
-oscilloscope is available. As a software-only next experiment, assess an
-independent ESP32 pulse-counter comparison in the diagnostic image without
-changing the gameplay decoder; verify its pin routing and overflow behavior
-before use. Such a counter may distinguish firmware sampling loss from its
-own count, but cannot independently establish contact waveform quality.
-Any new image requires separate flash authorization. Retest any justified
-correction against the same reference on the 1.47B and later on the deferred
-1.69.
+**Practical acceptance:** the user directs that this is a toy, not a
+precision instrument. Assess the actual game and menu experience: correct
+direction, responsive movement and no noticeable dropped or erratic input.
+Exact transitions per turn and a zero diagnostic ERR count are not product
+requirements. Investigate the counter discrepancy further only if it causes
+a player-visible problem; do not silently infer or mask missing transitions.
 
 **Counter waypoint:** a 1.47B-only test-card candidate
 adds a `counter` command comparing unfiltered on-chip PCNT counts against
@@ -207,7 +191,8 @@ changes were both -2 with no new left invalid events. The right changes were
 changes, not a count of the individual reversals; the exact return phase and
 intermediate paths were not independently measured.
 
-**Next counter-limit experiment:** before replacing game input, develop a
+**Deferred counter-limit experiment:** if gameplay reveals a problem and
+PCNT is considered as a replacement, develop a
 test-card-only extended counter using the two remaining PCNT units and the
 same existing inputs, leaving units 0/1 as the reference. Exercise positive
 and negative limit events with a deliberately small limit, repeated
@@ -219,6 +204,24 @@ ownership, GPIO routing and all four PCNT units' allocation before building.
 Require explicit authorization before flashing the new test image. Passing
 this experiment would establish a candidate rollover mechanism, not validate
 contact noise, full 1.47B gameplay, or the deferred 1.69.
+
+**Next 1.47B gameplay waypoint:** the existing v2 application firmware
+includes the shell, v1-style knob decoder, and built-in Brick Breaker. It is
+not the complete v2 release or an installed Lua game. The prepared application
+SHA-256 is `1b0bdd1ecaef4fec02b9a6795a225d7b63c52353cf9a28341a0aae80cbe433f7`.
+With separate user approval, flash only this application at `0x10000`; leave
+the current bootloader, partition table and OTA selection unchanged. This
+replaces the test card. There is no verified flash backup. On first startup
+the application can format the LittleFS partition only if it is entirely blank,
+create its game directory and recover or remove staged install files; settings
+and best scores can also be written during use. Existing data may be affected.
+
+For a short hands-on check: use a knob and click to open Brick Breaker; turn
+the main knob slowly and quickly in both directions and judge whether the
+paddle follows naturally; click to launch and play briefly. Press both knobs
+together and release before three seconds to pause, then resume. A successful
+experience is useful 1.47B gameplay evidence, not proof of sleep, auto-off,
+Lua installation, all v2 controls or the deferred 1.69.
 
 The smallest useful hardware image is the isolated `test-card-147b`, not the
 full application. On 2026-11-12 it built successfully from the current worktree:
