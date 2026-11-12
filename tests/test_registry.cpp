@@ -5,13 +5,14 @@
 #include "registry.h"
 
 tg::Game* factory() { return nullptr; }
+tg::Game* installedFactory(const char*) { return nullptr; }
 
 int main() {
     assert(!registry::add({nullptr, "NAME", 0, factory}));
     assert(!registry::add({"Upper", "NAME", 0, factory}));
     assert(!registry::add({"valid", " ", 0, factory}));
     assert(!registry::add({"valid", "NAME", 0, nullptr}));
-    assert(registry::add({"first", "ZED", 0, factory}));
+    assert(registry::add({"first", "ZED", 0, nullptr, installedFactory}));
     assert(!registry::add({"first", "ALIAS", 0, factory}));
     char ids[registry::MAX_GAMES][16];
     for (int i = 1; i < registry::MAX_GAMES; ++i) {

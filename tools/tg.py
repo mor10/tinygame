@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """TinyGame helper: build, flash, test, and talk to the console over USB.
 
-  python3 tools/tg.py build                 compile the firmware
-  python3 tools/tg.py flash                 compile + upload to the board
+  python3 tools/tg.py build [--board 147b|169]  compile firmware
+  python3 tools/tg.py flash --board 147b|169     compile + upload to that profile
+  python3 tools/tg.py test-card-build --board 147b|169  build diagnostics
+  python3 tools/tg.py test-card-flash --board 147b|169  flash diagnostics
   python3 tools/tg.py test                  run all unit tests on this computer
+  python3 tools/tg.py doctor                check host prerequisites and USB discovery
   python3 tools/tg.py monitor [-s 10]       print the board's log for N seconds
   python3 tools/tg.py send "turn left 4" click  send dev commands (see below)
   python3 tools/tg.py shot [file.png]       save a screenshot (default shot.png)
+  python3 tools/tg.py describe <id>         summarize a v2 text game
+  python3 tools/tg.py push <id> --board 147b|169  install a game over USB
   python3 tools/tg.py new <id> "<NAME>"     create src/games/<id>/ from the template
   python3 tools/tg.py sim                  run the browser simulator
   python3 tools/tg.py bridge --port <USB>  stream physical controls as JSON lines
@@ -23,6 +28,7 @@ import argparse
 import base64
 import binascii
 import glob
+import importlib.util
 import json
 import math
 import os
@@ -37,8 +43,17 @@ import time
 import zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
+if TOOLS_DIR not in sys.path:
+    sys.path.insert(0, TOOLS_DIR)
+
+from lua_source import SOURCE_FILES as LUA_SOURCE_FILES, source_dir as lua_source_dir
+from lua_check import check_sources as check_lua_sources
+
 TEMPLATE = os.path.join(ROOT, ".claude", "skills", "make-a-game", "template")
 ESPRESSIF_USB_VID = 0x303A
+BUILD_ENVS = {"147b": "esp32-s3-lcd-147b", "169": "esp32-s3-lcd-169"}
+TEST_CARD_ENVS = {"147b": "test-card-147b", "169": "test-card-169"}
 CXXFLAGS = ["-std=c++17", "-Wall", "-Wextra", "-Werror"]
 CXX_KEYWORDS = set("""
 alignas alignof and and_eq asm auto bitand bitor bool break case catch char
@@ -52,7 +67,7 @@ virtual void volatile wchar_t while xor xor_eq std
 """.split())
 # Files that (directly or via local headers) include these need the board or
 # LVGL, so host tests skip them.
-DEVICE_HEADERS = {"lvgl.h", "Arduino.h"}
+DEVICE_HEADERS = {"lvgl.h", "Arduino.h", "lauxlib.h", "lua.h", "lualib.h"}
 INCLUDE = re.compile(r'#include\s*[<"]([^>"]+)[>"]')
 
 
@@ -97,12 +112,319 @@ def read_lines(port, seconds, stop=None):
                 return
 
 
-def cmd_build(_):
-    return pio("run")
+def cmd_build(args):
+    target = BUILD_ENVS[args.board]
+    return pio("run", "-e", target)
+
+
+def _doctor_version(command):
+    executable = command[0]
+    if not os.path.isabs(executable) and shutil.which(executable) is None:
+        return None, f"{executable} executable not found"
+    try:
+        result = subprocess.run(command, check=False, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError) as error:
+        return None, f"could not run {executable}: {error}"
+    output = result.stdout.strip().splitlines()
+    if result.returncode != 0 or not output:
+        return None, f"{executable} returned no usable version"
+    return output[0], None
+
+
+def _doctor_serial_ports():
+    from serial.tools import list_ports
+
+    return sorted([
+        {"device": port.device, "vid": port.vid, "pid": port.pid}
+        for port in list_ports.comports()
+        if port.vid == ESPRESSIF_USB_VID
+    ], key=lambda port: port["device"])
+
+
+def collect_doctor_report():
+    checks = []
+
+    def add_check(name, status, detail):
+        checks.append({"name": name, "status": status, "detail": detail})
+
+    python_version = ".".join(str(part) for part in sys.version_info[:3])
+    python_ok = sys.version_info >= (3, 11)
+    add_check("python", "ok" if python_ok else "error",
+              f"Python {python_version}" +
+              ("" if python_ok else "; Python 3.11+ is required for game bundle tools"))
+
+    platformio, error = _doctor_version([sys.executable, "-m", "platformio", "--version"])
+    add_check("platformio", "ok" if error is None else "error",
+              platformio if error is None else error)
+
+    compiler = os.environ.get("CXX", "c++")
+    compiler_version, error = _doctor_version([compiler, "--version"])
+    add_check("cxx", "ok" if error is None else "error",
+              compiler_version if error is None else error)
+
+    node, error = _doctor_version(["node", "--version"])
+    node_match = re.search(r"v?(\d+)\.\d+(?:\.\d+)?", node or "")
+    node_ok = error is None and node_match is not None and int(node_match.group(1)) >= 22
+    add_check("node", "ok" if node_ok else "error",
+              node if node_ok else (error or f"{node or 'Unknown version'}; Node.js 22+ is required"))
+
+    for executable in ("git", "curl"):
+        version, error = _doctor_version([executable, "--version"])
+        add_check(executable, "ok" if error is None else "error",
+                  version if error is None else error)
+
+    serial_available = importlib.util.find_spec("serial") is not None
+    add_check("pyserial", "ok" if serial_available else "warning",
+              "available" if serial_available else "not installed; USB commands will be unavailable")
+    ports = []
+    if serial_available:
+        try:
+            ports = _doctor_serial_ports()
+        except (ImportError, OSError) as error:
+            add_check("usb", "warning", f"port discovery failed: {error}")
+        else:
+            detail = ("no Espressif USB serial ports detected" if not ports else
+                      f"{len(ports)} Espressif USB serial port(s) detected; select --port if needed")
+            add_check("usb", "info" if len(ports) <= 1 else "warning", detail)
+    else:
+        add_check("usb", "warning", "port discovery requires pyserial")
+
+    return {
+        "schemaVersion": 1,
+        "profiles": sorted(BUILD_ENVS),
+        "usbPorts": ports[:8],
+        "usbPortsTruncated": len(ports) > 8,
+        "boardIdentityInferred": False,
+        "checks": checks,
+    }
+
+
+def cmd_doctor(args):
+    report = collect_doctor_report()
+    if args.json:
+        print(json.dumps(report, separators=(",", ":"), allow_nan=False))
+    else:
+        print("TinyGame host diagnostics (read-only)")
+        for check in report["checks"]:
+            print(f"{check['status'].upper():7} {check['name']}: {check['detail']}")
+        print("USB VID 303A ports are not proof of physical board identity.")
+        if report["usbPorts"]:
+            for port in report["usbPorts"]:
+                pid = "unknown" if port["pid"] is None else f"{port['pid']:04X}"
+                print(f"        {port['device']} (VID {port['vid']:04X}, PID {pid})")
+        if report["usbPortsTruncated"]:
+            print("        Additional matching ports omitted.")
+    return 1 if any(check["status"] == "error" for check in report["checks"]) else 0
+
+
+def game_directories(game_id=None):
+    root = os.path.join(ROOT, "games")
+    if os.path.islink(root):
+        raise RuntimeError("The games directory must not be a symlink.")
+    if game_id:
+        if not re.fullmatch(r"[a-z][a-z0-9_]{0,14}", game_id):
+            raise ValueError("Game id: lowercase letters, digits, _; start with a letter; max 15.")
+        paths = [os.path.join(root, game_id)]
+    else:
+        paths = sorted(glob.glob(os.path.join(root, "*")))
+    directories = [path for path in paths if os.path.isdir(path)]
+    if not directories:
+        raise ValueError(f"No game directory found under {os.path.relpath(root, ROOT)}.")
+    for path in directories:
+        if os.path.islink(path):
+            raise ValueError(f"Game directory must not be a symlink: {os.path.relpath(path, ROOT)}.")
+    return directories
+
+
+def game_format_module():
+    module_path = os.path.join(TOOLS_DIR, "tgb.py")
+    spec = importlib.util.spec_from_file_location("tinygame_tgb", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load the game bundle validator.")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def safe_build_target(relative):
+    root = os.path.realpath(ROOT)
+    target = os.path.join(ROOT, "build", "games", relative)
+    current = ROOT
+    for part in ("build", "games"):
+        current = os.path.join(current, part)
+        if os.path.islink(current):
+            raise RuntimeError(f"Refusing to write through symlink: {os.path.relpath(current, ROOT)}.")
+    if os.path.commonpath((root, os.path.realpath(os.path.dirname(target)))) != root:
+        raise RuntimeError("Build output path escapes the repository.")
+    return target
+
+
+def checked_game(module, path):
+    files = module.read_game(path)
+    manifest = module.parse_manifest(files)
+    check_lua_sources(files)
+    return files, manifest
+
+
+def cmd_check_game(args):
+    module = game_format_module()
+    for path in game_directories(args.id):
+        files, manifest = checked_game(module, path)
+        print(f"OK {manifest['id']}: {len(files)} text files")
+    return 0
+
+
+def cmd_describe_game(args):
+    module = game_format_module()
+    files, manifest = checked_game(module, game_directories(args.id)[0])
+    kinds = sorted(manifest.get("kinds", {}))
+    tuning = sorted(manifest.get("tuning", {}))
+    modules = sorted(name for name in files if name.startswith("modules/"))
+    scenarios = sorted(name for name in files if name.startswith("test/"))
+    summary = {
+        "schemaVersion": 1,
+        "id": manifest["id"],
+        "name": manifest["name"],
+        "api": manifest["api"],
+        "starter": manifest["starter"][:24],
+        "starterTruncated": len(manifest["starter"]) > 24,
+        "view": manifest["view"],
+        "hasRules": "rules.lua" in files,
+        "fileCount": len(files),
+        "sourceBytes": sum(map(len, files.values())),
+        "kindCount": len(kinds),
+        "kinds": [name[:16] for name in kinds[:5]],
+        "kindNamesTruncated": any(len(name) > 16 for name in kinds[:5]),
+        "tuningCount": len(tuning),
+        "tuning": [name[:16] for name in tuning[:5]],
+        "tuningNamesTruncated": any(len(name) > 16 for name in tuning[:5]),
+        "moduleCount": len(modules),
+        "scenarioCount": len(scenarios),
+    }
+    if args.json:
+        print(json.dumps(summary, separators=(",", ":"), ensure_ascii=True))
+    else:
+        print(f"{summary['name']} ({summary['id']})")
+        starter = json.dumps(summary["starter"], ensure_ascii=True)
+        print(f"API {summary['api']}; starter {starter}"
+              f"{'...' if summary['starterTruncated'] else ''}; view {summary['view']}")
+        print(f"{summary['fileCount']} files, {summary['sourceBytes']} bytes; "
+              f"rules {'yes' if summary['hasRules'] else 'no'}, "
+              f"{summary['moduleCount']} modules, {summary['scenarioCount']} scenarios")
+        for label, key, count_key, truncated_key in (
+                ("Kinds", "kinds", "kindCount", "kindNamesTruncated"),
+                ("Tuning", "tuning", "tuningCount", "tuningNamesTruncated")):
+            names = summary[key]
+            preview = ", ".join(json.dumps(name, ensure_ascii=True) for name in names) or "none"
+            print(f"{label}: {preview}"
+                  f"{' ...' if summary[count_key] > len(names) or summary[truncated_key] else ''}")
+        print("Controls and part semantics are not yet available in the candidate format.")
+    return 0
+
+
+def cmd_pack_game(args):
+    module = game_format_module()
+    for path in game_directories(args.id):
+        files, _ = checked_game(module, path)
+        bundle = module.build_bundle(files)
+        target = safe_build_target(os.path.basename(path) + ".tgb")
+        module.write_bundle(target, bundle)
+        print(f"Packed {os.path.relpath(target, ROOT)} ({len(bundle)} bytes)")
+    return 0
+
+
+def device_command(port, command, timeout=15):
+    line = (command + "\n").encode("ascii")
+    if port.write(line) != len(line):
+        raise RuntimeError("Serial write ended before the command was sent.")
+    for response in read_lines(
+            port, timeout, lambda text: text == "[DEV] ok" or text.startswith("[DEV] error")):
+        if response.startswith("[DEV] error"):
+            raise RuntimeError(response)
+        if response == "[DEV] ok":
+            return
+    raise RuntimeError(f"No acknowledgement for {command.split()[0]!r}.")
+
+
+def check_install_capabilities(port, board, api):
+    command = b"install 1 capabilities\n"
+    if port.write(command) != len(command):
+        raise RuntimeError("Serial write ended before the install capability query was sent.")
+    capability = None
+    for response in read_lines(
+            port, 15, lambda text: text == "[DEV] ok" or text.startswith("[DEV] error")):
+        if response.startswith("[DEV] error"):
+            raise RuntimeError(response)
+        if response.startswith("[DEV] install-capabilities "):
+            if capability is not None:
+                raise RuntimeError("Device sent duplicate install capabilities.")
+            capability = re.fullmatch(
+                r"\[DEV\] install-capabilities 1 profile=(147b|169) game-api=([0-9]{1,10})",
+                response)
+            if capability is None:
+                raise RuntimeError("Device sent invalid install capabilities.")
+        if response == "[DEV] ok":
+            if capability is None:
+                raise RuntimeError("Device did not report install capabilities.")
+            if capability.group(1) != board:
+                raise RuntimeError("Selected board does not match the firmware profile.")
+            if int(capability.group(2)) != api:
+                raise RuntimeError("Game API is incompatible with the firmware.")
+            return
+    raise RuntimeError("No acknowledgement for install capability query.")
+
+
+def cmd_push(args):
+    module = game_format_module()
+    game_dir = game_directories(args.id)[0]
+    files, manifest = checked_game(module, game_dir)
+    bundle = module.build_bundle(files)
+    checksum = zlib.crc32(bundle) & 0xFFFFFFFF
+    started = False
+    with open_serial(args.port) as port:
+        check_install_capabilities(port, args.board, manifest["api"])
+        try:
+            device_command(port, f"install 1 begin {args.id} {len(bundle)} {checksum:08X}")
+            started = True
+            chunk_size = 768
+            for offset in range(0, len(bundle), chunk_size):
+                chunk = bundle[offset:offset + chunk_size]
+                chunk_checksum = zlib.crc32(chunk) & 0xFFFFFFFF
+                encoded = base64.b64encode(chunk).decode("ascii")
+                device_command(
+                    port, f"install 1 chunk {offset} {chunk_checksum:08X} {encoded}")
+                if offset and offset % (chunk_size * 64) == 0:
+                    print(f"Transferred {offset} / {len(bundle)} bytes", flush=True)
+            device_command(port, "install 1 finish", timeout=30)
+            started = False
+        except (OSError, RuntimeError):
+            if started:
+                try:
+                    device_command(port, "install 1 cancel", timeout=5)
+                except (OSError, RuntimeError) as error:
+                    print(f"Could not cancel the interrupted install: {error}", file=sys.stderr)
+            raise
+    print(f"Installed {args.id} ({len(bundle)} bytes); restart the console to launch it")
+    return 0
+
+
+def cmd_test_card_build(args):
+    target = TEST_CARD_ENVS[args.board]
+    print(f"Building hardware test card for profile {args.board}", flush=True)
+    return pio("run", "-e", target)
+
+
+def cmd_test_card_flash(args):
+    target = TEST_CARD_ENVS[args.board]
+    print(f"Building and uploading hardware test card for profile {args.board}", flush=True)
+    return pio("run", "-e", target, "-t", "upload", "--upload-port", find_port(args.port))
 
 
 def cmd_flash(args):
-    return pio("run", "-t", "upload", "--upload-port", find_port(args.port))
+    target = BUILD_ENVS[args.board]
+    print(f"Building and uploading firmware for profile {args.board}", flush=True)
+    return pio("run", "-e", target, "-t", "upload", "--upload-port", find_port(args.port))
 
 
 def cmd_monitor(args):
@@ -290,6 +612,8 @@ def nonnegative_seconds(value):
 def find_tests():
     """Each test_*.cpp is built with the host-safe .cpp files of its module."""
     jobs = []
+    for test in sorted(glob.glob(os.path.join(ROOT, "engine", "test", "test_*.cpp"))):
+        jobs.append((test, os.path.dirname(os.path.dirname(test))))
     for test in sorted(glob.glob(os.path.join(ROOT, "tests", "test_*.cpp"))):
         jobs.append((test, os.path.join(ROOT, "src", "os")))
     for test in sorted(glob.glob(os.path.join(ROOT, "src", "games", "*", "test", "test_*.cpp"))):
@@ -323,6 +647,7 @@ def cmd_test(_):
     failed = 0
     sources = {}
     with tempfile.TemporaryDirectory() as tmp:
+        lua_objects = None
         for test, module in find_tests():
             name = os.path.relpath(test, ROOT)
             exe = os.path.join(tmp, "t")
@@ -330,8 +655,39 @@ def cmd_test(_):
                         "-I", os.path.join(ROOT, "src", "hal")]
             if module not in sources:
                 sources[module] = host_safe_sources(module)
-            build = [compiler, *CXXFLAGS, *includes, test, *sources[module], "-o", exe]
-            if subprocess.call(build) != 0 or subprocess.call([exe]) != 0:
+            test_sources = sources[module]
+            flags = []
+            objects = []
+            extra_sources = []
+            if os.path.basename(test) in ("test_lua_runtime.cpp", "test_bundle_script.cpp",
+                                          "test_lua_dodge.cpp"):
+                lua_dir = lua_source_dir()
+                flags = ["-I", str(lua_dir)]
+                extra_sources = [os.path.join(ROOT, "engine", "lua_runtime.cpp")]
+                if lua_objects is None:
+                    lua_objects = []
+                    c_compiler = os.environ.get("CC", "cc")
+                    for index, source_name in enumerate(LUA_SOURCE_FILES):
+                        source = os.path.join(lua_dir, source_name)
+                        obj = os.path.join(tmp, f"lua_{index}.o")
+                        build_c = [c_compiler, "-std=c99", "-O2", "-I", str(lua_dir),
+                                   "-c", source, "-o", obj]
+                        if subprocess.call(build_c) != 0:
+                            return 1
+                        lua_objects.append(obj)
+                objects = lua_objects
+            if module == os.path.join(ROOT, "engine"):
+                test_sources = [path for path in test_sources
+                                if os.path.basename(path) != "bundle_script.cpp"]
+                if os.path.basename(test) == "test_bundle_script.cpp":
+                    extra_sources.append(os.path.join(ROOT, "engine", "bundle_script.cpp"))
+                if os.path.basename(test) == "test_lua_dodge.cpp":
+                    extra_sources.append(os.path.join(ROOT, "engine", "bundle_script.cpp"))
+            build = [compiler, *CXXFLAGS, *flags, *includes, test, *test_sources,
+                     *extra_sources,
+                     *objects, "-o", exe]
+            if (subprocess.call(build) != 0 or
+                    subprocess.call([exe], cwd=ROOT) != 0):
                 print(f"FAIL {name}")
                 failed += 1
             else:
@@ -350,7 +706,8 @@ def test_simulator():
     if node is None:
         print("SKIP simulator JavaScript tests: Node.js is not installed (firmware tests still run).")
         return 0
-    return subprocess.call([node, "--test", "sim/web/input.test.mjs", "sim/server.test.mjs"],
+    return subprocess.call([node, "--test", "sim/web/input.test.mjs",
+                            "sim/web/display_ready.test.mjs", "sim/server.test.mjs"],
                            cwd=ROOT)
 
 
@@ -385,8 +742,37 @@ def cmd_new(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("build").set_defaults(run=cmd_build)
+    p = sub.add_parser("build")
+    p.add_argument("--board", choices=BUILD_ENVS, default="147b")
+    p.set_defaults(run=cmd_build)
+    p = sub.add_parser("doctor", help="check host prerequisites and USB port discovery")
+    p.add_argument("--json", action="store_true", help="emit versioned JSON")
+    p.set_defaults(run=cmd_doctor)
+    p = sub.add_parser("check", help="validate v2 text game sources")
+    p.add_argument("id", nargs="?")
+    p.set_defaults(run=cmd_check_game)
+    p = sub.add_parser("describe", help="summarize one v2 text game")
+    p.add_argument("id")
+    p.add_argument("--json", action="store_true", help="emit versioned JSON")
+    p.set_defaults(run=cmd_describe_game)
+    p = sub.add_parser("pack", help="validate and pack v2 text games")
+    p.add_argument("id", nargs="?")
+    p.set_defaults(run=cmd_pack_game)
+    p = sub.add_parser("push", help="pack and install a v2 text game over USB")
+    p.add_argument("id")
+    p.add_argument("--board", choices=BUILD_ENVS, required=True,
+                   help="physically confirmed board model; not inferred from USB")
+    p.add_argument("--port", help="explicit USB serial device")
+    p.set_defaults(run=cmd_push)
+    p = sub.add_parser("test-card-build", help="build the isolated hardware test card")
+    p.add_argument("--board", choices=TEST_CARD_ENVS, required=True)
+    p.set_defaults(run=cmd_test_card_build)
+    p = sub.add_parser("test-card-flash", help="flash the isolated hardware test card")
+    p.add_argument("--board", choices=TEST_CARD_ENVS, required=True)
+    p.add_argument("--port", help="explicit USB serial device")
+    p.set_defaults(run=cmd_test_card_flash)
     p = sub.add_parser("flash")
+    p.add_argument("--board", choices=BUILD_ENVS, required=True)
     p.add_argument("--port", help="explicit USB serial device")
     p.set_defaults(run=cmd_flash)
     sub.add_parser("test").set_defaults(run=cmd_test)
@@ -411,6 +797,7 @@ def main():
     p.set_defaults(run=cmd_bridge)
     p = sub.add_parser("sim", help="build and serve the browser simulator")
     p.add_argument("--build-only", action="store_true")
+    p.add_argument("--board", choices=BUILD_ENVS, default="147b")
     p.add_argument("--port", type=int, default=0)
     p.add_argument("--no-open", action="store_true")
     p.set_defaults(run=cmd_sim)

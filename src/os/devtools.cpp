@@ -9,7 +9,11 @@
 #include "input.h"
 #include "dev_input.h"
 #include "dev_line.h"
+#include "transfer_codec.h"
+#include "crc32.h"
+#include "game_store.h"
 #include "registry.h"
+#include "tg_board.h"
 
 namespace {
 
@@ -17,6 +21,12 @@ devtools::Overrides state;
 devtools::LineReader reader;
 controller_stream::State controller;
 bool stream_format_error = false;
+
+constexpr std::size_t INSTALL_CHUNK_BYTES = tg::engine::transfer::CHUNK_BYTES;
+constexpr std::uint32_t INSTALL_TIMEOUT_MS = 30000;
+bool install_active = false;
+std::uint32_t install_crc32 = 0;
+std::uint32_t install_last_activity = 0;
 
 constexpr char BASE64[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -65,6 +75,11 @@ void info() {
     Serial.printf("[DEV] heap free %lu, psram free %lu\n",
                   static_cast<unsigned long>(ESP.getFreeHeap()),
                   static_cast<unsigned long>(ESP.getFreePsram()));
+    Serial.printf("[DEV] game storage ready=%d total=%lu free=%lu max-bundle=%lu\n",
+                  game_store::ready(),
+                  static_cast<unsigned long>(game_store::totalBytes()),
+                  static_cast<unsigned long>(game_store::freeBytes()),
+                  static_cast<unsigned long>(game_store::maxBundleBytes()));
     for (std::uint8_t i = 0; i < registry::count(); ++i) {
         Serial.printf("[DEV] game %s \"%s\"\n", registry::get(i).id, registry::get(i).name);
     }
@@ -75,13 +90,133 @@ void help() {
         "[DEV] commands: shot | turn <left|right> <signed-transitions> |\n"
         "[DEV]   click|hold|down|up [left|right] |\n"
         "[DEV]   tilt <x> <y>|off | launch <id> | info | log on|off |\n"
-        "[DEV]   stream on|off|ping");
+        "[DEV]   stream on|off|ping | install 1 capabilities|begin|chunk|finish|cancel ...");
+}
+
+char* nextToken(char*& cursor) {
+    while (cursor != nullptr && (*cursor == ' ' || *cursor == '\t')) ++cursor;
+    if (cursor == nullptr || *cursor == '\0') return nullptr;
+    char* token = cursor;
+    while (*cursor != '\0' && *cursor != ' ' && *cursor != '\t') ++cursor;
+    if (*cursor != '\0') *cursor++ = '\0';
+    return token;
+}
+
+void installError(game_store::Error error) {
+    Serial.printf("[DEV] error: %s\n", game_store::errorMessage(error));
+}
+
+bool installCommand(char* arguments) {
+    std::uint8_t bytes[INSTALL_CHUNK_BYTES];
+    char* cursor = arguments;
+    char* version = nextToken(cursor);
+    char* action = nextToken(cursor);
+    if (version == nullptr || std::strcmp(version, "1") != 0 || action == nullptr) {
+        Serial.println("[DEV] error: use install 1 capabilities|begin|chunk|finish|cancel ...");
+        return false;
+    }
+
+    if (std::strcmp(action, "capabilities") == 0) {
+        if (nextToken(cursor) != nullptr) {
+            Serial.println("[DEV] error: install 1 capabilities takes no arguments");
+            return false;
+        }
+        Serial.printf("[DEV] install-capabilities 1 profile=%s game-api=1\n", tg::board::ID);
+    } else if (std::strcmp(action, "begin") == 0) {
+        char* id = nextToken(cursor);
+        char* size_text = nextToken(cursor);
+        char* checksum_text = nextToken(cursor);
+        std::uint32_t size = 0;
+        std::uint32_t checksum = 0;
+        if (id == nullptr || size_text == nullptr || checksum_text == nullptr ||
+            nextToken(cursor) != nullptr ||
+            !tg::engine::transfer::parseNumber(size_text, size, 10) ||
+            std::strlen(checksum_text) != 8 ||
+            !tg::engine::transfer::parseNumber(checksum_text, checksum, 16)) {
+            Serial.println("[DEV] error: install 1 begin <id> <size> <crc32hex>");
+            return false;
+        }
+        const auto result = game_store::beginInstall(id, size);
+        if (result != game_store::Error::None) {
+            installError(result);
+            return false;
+        }
+        install_active = true;
+        install_crc32 = checksum;
+        install_last_activity = millis();
+    } else if (std::strcmp(action, "chunk") == 0) {
+        char* offset_text = nextToken(cursor);
+        char* checksum_text = nextToken(cursor);
+        char* encoded = nextToken(cursor);
+        std::uint32_t offset = 0;
+        std::uint32_t checksum = 0;
+        std::size_t size = 0;
+        if (!install_active || offset_text == nullptr || checksum_text == nullptr ||
+            encoded == nullptr || nextToken(cursor) != nullptr ||
+            !tg::engine::transfer::parseNumber(offset_text, offset, 10) ||
+            std::strlen(checksum_text) != 8 ||
+            !tg::engine::transfer::parseNumber(checksum_text, checksum, 16) ||
+            !tg::engine::transfer::decodeBase64(
+                encoded, bytes, sizeof(bytes), size) ||
+            tg::engine::crc32(bytes, size) != checksum) {
+            if (install_active) {
+                game_store::cancelInstall();
+                install_active = false;
+            }
+            Serial.println("[DEV] error: invalid install chunk or checksum");
+            return false;
+        }
+        const auto result = game_store::writeChunk(offset, bytes, size);
+        if (result != game_store::Error::None) {
+            game_store::cancelInstall();
+            install_active = false;
+            installError(result);
+            return false;
+        }
+        install_last_activity = millis();
+    } else if (std::strcmp(action, "finish") == 0) {
+        if (nextToken(cursor) != nullptr || !install_active) {
+            Serial.println("[DEV] error: no active install to finish");
+            return false;
+        }
+        const auto result = game_store::finishInstall(install_crc32);
+        install_active = false;
+        if (result != game_store::Error::None) {
+            if (result == game_store::Error::Incomplete) game_store::cancelInstall();
+            installError(result);
+            return false;
+        }
+    } else if (std::strcmp(action, "cancel") == 0) {
+        if (nextToken(cursor) != nullptr || !install_active) {
+            Serial.println("[DEV] error: no active install to cancel");
+            return false;
+        }
+        const auto result = game_store::cancelInstall();
+        install_active = false;
+        if (result != game_store::Error::None) {
+            installError(result);
+            return false;
+        }
+    } else {
+        Serial.println("[DEV] error: unknown install action");
+        return false;
+    }
+    Serial.println("[DEV] ok");
+    return true;
 }
 
 void run(char* command) {
     char* arg = std::strchr(command, ' ');
     if (arg != nullptr) {
         *arg++ = '\0';
+    }
+    if (install_active && std::strcmp(command, "install") != 0) {
+        Serial.println("[DEV] error: install active; finish or cancel first");
+        return;
+    }
+    if (controller.active() && std::strcmp(command, "install") == 0) {
+        Serial.println("[DEV] error: controller mode; use stream off first");
+        return;
     }
     if (std::strcmp(command, "stream") == 0) {
         if (arg != nullptr && std::strcmp(arg, "on") == 0 && Serial) {
@@ -102,6 +237,10 @@ void run(char* command) {
     }
     if (std::strcmp(command, "shot") == 0) {
         screenshot();
+        return;
+    }
+    if (std::strcmp(command, "install") == 0) {
+        installCommand(arg);
         return;
     }
     if (controller.active() && std::strcmp(command, "help") != 0 &&
@@ -145,6 +284,11 @@ namespace devtools {
 
 void poll() {
     controller.check(millis(), static_cast<bool>(Serial));
+    if (install_active && millis() - install_last_activity >= INSTALL_TIMEOUT_MS) {
+        game_store::cancelInstall();
+        install_active = false;
+        Serial.println("[DEV] error: install timed out and was cancelled");
+    }
     while (Serial.available() > 0) {
         const auto event = reader.feed(static_cast<char>(Serial.read()));
         if (event == LineReader::Event::None) {

@@ -36,7 +36,7 @@ namespace registry {
 bool add(const tg::GameInfo& info) {
     const char* reason = !validId(info.id) ? "invalid id"
                        : !validName(info.name) ? "invalid name"
-                       : !info.create ? "missing factory"
+                       : (!info.create && !info.createInstalled) ? "missing factory"
                        : find(info.id) >= 0 ? "duplicate id"
                        : game_count == MAX_GAMES ? "32-game capacity reached" : nullptr;
     if (reason) {

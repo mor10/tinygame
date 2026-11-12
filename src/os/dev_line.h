@@ -30,7 +30,7 @@ public:
     char* line() { return text_; }
 
 private:
-    static constexpr std::size_t CAPACITY = 63;
+    static constexpr std::size_t CAPACITY = 1151;
     char text_[CAPACITY + 1] = {};
     std::size_t length_ = 0;
     bool too_long_ = false;

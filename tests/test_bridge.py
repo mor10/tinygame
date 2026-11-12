@@ -123,7 +123,8 @@ class BridgeTests(unittest.TestCase):
              patch.object(tg.subprocess, "call", return_value=1) as call:
             self.assertEqual(tg.test_simulator(), 1)
         call.assert_called_once_with(
-            ["/usr/bin/node", "--test", "sim/web/input.test.mjs", "sim/server.test.mjs"],
+            ["/usr/bin/node", "--test", "sim/web/input.test.mjs",
+             "sim/web/display_ready.test.mjs", "sim/server.test.mjs"],
             cwd=str(ROOT))
         output = io.StringIO()
         with patch.object(tg.shutil, "which", return_value=None), \

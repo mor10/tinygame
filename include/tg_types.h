@@ -14,7 +14,8 @@ struct GameInfo {
     const char* id;      // unique id matching [a-z][a-z0-9_]{0,14}
     const char* name;    // ASCII launcher name, up to 13 characters
     std::uint32_t color; // launcher highlight / LED colour
-    Game* (*create)();
+    Game* (*create)() = nullptr;
+    Game* (*createInstalled)(const char* id) = nullptr;
 };
 
 // Screen size in pixels (landscape). (0, 0) is the top-left corner.

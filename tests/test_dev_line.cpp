@@ -33,10 +33,10 @@ int main() {
     assert(reader.feed('\n') == Event::None);
     assert(feed(reader, "\n\n") == Event::None);
 
-    // A 63-character line fits; a longer one is dropped, not cut short.
-    char longest[64];
-    std::memset(longest, 'a', 63);
-    longest[63] = '\0';
+    // Install chunks use base64 lines; oversized lines are dropped whole.
+    char longest[1152];
+    std::memset(longest, 'a', 1151);
+    longest[1151] = '\0';
     assert(feed(reader, longest) == Event::None);
     assert(reader.feed('\n') == Event::Line);
     assert(std::strcmp(reader.line(), longest) == 0);

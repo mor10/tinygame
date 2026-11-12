@@ -6,6 +6,7 @@
 
 #include "registry.h"
 #include "storage.h"
+#include "tg_board.h"
 #include "tg_style.h"
 #include "tg_os_version.h"
 
@@ -53,7 +54,7 @@ struct Diagnostics {
     lv_obj_t* tilt_label = nullptr;
     std::uint32_t refreshed_at = 0;
 } diag;
-constexpr int TILT_BOX_X = 236;
+constexpr int TILT_BOX_X = tg::board::WIDTH - 84;
 constexpr int TILT_BOX_Y = 36;
 constexpr int TILT_BOX = 72;
 constexpr int TILT_DOT = 8;
@@ -61,20 +62,25 @@ constexpr int TILT_DOT = 8;
 // ---- Page builders ------------------------------------------------------------
 
 void buildWelcome(lv_obj_t* scr) {
-    ui::panel(scr, 16, 20, 288, 132);
-    ui::block(scr, 32, 18, 48, 4, color::ACCENT);
-    ui::block(scr, 240, 150, 48, 4, color::ACCENT);
+    constexpr int X = 16;
+    constexpr int Y = (tg::board::HEIGHT - 132) / 2;
+    constexpr int W = tg::board::WIDTH - 2 * X;
+    ui::panel(scr, X, Y, W, 132);
+    ui::block(scr, 32, Y - 2, 48, 4, color::ACCENT);
+    ui::block(scr, tg::board::WIDTH - 80, Y + 130, 48, 4, color::ACCENT);
     lv_obj_t* edition = ui::label(scr, os_version::LABEL, Font::S, color::TEXT_DIM);
-    lv_obj_set_pos(edition, 32, 28);
+    lv_obj_set_pos(edition, 32, Y + 8);
     for (int i = 0; i < 3; ++i) {
-        ui::block(scr, 268 + (i % 2) * 8, 28 + (i / 2) * 8, 4, 4, color::ACCENT);
+        ui::block(scr, tg::board::WIDTH - 52 + (i % 2) * 8, Y + 8 + (i / 2) * 8, 4, 4, color::ACCENT);
     }
-    lv_obj_t* title = ui::label(scr, "TINYGAME", Font::XL, color::ACCENT);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 52);
+    lv_obj_t* title = ui::label(scr, "TINYGAME",
+                                tg::board::LCD_169 ? Font::L : Font::XL, color::ACCENT);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, Y + 32);
     lv_obj_t* sub = ui::label(scr, "POCKET GAME CONSOLE", Font::S, color::TEXT_DIM);
-    lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, 96);
-    blink_label = ui::label(scr, "CLICK EITHER KNOB", Font::M, color::TEXT);
-    lv_obj_align(blink_label, LV_ALIGN_TOP_MID, 0, 120);
+    lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, Y + 76);
+    blink_label = ui::label(scr, tg::board::LCD_169 ? "CLICK A KNOB" : "CLICK EITHER KNOB",
+                            Font::M, color::TEXT);
+    lv_obj_align(blink_label, LV_ALIGN_TOP_MID, 0, Y + 100);
 }
 
 void buildLauncher(lv_obj_t* scr) {
@@ -92,38 +98,38 @@ void buildLauncher(lv_obj_t* scr) {
     }
     launcher_items[count] = {"SYSTEM", nullptr, color::SILVER, false};
 
-    menu.create(scr, tg::GAP_S, MENU_Y, tg::WIDTH - 2 * tg::GAP_S, MENU_ROWS);
+    menu.create(scr, tg::GAP_S, MENU_Y, tg::board::WIDTH - 2 * tg::GAP_S, MENU_ROWS);
     if (count == 0) {
         lv_obj_t* empty = ui::label(scr, "NO GAMES YET", Font::S, color::TEXT_DIM);
         lv_obj_set_pos(empty, tg::GAP_M, MENU_Y + ui::Menu::ROW_H + tg::GAP_M);
     }
     footer_label = ui::footer(scr, "TURN: CHOOSE  CLICK: OPEN");
-    ui::block(scr, tg::GAP_M, 140, 4, 8, color::WARN);
+    ui::block(scr, tg::GAP_M, tg::board::HEIGHT - 32, 4, 8, color::WARN);
     best_label = ui::label(scr, "", Font::S, color::WARN);
-    lv_obj_set_pos(best_label, 20, 140);
+    lv_obj_set_pos(best_label, 20, tg::board::HEIGHT - 32);
 }
 
 void buildSystem(lv_obj_t* scr) {
     ui::header(scr, "SYSTEM");
-    menu.create(scr, tg::GAP_S, MENU_Y, tg::WIDTH - 2 * tg::GAP_S, MENU_ROWS);
-    ui::footer(scr, "TURN: CHOOSE  CLICK: OPEN  HOLD: BACK");
+    menu.create(scr, tg::GAP_S, MENU_Y, tg::board::WIDTH - 2 * tg::GAP_S, MENU_ROWS);
+    ui::footer(scr, "TURN: CHOOSE  CLICK: OPEN  BOTH: BACK");
 }
 
 void buildSettings(lv_obj_t* scr) {
     ui::header(scr, "SETTINGS");
-    menu.create(scr, tg::GAP_S, MENU_Y, tg::WIDTH - 2 * tg::GAP_S, MENU_ROWS);
+    menu.create(scr, tg::GAP_S, MENU_Y, tg::board::WIDTH - 2 * tg::GAP_S, MENU_ROWS);
     footer_label = ui::footer(scr, "");
 }
 
 void buildDiagnostics(lv_obj_t* scr) {
     ui::header(scr, "DIAGNOSTICS");
     constexpr int TOP = tg::HEADER_H + tg::GAP_S;
-    constexpr int STEP = (tg::FOOTER_Y - TOP - tg::GAP_M) / 10;
+    constexpr int STEP = (tg::board::HEIGHT - 14 - TOP - tg::GAP_M) / 10;
     for (int i = 0; i < 11; ++i) {
         diag.lines[i] = ui::label(scr, "", Font::S, i < 8 ? color::TEXT : color::TEXT_DIM);
         lv_obj_set_pos(diag.lines[i], tg::GAP_M, TOP + i * STEP);
         lv_obj_set_width(diag.lines[i], i < 8 ? TILT_BOX_X - tg::GAP_M - tg::GAP_S :
-                                               tg::WIDTH - 2 * tg::GAP_M);
+                                               tg::board::WIDTH - 2 * tg::GAP_M);
         lv_label_set_long_mode(diag.lines[i], LV_LABEL_LONG_CLIP);
     }
 
@@ -133,7 +139,7 @@ void buildDiagnostics(lv_obj_t* scr) {
     diag.tilt_dot = ui::block(scr, 0, 0, TILT_DOT, TILT_DOT, color::ACCENT);
     diag.tilt_label = ui::label(scr, "TILT", Font::S, color::TEXT_DIM);
     lv_obj_set_pos(diag.tilt_label, TILT_BOX_X, TILT_BOX_Y + TILT_BOX + tg::GAP_S);
-    ui::footer(scr, "HOLD: BACK  IDLE 3 MIN: SLEEP");
+    ui::footer(scr, "BOTH: BACK");
     diag.refreshed_at = 0;
 }
 
@@ -141,9 +147,11 @@ void buildStyle(lv_obj_t* scr) {
     char title[16];
     std::snprintf(title, sizeof(title), "STYLE V%d", tg::STYLE_VERSION);
     ui::header(scr, title);
+    constexpr int SWATCH_STEP = (tg::board::WIDTH - 2 * tg::GAP_M) / 8;
     for (int i = 0; i < 16; ++i) {
         lv_obj_t* swatch =
-            ui::block(scr, tg::GAP_M + (i % 8) * 38, 34 + (i / 8) * 18, 34, 14, tg::PALETTE[i]);
+            ui::block(scr, tg::GAP_M + (i % 8) * SWATCH_STEP, 34 + (i / 8) * 18,
+                      SWATCH_STEP - 4, 14, tg::PALETTE[i]);
         lv_obj_set_style_border_color(swatch, lv_color_hex(color::LINE), LV_PART_MAIN);
         lv_obj_set_style_border_width(swatch, i == 0 ? tg::BORDER : 0, LV_PART_MAIN);
     }
@@ -154,12 +162,12 @@ void buildStyle(lv_obj_t* scr) {
     lv_obj_t* l = ui::label(scr, "LARGE 24", Font::L, color::ACCENT);
     lv_obj_set_pos(l, tg::GAP_M, 106);
     lv_obj_t* xl = ui::label(scr, "XL", Font::XL, color::WARN);
-    lv_obj_set_pos(xl, 236, 78);
+    lv_obj_set_pos(xl, tg::board::WIDTH - 84, 78);
 
     lv_obj_t* sel = ui::block(scr, tg::GAP_M, 134, 140, 20, color::ACCENT);
     lv_obj_t* sel_text = ui::label(sel, "SELECTED", Font::M, color::BG);
     lv_obj_align(sel_text, LV_ALIGN_LEFT_MID, tg::GAP_S, 0);
-    lv_obj_t* p = ui::panel(scr, 160, 132, 152, 24);
+    lv_obj_t* p = ui::panel(scr, 160, 132, tg::board::WIDTH - 168, 24);
     lv_obj_t* p_text = ui::label(p, "PANEL", Font::M);
     lv_obj_center(p_text);
     ui::footer(scr, "CLICK: BACK");
@@ -168,12 +176,12 @@ void buildStyle(lv_obj_t* scr) {
 void buildPause(lv_obj_t* game_screen) {
     constexpr int W = 232;
     constexpr int H = 128;
-    overlay = ui::panel(game_screen, (tg::WIDTH - W) / 2, (tg::HEIGHT - H) / 2, W, H);
+    overlay = ui::panel(game_screen, (tg::board::WIDTH - W) / 2, (tg::board::HEIGHT - H) / 2, W, H);
     lv_obj_set_style_border_color(overlay, lv_color_hex(color::ACCENT), LV_PART_MAIN);
     lv_obj_t* title = ui::label(overlay, "PAUSED", Font::L, color::ACCENT);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, tg::GAP_M);
     menu.create(overlay, tg::GAP_S, 36, W - 2 * tg::GAP_S, shell::PAUSE_COUNT);
-    lv_obj_t* hint = ui::label(overlay, "HOLD: RESUME", Font::S, color::TEXT_DIM);
+    lv_obj_t* hint = ui::label(overlay, "BOTH: RESUME", Font::S, color::TEXT_DIM);
     lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -tg::GAP_S - 2);
 }
 
@@ -190,8 +198,8 @@ void showSleepConfirmation(const shell::State& state) {
     if (sleep_overlay == nullptr) {
         constexpr int W = 264;
         constexpr int H = 144;
-        sleep_overlay = ui::panel(lv_screen_active(), (tg::WIDTH - W) / 2,
-                                  (tg::HEIGHT - H) / 2, W, H);
+        sleep_overlay = ui::panel(lv_screen_active(), (tg::board::WIDTH - W) / 2,
+                                  (tg::board::HEIGHT - H) / 2, W, H);
         lv_obj_set_style_border_color(sleep_overlay, lv_color_hex(color::ACCENT), LV_PART_MAIN);
         auto* title = ui::label(sleep_overlay, "SLEEP?", Font::L, color::ACCENT);
         lv_obj_align(title, LV_ALIGN_TOP_MID, 0, tg::GAP_S);
@@ -245,8 +253,8 @@ void showSettings(const shell::State& state) {
     }
     items[settings::ITEM_COUNT] = {"BACK", nullptr, color::SILVER};
     menu.show(items, settings::ITEM_COUNT + 1, state.selected(), state.editing());
-    lv_label_set_text(footer_label, state.editing() ? "TURN: CHANGE  CLICK: OK  HOLD: CANCEL"
-                                                    : "TURN: CHOOSE  CLICK: EDIT  HOLD: BACK");
+    lv_label_set_text(footer_label, state.editing() ? "TURN: CHANGE  CLICK: OK  BOTH: CANCEL"
+                                                    : "TURN: CHOOSE  CLICK: EDIT  BOTH: BACK");
 }
 
 void showPause(std::uint8_t selected) {
@@ -276,7 +284,7 @@ void refreshDiagnostics(const Live& live, std::uint32_t now_ms) {
         ui::text(diag.lines[row + 3], "ERR%lu O%lu",
                  static_cast<unsigned long>(e.invalid), static_cast<unsigned long>(e.overruns));
     }
-    ui::text(diag.lines[8], "IDLE 3 MIN %s WAKE %s",
+    ui::text(diag.lines[8], "INPUT %s WAKE %s",
              live.accepting_input ? "READY" : "WAIT", live.wake_cause);
     ui::text(diag.lines[9], "E L %ld C%lu %s",
              static_cast<long>(live.effective_left.total),
