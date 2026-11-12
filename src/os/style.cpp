@@ -3,6 +3,8 @@
 #include <cstdarg>
 #include <cstdio>
 
+#include "tg_board.h"
+
 // Implementation of the TinyGame style library (see include/tg_style.h).
 
 namespace tg {
@@ -234,16 +236,16 @@ lv_obj_t* header(lv_obj_t* parent, const char* title) {
     lv_obj_set_pos(l, 20, GAP_M);
     block(parent, GAP_M, GAP_M, 4, 4, color::ACCENT);
     block(parent, GAP_M, GAP_M + 8, 4, 4, color::ACCENT);
-    block(parent, 0, HEADER_H - BORDER, WIDTH, BORDER, color::LINE);
+    block(parent, 0, HEADER_H - BORDER, board::WIDTH, BORDER, color::LINE);
     block(parent, GAP_M, HEADER_H - BORDER, 40, BORDER, color::ACCENT);
     return l;
 }
 
 lv_obj_t* footer(lv_obj_t* parent, const char* hint) {
     lv_obj_t* l = label(parent, hint, Font::S, color::TEXT_DIM);
-    lv_obj_set_pos(l, GAP_M, FOOTER_Y);
-    lv_obj_set_width(l, WIDTH - 2 * GAP_M);
-    block(parent, GAP_M, HEIGHT - BORDER, WIDTH - 2 * GAP_M, BORDER, color::LINE);
+    lv_obj_set_pos(l, GAP_M, board::HEIGHT - 14);
+    lv_obj_set_width(l, board::WIDTH - 2 * GAP_M);
+    block(parent, GAP_M, board::HEIGHT - BORDER, board::WIDTH - 2 * GAP_M, BORDER, color::LINE);
     return l;
 }
 
@@ -251,7 +253,7 @@ lv_obj_t* popup(lv_obj_t* parent, const char* title, const char* hint,
                 std::uint32_t title_rgb) {
     constexpr int W = 272;
     constexpr int H = 104;
-    lv_obj_t* p = panel(parent, (WIDTH - W) / 2, (HEIGHT - H) / 2, W, H);
+    lv_obj_t* p = panel(parent, (board::WIDTH - W) / 2, (board::HEIGHT - H) / 2, W, H);
     lv_obj_t* t = label(p, title, Font::L, title_rgb);
     lv_obj_align(t, LV_ALIGN_TOP_MID, 0, GAP_M);
     lv_obj_t* h = label(p, hint, Font::S, color::TEXT_DIM);

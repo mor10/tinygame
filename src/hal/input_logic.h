@@ -13,6 +13,13 @@ inline constexpr std::uint8_t EVENT_LONG_PRESS = 1U << 3;
 
 enum class ButtonEvent : std::uint8_t { None, Pressed, Released, ShortPress, LongPress };
 
+__attribute__((always_inline)) inline bool gpioLevelFromRegisters(
+    std::uint32_t low_bank, std::uint32_t high_bank, int pin) {
+    if (pin >= 0 && pin < 32) return ((low_bank >> pin) & 1U) != 0;
+    if (pin >= 32 && pin < 64) return ((high_bank >> (pin - 32)) & 1U) != 0;
+    return false;
+}
+
 inline std::int32_t boundedAdd(std::int32_t a, std::int32_t b) {
     const std::int64_t sum = static_cast<std::int64_t>(a) + b;
     return sum > INT32_MAX ? INT32_MAX : (sum < INT32_MIN ? INT32_MIN :

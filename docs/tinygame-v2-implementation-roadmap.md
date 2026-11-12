@@ -42,6 +42,17 @@ This roadmap sequences the full first release in the [v2 rebuild specification](
 
 ## Next physical waypoint: 1.47B diagnostic
 
+**2026-11-12 attempt:** the user identified the connected board as the 1.47B,
+authorized this diagnostic image, and explicitly waived the flash backup; no
+usable backup was made. Automatic ROM entry failed, but a 1200-baud reset
+re-enumerated the same USB device in download mode. The reported security
+flags showed flash encryption and secure boot disabled, and flash size was
+16 MiB. Esptool wrote and verified the four approved files at the offsets
+below; it adjusted the bootloader flash parameters and its image digest during
+upload. Its hard-reset step reported success, but the port still appeared as
+the ROM USB interface afterward. Screen startup and diagnostic serial output
+are not yet confirmed; do not infer them from the upload result.
+
 The smallest useful hardware image is the isolated `test-card-147b`, not the
 full application. On 2026-11-12 it built successfully from the current worktree:
 `.pio/build/test-card-147b/firmware.bin`, SHA-256

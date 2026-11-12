@@ -29,18 +29,6 @@ constexpr std::uint32_t SAMPLE_INTERVAL_MS = 10;
 // Low-pass for tilt: higher = snappier, lower = smoother.
 constexpr float TILT_FILTER_ALPHA = 0.25f;
 
-// Chip axes -> screen axes (+x right, +y down the screen, +z toward the
-// player), for the board mounted with the display in landscape.
-// Verified on the board by tilting it: lowering the right side moves the
-// Diagnostics tilt dot right; lowering the bottom edge moves it down.
-struct AxisMap {
-    std::uint8_t source;  // chip axis 0=x 1=y 2=z
-    float sign;
-};
-constexpr AxisMap SCREEN_X = {1, 1.0f};
-constexpr AxisMap SCREEN_Y = {0, 1.0f};
-constexpr AxisMap SCREEN_Z = {2, 1.0f};
-
 bool present = false;
 imu::ReadHealth read_health;
 std::uint32_t last_sample_at = 0;
@@ -66,10 +54,6 @@ bool readRegisters(std::uint8_t reg, std::uint8_t* out, std::uint8_t count) {
         out[i] = static_cast<std::uint8_t>(Wire.read());
     }
     return true;
-}
-
-float axis(const float chip[3], AxisMap map) {
-    return chip[map.source] * map.sign;
 }
 
 float clampUnit(float v) {
@@ -142,8 +126,12 @@ void update(std::uint32_t now_ms) {
         accel[i] = a / ACCEL_LSB_PER_G;
         gyro[i] = g / GYRO_LSB_PER_DPS;
     }
-    current.accel_g = {axis(accel, SCREEN_X), axis(accel, SCREEN_Y), axis(accel, SCREEN_Z)};
-    current.gyro_dps = {axis(gyro, SCREEN_X), axis(gyro, SCREEN_Y), axis(gyro, SCREEN_Z)};
+    current.accel_g = {board::axis(accel, board::SCREEN_X),
+                       board::axis(accel, board::SCREEN_Y),
+                       board::axis(accel, board::SCREEN_Z)};
+    current.gyro_dps = {board::axis(gyro, board::SCREEN_X),
+                        board::axis(gyro, board::SCREEN_Y),
+                        board::axis(gyro, board::SCREEN_Z)};
 
     // At rest the accelerometer measures "up"; a marble rolls the other way.
     current.tilt_x += TILT_FILTER_ALPHA * (clampUnit(-current.accel_g.x) - current.tilt_x);

@@ -34,7 +34,8 @@ bool initialize() {
     lv_display_set_flush_cb(screen, flush);
     lv_display_set_buffers(screen, draw_buffer, nullptr, sizeof(draw_buffer),
                            LV_DISPLAY_RENDER_MODE_PARTIAL);
-    Serial.println("[LCD] Simulator RGB565 320x172 initialized");
+    Serial.printf("[LCD] Simulator RGB565 %dx%d initialized\n",
+                  display_config::WIDTH, display_config::HEIGHT);
     return true;
 }
 lv_display_t* lvDisplay() { return screen; }

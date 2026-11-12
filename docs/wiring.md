@@ -1,8 +1,8 @@
 # Wiring
 
 TinyGame is controlled by two rotary encoders, each with a click switch. The
-screen, motion sensor, and RGB LED are onboard; their pins are in
-`src/hal/board_config.h`.
+screen and motion sensor are onboard; their pins are in
+`src/hal/board_config.h`. Board A has an RGB LED; Board B does not.
 
 Left and right refer to physical positions when holding the assembled console
 normally. The pin assignments below match those positions, and
@@ -26,7 +26,43 @@ revolution). Verify pulse count and clockwise polarity on the device.
 A, B and the click switch use internal pull-ups. No 5 V supply is connected to
 these passive contacts.
 
-## Deep sleep and wake
+## Board profiles and diagnostic test card
+
+The explicit firmware profiles are:
+
+| Profile | Board | Landscape display | Left A/B/button | Right A/B/button | IMU SDA/SCL | RGB LED |
+|---|---|---:|---|---|---|---|
+| `147b` | ESP32-S3-LCD-1.47B | 320x172 | 9/8/7 | 4/5/6 | 48/47 | GPIO38 |
+| `169` | ESP32-S3-LCD-1.69, non-Touch | 280x240 | 43/2/3 | 16/17/18 | 11/10 | None |
+
+Build the isolated display/input/IMU test card with an explicit target:
+
+```bash
+python3 tools/tg.py test-card-build --board 147b
+python3 tools/tg.py test-card-build --board 169
+```
+
+`test-card-flash` also requires `--board`; provide `--port` when multiple USB
+devices are connected. Flash only with explicit maintainer permission and an
+identified physical board. The on-screen profile is the compiled software
+configuration, **not** physical board identification. The test card displays
+color swatches, text sizes, encoder totals/deltas/clicks/errors, and live tilt
+and gyro readings. The revised test-card source also prints a `[DIAG]` line
+every 100 ms while an active USB CDC host is open: input status, each knob's
+total/delta/button/click/hold/error fields, IMU status, tilt, and gyro values.
+`python3 tools/tg.py send info` reports the compiled profile and display size,
+plus input and IMU health; this is not physical board identification. The test
+card accepts only `info` and `help` serial commands. Capture its responses and
+telemetry only after the revised image is explicitly flashed. A build or
+simulator run does not pass a physical gate.
+
+Board B's encoder direction and downhill-tilt mapping were confirmed on the
+assembled board in prior work. Its exact counts/click feel, gyro signs,
+GPIO3 strap/wake behavior, sleep/wake, and USB-host-versus-power-only auto-off
+remain unverified. Inspect the hardware revision before any revision-dependent
+power or buzzer connection. Do not drive GPIO38 as an LED on Board B.
+
+## Board A deep sleep and wake
 
 System > Sleep or the configured auto-off timeout without encoder activity
 requests deep sleep. AUTO-OFF defaults to ON; OFF AFTER offers 1, 5 (default),
@@ -34,10 +70,13 @@ requests deep sleep. AUTO-OFF defaults to ON; OFF AFTER offers 1, 5 (default),
 automatic sleep, but USB power without an open serial connection does not.
 Closing the serial connection starts a fresh idle countdown. Manual Sleep
 remains available while connected.
-Holding both encoder switches together for 3 seconds opens a sleep confirmation,
-defaulting to Yes. The simultaneous hold takes priority over ordinary 650 ms
-pause/back handling. Both switches must release before a fresh click can confirm;
-No restores the previous game or menu, including any settings edit.
+Individual encoder holds are delivered to games and do not pause or navigate.
+When both switches are down, the OS captures both inputs and freezes the game.
+Releasing both before three continuous seconds opens Pause or goes back in menus;
+holding both continuously for three seconds opens sleep confirmation, defaulting
+to Yes. The chord and its releases are swallowed. Both switches must release
+before a fresh click can confirm; No restores the previous game or menu,
+including any settings edit.
 Either normally open encoder switch (GPIO6 or GPIO7 to GND) wakes to normal
 startup. No additional wiring is needed; GPIO10 is unused.
 
@@ -71,4 +110,6 @@ and brightness setting. Its current behavior is unchanged: a reliable red
 indicator for every plugged-in power source is unsupported on the unmodified
 board. Do not invent a sensing pin or connect 5 V VBUS directly to a GPIO.
 
-GPIO2, GPIO3, and GPIO10 are unused.
+On Board A, GPIO2, GPIO3, and GPIO10 are unused. Board B uses those pins as
+encoder/I2C signals; GPIO3 strap/wake behavior remains an outstanding physical
+safety check.

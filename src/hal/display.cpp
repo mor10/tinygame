@@ -7,6 +7,7 @@
 
 #include "board_config.h"
 #include "display_config.h"
+#include "tg_board.h"
 
 namespace {
 
@@ -24,7 +25,8 @@ alignas(4) std::uint8_t draw_buffer[display_config::WIDTH *
 void writeCommand(std::uint8_t command, const std::uint8_t* data = nullptr,
                   std::size_t data_size = 0) {
     display_spi.beginTransaction(
-        SPISettings(display_config::SPI_FREQUENCY_HZ, MSBFIRST, SPI_MODE0));
+        SPISettings(display_config::SPI_FREQUENCY_HZ, MSBFIRST,
+                    tg::board::LCD_169 ? SPI_MODE3 : SPI_MODE0));
     digitalWrite(board::PIN_LCD_CS, LOW);
     digitalWrite(board::PIN_LCD_DC, LOW);
     display_spi.transfer(command);
@@ -52,14 +54,15 @@ void initializePanel() {
     writeCommand(0x11);
     delay(120);
 
-    const std::uint8_t memory_access_control[] = {
-        display_config::HORIZONTAL ? 0x00 : 0x70};
+    const std::uint8_t memory_access_control[] = {display_config::MADCTL};
     writeCommand(0x36, memory_access_control, sizeof(memory_access_control));
 
-    const std::uint8_t pixel_format[] = {0x05};
+    const std::uint8_t pixel_format[] = {tg::board::LCD_169 ? std::uint8_t{0x55}
+                                                            : std::uint8_t{0x05}};
     writeCommand(0x3A, pixel_format, sizeof(pixel_format));
 
-    const std::uint8_t b0[] = {0x00, 0xE8};
+    const std::uint8_t b0[] = {0x00, tg::board::LCD_169 ? std::uint8_t{0xF8}
+                                                        : std::uint8_t{0xE8}};
     writeCommand(0xB0, b0, sizeof(b0));
 
     const std::uint8_t b2[] = {0x0C, 0x0C, 0x00, 0x33, 0x33};
@@ -68,7 +71,8 @@ void initializePanel() {
     const std::uint8_t b7[] = {0x35};
     writeCommand(0xB7, b7, sizeof(b7));
 
-    const std::uint8_t bb[] = {0x35};
+    const std::uint8_t bb[] = {tg::board::LCD_169 ? std::uint8_t{0x19}
+                                                  : std::uint8_t{0x35}};
     writeCommand(0xBB, bb, sizeof(bb));
 
     const std::uint8_t c0[] = {0x2C};
@@ -77,7 +81,8 @@ void initializePanel() {
     const std::uint8_t c2[] = {0x01};
     writeCommand(0xC2, c2, sizeof(c2));
 
-    const std::uint8_t c3[] = {0x13};
+    const std::uint8_t c3[] = {tg::board::LCD_169 ? std::uint8_t{0x12}
+                                                  : std::uint8_t{0x13}};
     writeCommand(0xC3, c3, sizeof(c3));
 
     const std::uint8_t c4[] = {0x20};
@@ -90,46 +95,41 @@ void initializePanel() {
     writeCommand(0xD0, d0, sizeof(d0));
 
     const std::uint8_t d6[] = {0xA1};
-    writeCommand(0xD6, d6, sizeof(d6));
+    if constexpr (!tg::board::LCD_169) writeCommand(0xD6, d6, sizeof(d6));
 
-    const std::uint8_t e0[] = {0xF0, 0x00, 0x04, 0x04, 0x04, 0x05, 0x29,
-                               0x33, 0x3E, 0x38, 0x12, 0x12, 0x28, 0x30};
-    writeCommand(0xE0, e0, sizeof(e0));
+    const std::uint8_t e0_147[] = {0xF0, 0x00, 0x04, 0x04, 0x04, 0x05, 0x29,
+                                   0x33, 0x3E, 0x38, 0x12, 0x12, 0x28, 0x30};
+    const std::uint8_t e0_169[] = {0xF0, 0x09, 0x13, 0x12, 0x12, 0x2B, 0x3C,
+                                   0x44, 0x4B, 0x1B, 0x18, 0x17, 0x1D, 0x21};
+    writeCommand(0xE0, tg::board::LCD_169 ? e0_169 : e0_147, sizeof(e0_147));
 
-    const std::uint8_t e1[] = {0xF0, 0x07, 0x0A, 0x0D, 0x0B, 0x07, 0x28,
-                               0x33, 0x3E, 0x36, 0x14, 0x14, 0x29, 0x32};
-    writeCommand(0xE1, e1, sizeof(e1));
+    const std::uint8_t e1_147[] = {0xF0, 0x07, 0x0A, 0x0D, 0x0B, 0x07, 0x28,
+                                   0x33, 0x3E, 0x36, 0x14, 0x14, 0x29, 0x32};
+    const std::uint8_t e1_169[] = {0xF0, 0x09, 0x13, 0x0C, 0x0D, 0x27, 0x3B,
+                                   0x44, 0x4D, 0x0B, 0x17, 0x17, 0x1D, 0x21};
+    writeCommand(0xE1, tg::board::LCD_169 ? e1_169 : e1_147, sizeof(e1_147));
 
     writeCommand(0x21);
+    if constexpr (tg::board::LCD_169) {
+        writeCommand(0x13);
+        delay(10);
+    }
     writeCommand(0x11);
     delay(120);
     writeCommand(0x29);
 }
 
 void setAddressWindow(const lv_area_t* area) {
-    // The panel's 34 px offset lies on the physical 172 px axis. In landscape,
-    // MADCTL MV=1 already swaps axes in the controller, so CASET takes logical
-    // x and RASET takes logical y; the offset therefore moves to the row axis.
-    // (The Waveshare demo's unused !HORIZONTAL path swaps x/y a second time.)
-    const std::uint16_t column_offset = display_config::HORIZONTAL
-                                            ? display_config::OFFSET_X
-                                            : display_config::OFFSET_Y;
-    const std::uint16_t row_offset = display_config::HORIZONTAL
-                                         ? display_config::OFFSET_Y
-                                         : display_config::OFFSET_X;
-    const std::uint16_t x1 = static_cast<std::uint16_t>(area->x1) + column_offset;
-    const std::uint16_t x2 = static_cast<std::uint16_t>(area->x2) + column_offset;
-    const std::uint16_t y1 = static_cast<std::uint16_t>(area->y1) + row_offset;
-    const std::uint16_t y2 = static_cast<std::uint16_t>(area->y2) + row_offset;
+    const auto window = display_config::window(area->x1, area->y1, area->x2, area->y2);
 
     const std::uint8_t column_address[] = {
-        static_cast<std::uint8_t>(x1 >> 8), static_cast<std::uint8_t>(x1),
-        static_cast<std::uint8_t>(x2 >> 8), static_cast<std::uint8_t>(x2)};
+        static_cast<std::uint8_t>(window.x1 >> 8), static_cast<std::uint8_t>(window.x1),
+        static_cast<std::uint8_t>(window.x2 >> 8), static_cast<std::uint8_t>(window.x2)};
     writeCommand(0x2A, column_address, sizeof(column_address));
 
     const std::uint8_t row_address[] = {
-        static_cast<std::uint8_t>(y1 >> 8), static_cast<std::uint8_t>(y1),
-        static_cast<std::uint8_t>(y2 >> 8), static_cast<std::uint8_t>(y2)};
+        static_cast<std::uint8_t>(window.y1 >> 8), static_cast<std::uint8_t>(window.y1),
+        static_cast<std::uint8_t>(window.y2 >> 8), static_cast<std::uint8_t>(window.y2)};
     writeCommand(0x2B, row_address, sizeof(row_address));
     writeCommand(0x2C);
 }
@@ -145,10 +145,18 @@ void flush(lv_display_t* display, const lv_area_t* area, std::uint8_t* pixels) {
         width * height * sizeof(std::uint16_t);
 
     display_spi.beginTransaction(
-        SPISettings(display_config::SPI_FREQUENCY_HZ, MSBFIRST, SPI_MODE0));
+        SPISettings(display_config::SPI_FREQUENCY_HZ, MSBFIRST,
+                    tg::board::LCD_169 ? SPI_MODE3 : SPI_MODE0));
     digitalWrite(board::PIN_LCD_CS, LOW);
     digitalWrite(board::PIN_LCD_DC, HIGH);
-    display_spi.writeBytes(pixels, pixel_bytes);
+    const auto stride = lv_draw_buf_width_to_stride(width, LV_COLOR_FORMAT_RGB565);
+    if (stride == width * sizeof(std::uint16_t)) {
+        display_spi.writeBytes(pixels, pixel_bytes);
+    } else {
+        for (std::uint32_t y = 0; y < height; ++y) {
+            display_spi.writeBytes(pixels + y * stride, width * sizeof(std::uint16_t));
+        }
+    }
     digitalWrite(board::PIN_LCD_CS, HIGH);
     display_spi.endTransaction();
 

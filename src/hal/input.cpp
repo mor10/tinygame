@@ -28,9 +28,11 @@ bool raw_left_down = false;
 bool raw_right_down = false;
 
 __attribute__((always_inline)) inline std::uint8_t readAB(const Capture& c) {
-    const std::uint32_t levels = GPIO.in;
-    return static_cast<std::uint8_t>((((levels >> c.a) & 1U) << 1U) |
-                                     ((levels >> c.b) & 1U));
+    const std::uint32_t low_bank = GPIO.in;
+    const std::uint32_t high_bank = GPIO.in1.val;
+    return static_cast<std::uint8_t>(
+        (input::gpioLevelFromRegisters(low_bank, high_bank, c.a) ? 2U : 0U) |
+        (input::gpioLevelFromRegisters(low_bank, high_bank, c.b) ? 1U : 0U));
 }
 
 void IRAM_ATTR capture(void* argument) {
