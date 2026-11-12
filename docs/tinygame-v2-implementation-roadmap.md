@@ -181,6 +181,45 @@ exact 400 transitions per five turns. It does not justify filling in missing
 directions or pass the input gate; compare repeated speeds and investigate
 the capture path and electrical signal before selecting a correction.
 
+**Normal-speed and reversal comparison, 2026-11-12:** with the same diagnostic
+image and stationary snapshots, the user performed marked turns:
+
+| Knob and direction | Turns | PCNT change | Interrupt change | New invalid |
+|---|---:|---:|---:|---:|
+| Left clockwise | 5 | +400 | +376 | 12 |
+| Left counterclockwise | 5 | -400 | -362 | 19 |
+| Right clockwise | 5 | +400 | +386 | 7 |
+| Right counterclockwise | 6 | -481 | -435 | 23 |
+
+For ten cycles of a clockwise half-turn followed by a counterclockwise
+half-turn back to a mark, PCNT's net change was zero for each knob; the
+interrupt decoder drifted -12 on the left and +4 on the right, with 34 and
+26 new invalid transitions respectively. Hardware-limit and software-overrun
+flags remained zero. These trials strengthen the case for evaluating PCNT
+as a candidate input source, including reversal behavior, but neither proves
+its contact waveform is noise-free nor exercises counter-limit rollover.
+The six-turn right trial is recorded as six, not compared to a five-turn target.
+
+The user also made about 20 small reversals at each knob. From the prior
+stationary snapshots to the next snapshots, the left PCNT and interrupt
+changes were both -2 with no new left invalid events. The right changes were
+-2 PCNT and -6 interrupt, with 12 new right invalid events. These are net
+changes, not a count of the individual reversals; the exact return phase and
+intermediate paths were not independently measured.
+
+**Next counter-limit experiment:** before replacing game input, develop a
+test-card-only extended counter using the two remaining PCNT units and the
+same existing inputs, leaving units 0/1 as the reference. Exercise positive
+and negative limit events with a deliberately small limit, repeated
+crossings, reversals near each boundary, simultaneous knobs, reset and
+initialization failure. Compare stationary deltas against units 0/1 and flag
+any ambiguous, missed, coalesced or overflowed event rather than fabricating a
+count. Host tests must cover the accumulator and race cases; review interrupt
+ownership, GPIO routing and all four PCNT units' allocation before building.
+Require explicit authorization before flashing the new test image. Passing
+this experiment would establish a candidate rollover mechanism, not validate
+contact noise, full 1.47B gameplay, or the deferred 1.69.
+
 The smallest useful hardware image is the isolated `test-card-147b`, not the
 full application. On 2026-11-12 it built successfully from the current worktree:
 `.pio/build/test-card-147b/firmware.bin`, SHA-256
