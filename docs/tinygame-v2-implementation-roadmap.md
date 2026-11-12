@@ -65,6 +65,34 @@ The earlier working test card was an older diagnostic image reported visible
 after a manual reset; its exact binary hash and upload command were not recorded
 in the checkpoint evidence. The standard test-card flash command uses PlatformIO.
 
+**1.47B test-card observations, 2026-11-12:** the user confirmed upright,
+unclipped text and swatches, including recognizable red, orange, yellow,
+green, blue, pink and white. No photograph or final viewport approval was
+provided. The USB `info` reply and live telemetry reported input ready and
+IMU OK; this is device status, not proof of correct sensor axes.
+
+- From zero, one user-marked clockwise revolution per knob reported L=+79,
+  R=+79, with ERR=2 and ERR=5 respectively. After RESET, one
+  counterclockwise revolution per knob reported L=-79, R=-79, with ERR=5
+  and ERR=6. Five clicks on each knob produced C:5 and returned to UP.
+  Both buttons reported DN and HLD during holds, then UP after release.
+- On a further slow clockwise revolution, L changed -63 to +13 while ERR
+  increased 5 to 7; R changed -87 to -10 while ERR increased 6 to 8. The
+  increased invalid-transition counts require investigation; turn counts
+  and input reliability are **not accepted** from these observations.
+- Level tilt was reported near zero. Lowering the right edge made T X
+  positive and lowering the left made it negative; lowering the top edge
+  made T Y negative and lowering the bottom made it positive. The user
+  observed opposite gyro responses for opposite motions and reported G X
+  positive while lowering the right edge, G Y negative while lowering the
+  top edge, and G Z negative while rotating clockwise with the screen up.
+  These signs are user-read transient values; quantitative axis isolation
+  and agreement with the intended coordinate convention remain open.
+
+These are partial observations, not acceptance of the full display, input
+or IMU gates. Sleep/wake, auto-off, control policy, device performance and
+all outstanding 1.69 checks require their separate waypoints.
+
 The smallest useful hardware image is the isolated `test-card-147b`, not the
 full application. On 2026-11-12 it built successfully from the current worktree:
 `.pio/build/test-card-147b/firmware.bin`, SHA-256
