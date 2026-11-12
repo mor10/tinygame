@@ -142,6 +142,25 @@ Any new image requires separate flash authorization. Retest any justified
 correction against the same reference on the 1.47B and later on the deferred
 1.69.
 
+**Prepared counter waypoint:** an unflashed 1.47B-only test-card candidate
+adds a `counter` command comparing unfiltered on-chip PCNT counts against
+the existing GPIO-interrupt decoder. It reserves PCNT units 0 and 1, two
+channels each, and routes only the existing encoder A/B pins as pulled-up
+inputs. Its startup configuration is based on the pinned ESP-IDF 4.4.7
+driver, which configures those pins as inputs and routes them into the GPIO
+matrix; the existing GPIO interrupt decoder is unchanged. The diagnostic
+latches a PCNT limit interrupt, reports failures explicitly, and invalidates
+a hardware count once its +/-30000 limit is reached. PCNT counts are not an
+independent electrical reference and the software/hardware reads are not
+atomic; take baseline and final snapshots while both knobs are stationary.
+Confirm direction, counts, errors and limit flags with controlled marked turns
+before drawing conclusions. A new diagnostic flash requires separate
+authorization; its result cannot establish an input gate pass on its own.
+The prepared 1.47B application image has SHA-256
+`d6def8ac6ff7ecca62820f85098fa4dc0b9bfa6fe9ad793be94e399b401826a3`;
+it can replace the existing diagnostic application at `0x10000` without
+rewriting its already-corrected bootloader, partition table or OTA data.
+
 The smallest useful hardware image is the isolated `test-card-147b`, not the
 full application. On 2026-11-12 it built successfully from the current worktree:
 `.pio/build/test-card-147b/firmware.bin`, SHA-256

@@ -52,9 +52,28 @@ every 100 ms while an active USB CDC host is open: input status, each knob's
 total/delta/button/click/hold/error fields, IMU status, tilt, and gyro values.
 `python3 tools/tg.py send info` reports the compiled profile and display size,
 plus input and IMU health; this is not physical board identification. The test
-card accepts only `info` and `help` serial commands. Capture its responses and
+card accepts `info`, `counter` and `help` serial commands. Capture its responses and
 telemetry only after the revised image is explicitly flashed. A build or
 simulator run does not pass a physical gate.
+
+On the 1.47B test card, `python3 tools/tg.py send counter` reports each knob
+as `hardware,software,invalid,overrun,hardware_limit`. The hardware count is
+an unfiltered ESP32 pulse-counter measurement on the existing A/B inputs; the
+software count and errors are the existing interrupt decoder. The diagnostic
+uses two PCNT units and both channels per unit, sets those pins as inputs
+with pull-ups, and does not drive them or alter game input. It has not been
+physically verified. A `hardware_limit` of 1 invalidates that counter until
+reset; the hardware wraps at +/-30000. Initialization or read failures are
+reported rather than substituted with zero. This comparison is unavailable
+on the deferred 1.69 profile.
+
+With the knobs stationary, capture `counter` before and after each marked,
+short turn trial; compare changes, not absolute totals. The snapshots are not
+simultaneous and the counters start at different times. Both counters see the
+same electrical contacts, and neither is a waveform reference: differences
+can suggest a sampling issue, while matching counts do not exclude contact
+bounce, electrical noise or shared missed edges. Stop and investigate an
+overrun, hardware limit or PCNT error; do not infer missing movement.
 
 Board B's encoder direction and downhill-tilt mapping were confirmed on the
 assembled board in prior work. Its exact counts/click feel, gyro signs,

@@ -8,6 +8,7 @@
 
 #include "dev_line.h"
 #include "display.h"
+#include "encoder_counter.h"
 #include "imu.h"
 #include "input.h"
 #include "power.h"
@@ -39,6 +40,7 @@ lv_obj_t* gyro_z = nullptr;
 lv_obj_t* sensor_status = nullptr;
 bool input_ready = false;
 bool imu_ready = false;
+bool counter_ready = false;
 std::uint32_t last_refresh = 0;
 devtools::LineReader serial_reader;
 
@@ -166,8 +168,25 @@ void pollSerial() {
                 Serial.println("[DEV] ok");
                 break;
             }
+            case diagnostics::SerialCommand::Counter: {
+                diagnostics::counter::Reading counts{};
+                if (!input_ready || !counter_ready || !diagnostics::counter::read(counts)) {
+                    Serial.println("[DEV] error: pulse counter unavailable");
+                    break;
+                }
+                const auto& state = input::state();
+                Serial.printf("[DEV] counter L=%ld,%ld,%lu,%lu,%d R=%ld,%ld,%lu,%lu,%d\n",
+                              static_cast<long>(counts.left), static_cast<long>(state.left.total),
+                              static_cast<unsigned long>(state.left.invalid),
+                              static_cast<unsigned long>(state.left.overruns), counts.left_overflow,
+                              static_cast<long>(counts.right), static_cast<long>(state.right.total),
+                              static_cast<unsigned long>(state.right.invalid),
+                              static_cast<unsigned long>(state.right.overruns), counts.right_overflow);
+                Serial.println("[DEV] ok");
+                break;
+            }
             case diagnostics::SerialCommand::Help:
-                Serial.println("[DEV] commands: info");
+                Serial.println("[DEV] commands: info counter");
                 Serial.println("[DEV] ok");
                 break;
             case diagnostics::SerialCommand::Unknown:
@@ -190,6 +209,10 @@ bool initialize() {
     if (!display::initialize()) return false;
     tg::styleInit(display::lvDisplay());
 
+    counter_ready = diagnostics::counter::initialize();
+#if TG_BOARD == 147
+    if (!counter_ready) Serial.println("[DIAG] Pulse counter unavailable");
+#endif
     input_ready = input::initialize(millis());
     if (!input_ready) Serial.println("[DIAG] Input initialization failed");
     imu_ready = imu::initialize();
