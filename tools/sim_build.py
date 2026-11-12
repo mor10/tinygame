@@ -21,6 +21,12 @@ import subprocess
 import sys
 import tarfile
 
+from lua_source import REVISION as LUA_REVISION
+from lua_source import SOURCE_FILES as LUA_SOURCE_FILES
+from lua_source import VERSION as LUA_VERSION
+from lua_source import source_dir as lua_source_dir
+import tgb
+
 
 ROOT = Path(__file__).resolve().parents[1]
 EMSDK_VERSION = "4.0.19"
@@ -31,7 +37,8 @@ CACHE = Path.home() / ".cache" / "tinygame-sim"
 OUTPUT = ROOT / "sim" / "web" / "build"
 EXPORTS = [
     "_main", "_malloc", "_free", "_tg_sim_turn", "_tg_sim_button",
-    "_tg_sim_tilt", "_tg_sim_command", "_tg_sim_framebuffer",
+    "_tg_sim_tilt", "_tg_sim_command", "_tg_sim_serial_connected", "_tg_sim_install_bundle", "_tg_sim_framebuffer",
+    "_tg_sim_width", "_tg_sim_height",
     "_tg_sim_sleeping", "_tg_sim_brightness", "_tg_sim_led", "_tg_sim_stop",
     "_tg_sim_pause", "_tg_sim_resume",
 ]
@@ -136,26 +143,79 @@ def publish_directory(staged: Path, destination: Path) -> None:
     # in the persistent cache until the next link, never exposing partial files.
 
 
+def embedded_bundle_source(objects_dir: Path, game_dirs: list[Path] | None = None) -> Path:
+    if game_dirs is None:
+        game_dirs = sorted(path for path in (ROOT / "games").iterdir() if path.is_dir())
+    bundles = []
+    for directory in sorted(game_dirs, key=lambda path: path.name):
+        files = tgb.read_game(directory)
+        manifest = tgb.parse_manifest(files, expected_id=directory.name)
+        bundles.append((manifest["id"], manifest["name"], tgb.build_bundle(files)))
+    if not bundles:
+        raise RuntimeError("The simulator needs at least one valid text game in games/<id>")
+
+    content = [
+        "#include <cstddef>",
+        "#include <cstdint>",
+        "",
+        '#include "lua_bundle_game.h"',
+        "",
+        "namespace os::lua_game {",
+        "namespace {",
+    ]
+    for index, (_, _, bundle) in enumerate(bundles):
+        values = [
+            "    " + ", ".join(f"0x{byte:02x}" for byte in bundle[offset:offset + 12]) + ","
+            for offset in range(0, len(bundle), 12)
+        ]
+        content.extend((f"const std::uint8_t bundle_{index}[] = {{", *values, "};"))
+    content.extend(("}  // namespace", "", "extern const EmbeddedBundle tg_sim_bundles[] = {"))
+    content.extend(
+        f"    {{{json.dumps(game_id)}, {json.dumps(name)}, "
+        f"bundle_{index}, sizeof(bundle_{index})}},"
+        for index, (game_id, name, _) in enumerate(bundles)
+    )
+    content.extend((
+        "};",
+        "extern const std::size_t tg_sim_bundle_count =",
+        "    sizeof(tg_sim_bundles) / sizeof(tg_sim_bundles[0]);",
+        "}  // namespace os::lua_game",
+        "",
+    ))
+    content = "\n".join(content)
+    source = objects_dir / "embedded_games.cpp"
+    if not source.exists() or source.read_text() != content:
+        source.write_text(content)
+    return source
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--clean", action="store_true", help="Recompile all simulator objects")
     parser.add_argument("--jobs", type=int, default=min(8, os.cpu_count() or 1))
+    parser.add_argument("--board", choices=("147b", "169"), default="147b")
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("--jobs must be positive")
     compiler, env = sdk_environment()
     lvgl = lvgl_source()
-    objects_dir = CACHE / "objects" / hashlib.sha256(str(ROOT).encode()).hexdigest()[:16]
+    lua = lua_source_dir()
+    cache_key = hashlib.sha256(str(ROOT).encode()).hexdigest()[:16]
+    objects_dir = CACHE / "objects" / (cache_key + ("-169" if args.board == "169" else ""))
+    output_dir = OUTPUT if args.board == "147b" else OUTPUT.with_name("build-169")
     if args.clean and objects_dir.exists():
         shutil.rmtree(objects_dir)
     objects_dir.mkdir(parents=True, exist_ok=True)
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    embedded_games = embedded_bundle_source(objects_dir)
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
     staged = objects_dir / "linked-engine"
     staged.mkdir(parents=True, exist_ok=True)
 
     include_dirs = [ROOT / "sim" / "arduino", ROOT / "sim" / "hal",
-                    ROOT / "include", ROOT / "src" / "hal", ROOT / "src" / "os", lvgl]
+                    ROOT / "include", ROOT / "src" / "hal", ROOT / "src" / "os",
+                    ROOT / "engine", lvgl, lua]
     common = ["-O2", "-DLV_CONF_INCLUDE_SIMPLE", "-DTINYGAME_SIM=1",
+              *(["-DTG_BOARD=169"] if args.board == "169" else []),
               *[f"-I{path}" for path in include_dirs]]
     sources = [ROOT / "src" / "main.cpp", ROOT / "sim" / "main_sim.cpp"]
     for directory in [ROOT / "src" / "os", ROOT / "src" / "games",
@@ -163,6 +223,11 @@ def main() -> int:
         sources.extend(path for path in directory.rglob("*")
                        if path.suffix in {".c", ".cc", ".cpp", ".cxx"} and
                        not {"test", "tests"}.intersection(path.relative_to(directory).parts))
+    sources.extend((ROOT / "engine" / name) for name in
+                   ("bundle_script.cpp", "bundle_view.cpp", "draw_frame.cpp", "manifest_view.cpp",
+                    "fixed_step_clock.cpp", "fixed_step_runner.cpp", "lua_runtime.cpp"))
+    sources.append(embedded_games)
+    sources.extend(lua / name for name in LUA_SOURCE_FILES)
     sources.extend((lvgl / "src").rglob("*.c"))
     sources = sorted(set(sources))
     objects: list[Path] = []
@@ -179,7 +244,8 @@ def main() -> int:
         command = [str(cc), *common, *vendor_flags,
                    "-std=c11" if source.suffix == ".c" else "-std=c++17",
                    "-MMD", "-MF", str(depfile), "-c", str(source), "-o", str(object_path)]
-        signature = json.dumps([EMSDK_VERSION, LVGL_VERSION, command])
+        signature = json.dumps([EMSDK_VERSION, LVGL_VERSION, LUA_VERSION,
+                                LUA_REVISION, command])
         old_signature = signature_file.read_text() if signature_file.exists() else ""
         deps = dependencies(depfile)
         fresh = (object_path.exists() and old_signature == signature and deps and
@@ -201,7 +267,8 @@ def main() -> int:
             sys.stderr.buffer.write(error.stdout or b"")
             sys.stderr.buffer.write(error.stderr or b"")
             raise
-        signature_file.write_text(json.dumps([EMSDK_VERSION, LVGL_VERSION, command]))
+        signature_file.write_text(json.dumps([EMSDK_VERSION, LVGL_VERSION,
+                                              LUA_VERSION, LUA_REVISION, command]))
 
     print(f"Compiling {len(jobs)}/{len(sources)} sources ({args.jobs} jobs)", flush=True)
     # Warm the shared SDK sysroot before parallel compilers contend for it.
@@ -209,7 +276,7 @@ def main() -> int:
         compile_one(jobs.pop(0))
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
         list(pool.map(compile_one, jobs))
-    output = OUTPUT / "tinygame.js"
+    output = output_dir / "tinygame.js"
     link = [
         str(compiler.with_name("em++")), *map(str, objects), "-O2",
         "-sMODULARIZE=1", "-sEXPORT_ES6=1", "-sEXPORT_NAME=createTinyGame",
@@ -228,11 +295,11 @@ def main() -> int:
                   any(obj.stat().st_mtime_ns > output.stat().st_mtime_ns for obj in objects) or
                   (ROOT / "sim" / "arduino" / "runtime.js").stat().st_mtime_ns > output.stat().st_mtime_ns)
     if needs_link:
-        print("Linking sim/web/build/tinygame.js + tinygame.wasm", flush=True)
+        print(f"Linking {output.relative_to(ROOT)} + tinygame.wasm", flush=True)
         run(link, cwd=ROOT, env=env)
         if not (staged / "tinygame.js").is_file() or not (staged / "tinygame.wasm").is_file():
             raise RuntimeError("Link did not produce both simulator assets")
-        publish_directory(staged, OUTPUT)
+        publish_directory(staged, output_dir)
         link_signature.write_text(signature)
     else:
         print("Simulator is up to date.", flush=True)

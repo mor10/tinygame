@@ -24,11 +24,13 @@
     <div class="legend">
       <p><b>Left</b> <kbd>A</kbd> counterclockwise · <kbd>S</kbd> click · <kbd>D</kbd> clockwise</p>
       <p><b>Right</b> <kbd>J</kbd> counterclockwise · <kbd>K</kbd> click · <kbd>L</kbd> clockwise</p>
-      <p>Drag a knob's rim or scroll to turn. Press its centre to click; hold to pause or go back.<br>Drag the screen or use arrow keys to tilt.</p>
+      <p>Drag a knob's rim or scroll to turn. Press its centre to click; hold both knobs, then release before 3 seconds for Pause/back or keep holding for Sleep.<br>Drag the screen or use arrow keys to tilt.</p>
     </div>
     <div class="toolbar">
       <label><input id="device" type="checkbox"> Use connected console</label>
       <span id="device-status" role="status">Disconnected</span>
+      <button id="install" type="button">Install .tgb</button>
+      <input id="bundle-file" type="file" accept=".tgb,application/octet-stream" hidden>
       <button id="reload" type="button">Restart</button>
       <button id="screenshot" type="button">Screenshot</button>
     </div>

@@ -9,7 +9,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def cmd_sim(args):
-    result = subprocess.call([sys.executable, os.path.join(ROOT, "tools", "sim_build.py")], cwd=ROOT)
+    board = getattr(args, "board", "147b")
+    result = subprocess.call([sys.executable, os.path.join(ROOT, "tools", "sim_build.py"),
+                              "--board", board], cwd=ROOT)
     if result or args.build_only:
         return result
     node = shutil.which("node")
@@ -19,7 +21,8 @@ def cmd_sim(args):
         raise ValueError("Simulator HTTP port must be 0..65535.")
     env = dict(os.environ, PYTHON=sys.executable)
     child = subprocess.Popen(
-        [node, os.path.join(ROOT, "sim", "server.mjs"), "--port", str(args.port)],
+        [node, os.path.join(ROOT, "sim", "server.mjs"), "--port", str(args.port),
+         "--board", board],
         cwd=ROOT, env=env, stdout=subprocess.PIPE, text=True,
     )
     try:

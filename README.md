@@ -103,6 +103,7 @@ python3 tools/tg.py sim                # build, serve locally and open a browser
 python3 tools/tg.py sim --no-open      # print the URL without opening it
 python3 tools/tg.py sim --port 8080    # choose the local HTTP port
 python3 tools/tg.py sim --build-only   # compile WebAssembly only
+python3 tools/tg.py sim --board 169    # preview the provisional 1.69 profile
 ```
 
 The simulator build needs macOS or Linux (Windows: use WSL), Python 3.10+,
@@ -114,20 +115,24 @@ Allow time and disk space for the first download/build. Later builds reuse
 compiled objects. Source edits rebuild and reload automatically, and compile
 errors appear on the page. Nothing is published to the internet.
 
-The simulator draws the screen, two knobs and RGB LED. It runs the same OS,
-menus and games as the console; new game folders work automatically.
+The default 1.47B profile has a 320x172 screen and RGB LED. The provisional
+1.69 profile has a 280x240 screen and no RGB LED; screenshots use the selected
+screen's native dimensions. The profiles use separate build caches. The
+simulator runs the same OS, menus and games as the console, but legacy game
+layouts are not yet adapted to 1.69.
 
 | Knob | Clockwise | Click | Counterclockwise |
 |---|---|---|---|
 | Left | D | S | A |
 | Right | L | K | J |
 
-Tap a turn key for one menu step; hold it to repeat. Hold S or K for the
-console's pause/back action. With a mouse, drag a knob's rim or scroll over it
+Tap a turn key for one menu step; hold it to repeat. Hold S and K together,
+then release both before three seconds for pause/back; hold both for three
+seconds for the sleep prompt. With a mouse, drag a knob's rim or scroll over it
 to turn, and press its centre to click or hold. Drag the screen or use arrow
-keys to tilt; releasing returns to level. Settings and best scores persist in
-browser storage. Sleep wakes to a fresh boot when you click a knob, like the
-real console. Click the page before using keys; typing in the dev command
+keys to tilt; releasing returns to level. Settings and best scores persist in browser storage. Simulation time pauses
+while its page is hidden. Sleep wakes to a fresh boot when you click a knob,
+like the real console. Click the page before using keys; typing in the dev command
 field does not turn the knobs.
 
 The **TinyGame simulator** canvas is included as a project extension for the
@@ -186,10 +191,11 @@ A game is just its folder. To share one, commit `src/games/<id>/` and open a pul
 
 ## Setup and agent support
 
-Install Python 3, a C++17 compiler (`c++`, or set `CXX`) and PlatformIO, then check that everything works:
+Install Python 3.11+, a C++17 compiler (`c++`, or set `CXX`) and PlatformIO, then check that everything works:
 
 ```bash
 python3 -m pip install platformio
+python3 tools/tg.py doctor
 python3 tools/tg.py test
 python3 tools/tg.py build
 ```

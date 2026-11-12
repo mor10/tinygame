@@ -1,12 +1,14 @@
 import { KEY_TURNS, KEY_BUTTONS, angleDelta, angleAt, Rotation, arrowTilt, DeviceInput } from "./input.mjs";
+import { waitForDisplayFrames } from "./display_ready.mjs";
 
 const $ = id => document.getElementById(id);
 const screen = $("screen"), context = screen.getContext("2d");
-const image = context.createImageData(320, 172);
+let image;
 const knobs = [...document.querySelectorAll(".knob")];
 const buttons = [new Set(), new Set()], angles = [0, 0], keys = new Set();
 const deviceInput = new DeviceInput();
 let firmware, booting = false, pendingAck, serialBuffer = "", serialBatch = [];
+let board = "147b";
 let commandChain = Promise.resolve(), deviceConnected = false, tiltDrag = null;
 const repeats = new Map();
 
@@ -57,7 +59,7 @@ function tilt(x, y) {
 }
 function command(text) {
   const run = async () => {
-    if (!firmware || booting) throw new Error("Firmware is not ready");
+    if (!firmware || booting || document.hidden) throw new Error("Firmware is not ready");
     const module = firmware;
     if (text.startsWith("wait ")) {
       const seconds = Number(text.slice(5));
@@ -87,31 +89,53 @@ function command(text) {
   return result;
 }
 async function boot() {
-  if (booting) return;
+  if (booting) throw new Error("Firmware is already starting.");
   booting = true;
   $("status").textContent = "Starting firmware...";
   try {
-    firmware?.pauseMainLoop();
+    firmware?._tg_sim_stop();
+    firmware = null;
     pendingAck?.reject(new Error("Firmware restarted"));
     for (const side of [0, 1]) buttons[side].clear();
     knobs.forEach(knob => knob.classList.remove("pressed"));
-    const { default: createTinyGame } = await import("./build/tinygame.js");
+    const build = board === "169" ? "build-169" : "build";
+    const { default: createTinyGame } = await import(`./${build}/tinygame.js`);
     firmware = await createTinyGame({
-      locateFile: path => new URL(`build/${path}`, document.baseURI).href,
+      locateFile: path => new URL(`${build}/${path}`, document.baseURI).href,
       onSerial: serial,
       print: text => serial(text + "\n"),
       printErr: text => { serial(text + "\n"); error(text); },
       onAbort: reason => error(`Firmware stopped: ${reason}`),
     });
+    if (document.hidden) firmware._tg_sim_visible(0);
+    const width = firmware._tg_sim_width(), height = firmware._tg_sim_height();
+    if ((board === "169" && (width !== 280 || height !== 240)) ||
+        (board === "147b" && (width !== 320 || height !== 172))) {
+      firmware._tg_sim_stop();
+      firmware = null;
+      throw new Error("Firmware screen dimensions do not match the selected board.");
+    }
+    screen.width = width; screen.height = height;
+    screen.style.aspectRatio = `${width} / ${height}`;
+    image = context.createImageData(width, height);
+    $("led").hidden = board === "169";
+    await waitForDisplayFrames();
     deviceInput.reset();
     $("error").hidden = true;
     $("status").textContent = "Ready";
+    booting = false;
+    renderFrame();
+  } catch (e) {
+    firmware?._tg_sim_stop();
+    firmware = null;
+    $("status").textContent = "Firmware unavailable";
+    throw e;
   } finally { booting = false; }
 }
 function renderFrame() {
   if (firmware && !booting) {
     const address = firmware._tg_sim_framebuffer();
-    const pixels = new Uint16Array(firmware.HEAPU8.buffer, address, 320 * 172);
+    const pixels = new Uint16Array(firmware.HEAPU8.buffer, address, screen.width * screen.height);
     for (let i = 0; i < pixels.length; i++) {
       const v = pixels[i], p = i * 4;
       image.data[p] = Math.round(((v >> 11) & 31) * 255 / 31);
@@ -158,7 +182,10 @@ document.addEventListener("keyup", event => {
   if (event.key.startsWith("Arrow")) { keys.delete(event.key); tilt(...arrowTilt(keys)); }
 });
 window.addEventListener("blur", releaseLocal);
-document.addEventListener("visibilitychange", () => { if (document.hidden) releaseLocal(); });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) releaseLocal();
+  firmware?._tg_sim_visible(Number(!document.hidden));
+});
 knobs.forEach((knob, side) => {
   let drag = null;
   knob.addEventListener("pointerdown", event => {
@@ -208,6 +235,41 @@ $("command-form").addEventListener("submit", event => {
   event.preventDefault(); command($("command").value).catch(error); $("command").value = "";
 });
 $("reload").addEventListener("click", () => boot().catch(error));
+$("install").addEventListener("click", () => $("bundle-file").click());
+$("bundle-file").addEventListener("change", async event => {
+  const input = event.currentTarget;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  if (file.size === 0 || file.size > 4 * 1024 * 1024) {
+    error("Choose a non-empty .tgb bundle no larger than 4 MiB.");
+    return;
+  }
+  if (!firmware || booting) {
+    error("Wait for the simulator firmware to be ready before installing.");
+    return;
+  }
+  const module = firmware;
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const pointer = module._malloc(bytes.length);
+    if (!pointer) throw new Error("Not enough memory to stage this bundle.");
+    let result;
+    try {
+      module.HEAPU8.set(bytes, pointer);
+      result = module._tg_sim_install_bundle(pointer, bytes.length);
+    } finally {
+      module._free(pointer);
+    }
+    if (result !== 0) {
+      throw new Error(`Bundle install failed (${result}); see the firmware log for details.`);
+    }
+    await boot();
+    $("status").textContent = `Installed ${file.name}; simulator restarted`;
+  } catch (e) {
+    error(e);
+  }
+});
 $("screenshot").addEventListener("click", () => api("screenshot", { png: screen.toDataURL("image/png") }).then(result => {
   $("status").textContent = "Screenshot saved"; serial(`Saved ${result.path}\n`);
 }).catch(error));
@@ -244,7 +306,7 @@ events.addEventListener("request", async event => {
     else if (action === "launch") { await command(`launch ${input.game}`); result = { game: input.game }; }
     else if (action === "reload") { await boot(); result = { status: "ready" }; }
     else if (action === "screenshot") {
-      if (!firmware || booting) throw new Error("Firmware is not ready");
+      if (!firmware || booting || document.hidden) throw new Error("Firmware is not ready");
       renderFrame(); result = { png: screen.toDataURL("image/png") };
     }
     else throw new Error(`Unknown simulator action: ${action}`);
@@ -252,13 +314,14 @@ events.addEventListener("request", async event => {
   } catch (e) { await api("reply", { id, error: String(e) }).catch(error); }
 });
 setInterval(() => {
-  if (!firmware || booting) return;
   const lines = serialBatch; serialBatch = [];
-  api("report", { lines, ready: true, sleeping: Boolean(firmware._tg_sim_sleeping()) }).catch(error);
+  const ready = Boolean(firmware && !booting && !document.hidden);
+  api("report", { lines, ready, sleeping: ready && Boolean(firmware._tg_sim_sleeping()) }).catch(error);
 }, 250);
 events.onerror = () => { $("status").textContent = "Server disconnected; reconnecting..."; };
 render();
-boot().then(async () => {
-  const state = await api("state");
+api("state").then(async state => {
+  board = state.board;
+  await boot();
   if (state.game) await command(`launch ${state.game}`);
 }).catch(e => { $("status").textContent = "Firmware unavailable"; error(e); });

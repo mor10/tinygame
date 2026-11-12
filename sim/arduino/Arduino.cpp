@@ -12,6 +12,13 @@ SimESP ESP;
 
 namespace {
 const double started_at = emscripten_get_now();
+double paused_at = 0.0;
+double paused_total = 0.0;
+bool clock_paused = false;
+
+double simulatedTime() {
+    return (clock_paused ? paused_at : emscripten_get_now()) - started_at - paused_total;
+}
 
 EM_JS(void, serialOutput, (const char* bytes, int size), {
     const text = UTF8ToString(bytes, size);
@@ -20,12 +27,20 @@ EM_JS(void, serialOutput, (const char* bytes, int size), {
 }  // namespace
 
 std::uint32_t millis() {
-    return static_cast<std::uint32_t>(static_cast<std::uint64_t>(emscripten_get_now() - started_at));
+    return static_cast<std::uint32_t>(static_cast<std::uint64_t>(simulatedTime()));
 }
 
 std::uint32_t micros() {
     return static_cast<std::uint32_t>(
-        static_cast<std::uint64_t>((emscripten_get_now() - started_at) * 1000.0));
+        static_cast<std::uint64_t>(simulatedTime() * 1000.0));
+}
+
+void simSetClockPaused(bool paused) {
+    if (paused == clock_paused) return;
+    const double now = emscripten_get_now();
+    if (paused) paused_at = now;
+    else paused_total += now - paused_at;
+    clock_paused = paused;
 }
 
 void yield() {}

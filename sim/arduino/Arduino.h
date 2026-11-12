@@ -7,13 +7,15 @@
 std::uint32_t millis();
 std::uint32_t micros();
 void yield();
+void simSetClockPaused(bool paused);
 
 class SimSerial {
 public:
     void begin(unsigned long) {}
     int available() const;
     int availableForWrite() const { return 4096; }
-    explicit operator bool() const { return false; }
+    explicit operator bool() const { return connected_; }
+    void setConnected(bool connected) { connected_ = connected; }
     int read();
     std::size_t write(const std::uint8_t* bytes, std::size_t size);
     std::size_t write(std::uint8_t byte) { return write(&byte, 1); }
@@ -26,6 +28,7 @@ private:
     char input_[4096]{};
     std::size_t head_ = 0;
     std::size_t tail_ = 0;
+    bool connected_ = false;
 };
 
 class SimESP {

@@ -10,17 +10,34 @@ reload project extensions or reopen the session so it is discovered. Its canvas
 id is `tinygame-simulator`; optional open input `{ "game": "brickbreaker" }` launches a
 game after boot. First open downloads the pinned Emscripten toolchain and LVGL
 if needed, then builds the firmware. The build requires macOS or Linux
-(Windows: WSL), Python 3.10+, Git, curl and Node.js 22+.
+(Windows: WSL), Python 3.11+, Git, curl and Node.js 22+.
 
 The same interface runs in a normal browser with:
 
 ```sh
 python3 tools/tg.py sim
+python3 tools/tg.py sim --board 169
 ```
+
+The standalone 1.69 profile is provisional and uses a 280x240 screen without
+an RGB LED. The default 1.47B profile uses 320x172. Each has separate build
+outputs and native-sized screenshots. Legacy game layouts are not yet adapted
+to 1.69, and simulation does not verify physical hardware.
+
+## Installing a text game
+
+Pack a validated game with `python3 tools/tg.py pack <id>`, then choose
+**Install .tgb** in the simulator and select its `build/games/<id>.tgb` file.
+The simulator validates the bundle with the shared firmware code, saves it in
+the current browser origin's localStorage, and restarts so it appears in the
+launcher. Browser storage quotas vary; a failed write is reported and does not
+replace an existing installed bundle. This installs only into the simulator.
+To install on a physical console, use `python3 tools/tg.py push <id> --board
+147b` or `--board 169`, matching the physically confirmed model.
 
 ## Controls
 
-| Knob | Clockwise | Click (hold for pause/back) | Counterclockwise |
+| Knob | Clockwise | Click / hold | Counterclockwise |
 |---|---|---|---|
 | Left | D | S | A |
 | Right | L | K | J |
@@ -29,11 +46,13 @@ One turn key tap is four transitions; holding repeats. Drag a knob's rim to
 rotate it (80 transitions per revolution), scroll over it, or press its centre.
 Arrow keys or dragging the screen tilt the console; releasing springs back to
 level. The little dot below the LED shows tilt. Input is released when the
-browser loses focus so a key cannot become stuck.
-Hold S and K together for 3 seconds for the OS sleep prompt. Release both
-before clicking to confirm Yes, or turn the main knob to No and click to cancel.
-The same gesture can be exercised with `down left`, `down right`, `wait 3.1`,
-`up left`, `up right`; `hold` alone injects the ordinary single-knob action.
+browser loses focus so a key cannot become stuck. Individual knob holds are
+game input. Hold S and K together, then release both before three seconds to
+open Pause/back; keep both down for 3 seconds for the OS sleep prompt. Release
+both before clicking to confirm Yes, or turn the main knob to No and click to
+cancel. The gestures can be exercised with `down left`, `down right`, `wait`,
+and `up left`, `up right`. `hold` alone injects a legacy long-press event and
+does not open Pause.
 
 ## Agent actions
 
@@ -54,6 +73,8 @@ and wait for **Ready** before calling actions. Actions fail explicitly if
 the page is unavailable, a command fails or the firmware does not acknowledge.
 Keep only one page open per server URL when using agent actions; extra tabs
 are rejected rather than executing a command on multiple firmware instances.
+Simulation time pauses while the page is hidden. Bring it to the foreground
+and wait for Ready before sending actions.
 
 ### A useful game-check sequence
 
@@ -62,12 +83,13 @@ Open with `{ "game": "brickbreaker" }`, wait until `get_output` reports
 
 1. `send` with `{ "commands": ["click", "turn right 20", "wait 1"] }`.
 2. `screenshot` with `{ "label": "brickbreaker-play" }`; inspect the returned PNG.
-3. `send` with `{ "commands": ["hold"] }` and check the pause menu.
+3. `send` with `{ "commands": ["down left", "down right", "up left", "up right"] }` and check the pause menu.
 4. Release injected input with
    `{ "commands": ["up left", "up right", "tilt off"] }`.
 
-Use `get_output`'s `next` value as the next `since` cursor. `hold` injects an OS
-long-press event; a held keyboard/mouse knob tests actual button timing.
+Use `get_output`'s `next` value as the next `since` cursor. `hold` injects an
+OS long-press event for diagnostics; holding one keyboard/mouse knob tests its
+game-visible hold state, and holding both tests OS chord timing.
 Reload after source edits starts a new run, not the previous game/level.
 Do not call `reload` expecting a source build: it restarts the loaded firmware;
 the file watcher handles recompilation.
@@ -97,7 +119,10 @@ reload events; ordinary HTTP posts carry serial output, replies and PNGs.
 Each server URL has an unguessable prefix and rejects cross-origin posts.
 App theme tokens style the page around the intentionally dark console.
 
-Watching `src/`, `include/` and `sim/` triggers debounced incremental builds.
+Watching `src/`, `include/`, `sim/` and `engine/` triggers debounced incremental builds.
+Changes to `games/knob_dodge/` also rebuild its packed Lua bundle into the
+simulator, so the preview runs the same source through the C++ `BundleGame`
+adapter without a browser-side rules copy.
 Successful builds reload the page; failures keep the last working page and show
 the compiler error. Build output is ignored by Git. Settings and best scores
 persist in browser localStorage; game state does not. This is not an electrical

@@ -8,44 +8,47 @@ import { fileURLToPath } from "node:url";
 import { validateDevice } from "./web/input.mjs";
 
 const builds = new Map();
-export function build(root, onOutput = () => {}) {
-  if (builds.has(root)) return builds.get(root);
+export function build(root, onOutput = () => {}, board = "147b") {
+  const key = `${root}\0${board}`;
+  if (builds.has(key)) return builds.get(key);
   const promise = new Promise((resolveBuild, reject) => {
-    const child = spawn(process.env.PYTHON || "python3", ["tools/tg.py", "sim", "--build-only"], { cwd: root });
+    const child = spawn(process.env.PYTHON || "python3", ["tools/tg.py", "sim", "--build-only", "--board", board], { cwd: root });
     let output = "";
     const consume = chunk => { output = (output + chunk).slice(-60000); onOutput(chunk.toString()); };
     child.stdout.on("data", consume); child.stderr.on("data", consume);
     child.on("error", reject);
     child.on("close", code => code === 0 ? resolveBuild({ output }) : reject(new Error(`Simulator build failed (${code})\n${output}`)));
-  }).finally(() => builds.delete(root));
-  builds.set(root, promise);
+  }).finally(() => builds.delete(key));
+  builds.set(key, promise);
   return promise;
 }
 
 export function validGame(game) {
   return typeof game === "string" && /^[a-z][a-z0-9_]{0,14}$/.test(game);
 }
-export function screenshotBytes(png) {
+export function screenshotBytes(png, board = "147b") {
+  const [width, height] = board === "169" ? [280, 240] : [320, 172];
   if (typeof png !== "string" || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(png)) throw new Error("Expected a PNG data URL");
   const bytes = Buffer.from(png.split(",")[1], "base64");
   if (bytes.length > 1024 * 1024 || bytes.length < 33
     || bytes.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a"
-    || bytes.readUInt32BE(16) !== 320 || bytes.readUInt32BE(20) !== 172) {
-    throw new Error("Expected a 320x172 PNG screenshot (maximum 1 MB)");
+    || bytes.readUInt32BE(16) !== width || bytes.readUInt32BE(20) !== height) {
+    throw new Error(`Expected a ${width}x${height} PNG screenshot (maximum 1 MB)`);
   }
   return bytes;
 }
 
-export async function startSimulator({ root, artifacts, game, port = 0, autoBuild = true }) {
+export async function startSimulator({ root, artifacts, game, port = 0, autoBuild = true, board = "147b" }) {
   root = resolve(root);
   if (game !== undefined && !validGame(game)) throw new Error("Invalid game id");
+  if (!["147b", "169"].includes(board)) throw new Error("Invalid board profile");
   const web = join(root, "sim", "web");
   const prefix = `/${randomBytes(24).toString("hex")}/`;
   const clients = new Set(), pending = new Map();
   let bridge, bridgeStop, closed = false, timer, rebuilding = false, dirty = false;
-  let nextLog = 0, pageSeen = 0;
+  let nextLog = 0, pageSeen = 0, firmwareReady = false;
   const logs = [];
-  const state = { status: "starting", game, buildError: null, connected: false, deviceMessage: "Disconnected", sleeping: false };
+  const state = { status: "starting", game, board, buildError: null, connected: false, deviceMessage: "Disconnected", sleeping: false };
   const emit = (type, value) => {
     const message = `event: ${type}\ndata: ${JSON.stringify(value)}\n\n`;
     for (const client of clients) client.write(message);
@@ -58,6 +61,7 @@ export async function startSimulator({ root, artifacts, game, port = 0, autoBuil
   const request = (action, input = {}) => new Promise((resolveRequest, reject) => {
     if (clients.size > 1) { reject(new Error("Multiple simulator pages are connected; close extra tabs before using agent actions")); return; }
     if (!clients.size || Date.now() - pageSeen > 3000) { reject(new Error("Simulator page is not ready; open it and wait for firmware boot")); return; }
+    if (action !== "reload" && !firmwareReady) { reject(new Error("Simulator firmware is not ready")); return; }
     const id = randomUUID();
     const duration = action === "send" ? Math.min(300000, 10000 + input.commands.reduce((sum, text) => sum + (text.startsWith("wait ") ? Number(text.slice(5)) * 1000 : 5060), 0)) : 15000;
     const timeout = setTimeout(() => { pending.delete(id); reject(new Error(`Simulator action timed out: ${action}`)); }, duration);
@@ -68,12 +72,12 @@ export async function startSimulator({ root, artifacts, game, port = 0, autoBuil
     emit("request", { id, action, input });
   });
   const saveScreenshot = async (png, label = "screen") => {
-    const bytes = screenshotBytes(png);
+    const bytes = screenshotBytes(png, board);
     const name = String(label).replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 64) || "screen";
     await mkdir(artifacts, { recursive: true });
     const path = join(artifacts, `${name}-${Date.now()}-${randomBytes(3).toString("hex")}.png`);
     await writeFile(path, bytes, { flag: "wx" });
-    return { path, width: 320, height: 172 };
+    return { path, width: board === "169" ? 280 : 320, height: board === "169" ? 240 : 172 };
   };
   const disconnect = async () => {
     if (!bridge) return { connected: false };
@@ -131,7 +135,7 @@ export async function startSimulator({ root, artifacts, game, port = 0, autoBuil
     if (name === "get_output") {
       const since = input.since ?? 0;
       if (!Number.isSafeInteger(since) || since < 0) throw new Error("since must be a nonnegative integer");
-      return { ...state, pageReady: Date.now() - pageSeen < 3000, lines: logs.filter(line => line.index >= since), next: nextLog };
+      return { ...state, pageReady: firmwareReady && Date.now() - pageSeen < 3000, lines: logs.filter(line => line.index >= since), next: nextLog };
     }
     if (name === "connect_device") return connect(input.port);
     if (name === "disconnect_device") return disconnect();
@@ -158,7 +162,10 @@ export async function startSimulator({ root, artifacts, game, port = 0, autoBuil
         res.write(": connected\n\n");
         res.write(`event: connection\ndata: ${JSON.stringify({ connected: state.connected, message: state.deviceMessage })}\n\n`);
         clients.add(res);
-        req.on("close", () => clients.delete(res));
+        req.on("close", () => {
+          clients.delete(res);
+          if (!clients.size) firmwareReady = false;
+        });
         return;
       }
       if (req.method === "GET" && route === "state") { json(200, state); return; }
@@ -179,8 +186,9 @@ export async function startSimulator({ root, artifacts, game, port = 0, autoBuil
         }
         if (route === "report") {
           if (!Array.isArray(input.lines) || input.lines.length > 1000 || !input.lines.every(line => typeof line === "string")) throw new Error("Invalid serial report");
-          input.lines.forEach(addLog); pageSeen = Date.now();
-          if (input.ready && !state.buildError && !rebuilding) state.status = "ready";
+          if (typeof input.ready !== "boolean") throw new Error("Invalid firmware readiness");
+          input.lines.forEach(addLog); pageSeen = Date.now(); firmwareReady = input.ready;
+          if (!state.buildError && !rebuilding) state.status = input.ready ? "ready" : "starting";
           state.sleeping = Boolean(input.sleeping);
           json(200, {}); return;
         }
@@ -206,7 +214,7 @@ export async function startSimulator({ root, artifacts, game, port = 0, autoBuil
     rebuilding = true; state.status = "building";
     emit("build", { message: "Rebuilding firmware..." });
     try {
-      await build(root);
+      await build(root, () => {}, board);
       state.buildError = null; state.status = "starting";
       emit("reload", {});
     } catch (e) {
@@ -217,9 +225,10 @@ export async function startSimulator({ root, artifacts, game, port = 0, autoBuil
       if (dirty) { dirty = false; rebuild(); }
     }
   };
-  const watchers = autoBuild ? ["src", "include", "sim"].map(folder => {
+  const watchers = autoBuild ? ["src", "include", "sim", "games", "engine"].map(folder => {
     const watcher = watch(join(root, folder), { recursive: true }, (_, filename) => {
-      if (!filename || String(filename).split(/[\\/]/).includes("build") || !/\.(cpp|h|c|js|mjs|css|html)$/.test(String(filename))) return;
+      if (!filename || String(filename).split(/[\\/]/).some(part => part === "build" || part === "build-169") ||
+          !/\.(cpp|h|c|js|mjs|css|html|lua|txt|toml|md)$/.test(String(filename))) return;
       clearTimeout(timer); timer = setTimeout(rebuild, 350);
     });
     watcher.on("error", e => { state.buildError = `File watcher failed: ${e.message}`; emit("build-error", { message: state.buildError }); });
@@ -248,8 +257,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const args = process.argv.slice(2);
   const portIndex = args.indexOf("--port");
   const port = portIndex === -1 ? 0 : Number(args[portIndex + 1]);
+  const boardIndex = args.indexOf("--board");
+  const board = boardIndex === -1 ? "147b" : args[boardIndex + 1];
   const artifacts = process.env.TINYGAME_SIM_ARTIFACTS || join(root, "sim", "screenshots");
-  const instance = await startSimulator({ root, artifacts, port });
+  const instance = await startSimulator({ root, artifacts, port, board });
   process.stdout.write(instance.url + "\n");
   for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, async () => { await instance.close(); process.exit(0); });
 }

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { startSimulator, screenshotBytes, validGame } from "./server.mjs";
@@ -10,6 +10,35 @@ test("validates game identifiers and rejects invalid screenshots", () => {
   assert.equal(validGame("../secret"), false);
   assert.equal(validGame("x\ninfo"), false);
   assert.throws(() => screenshotBytes("data:image/png;base64,AAAA"));
+  const png = Buffer.alloc(33);
+  Buffer.from("89504e470d0a1a0a", "hex").copy(png);
+  png.writeUInt32BE(280, 16); png.writeUInt32BE(240, 20);
+  const url = `data:image/png;base64,${png.toString("base64")}`;
+  assert.deepEqual(screenshotBytes(url, "169"), png);
+  assert.throws(() => screenshotBytes(url), /320x172/);
+});
+
+test("engine changes rebuild the selected profile, not generated outputs", async t => {
+  const root = await mkdtemp(join(tmpdir(), "tinygame-watch-test-"));
+  for (const directory of ["tools", "src", "include", "sim", "games", "engine"]) {
+    await mkdir(join(root, directory));
+  }
+  await mkdir(join(root, "sim", "build-169"));
+  await writeFile(join(root, "tools", "tg.py"),
+    "from pathlib import Path\nimport sys\nPath('rebuilt').write_text(' '.join(sys.argv[1:]))\n");
+  const instance = await startSimulator({ root, artifacts: root, board: "169" });
+  t.after(async () => { await instance.close(); await rm(root, { recursive: true }); });
+  await writeFile(join(root, "sim", "build-169", "generated.js"), "// generated\n");
+  await new Promise(resolveWait => setTimeout(resolveWait, 700));
+  await assert.rejects(readFile(join(root, "rebuilt")), { code: "ENOENT" });
+  await writeFile(join(root, "engine", "runner.cpp"), "// changed\n");
+  let rebuilt;
+  for (let i = 0; i < 50 && !rebuilt; i++) {
+    await new Promise(resolveWait => setTimeout(resolveWait, 100));
+    try { rebuilt = await readFile(join(root, "rebuilt"), "utf8"); }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+  }
+  assert.equal(rebuilt, "sim --build-only --board 169");
 });
 
 test("controller bridge connects, validates frames and releases its child process", async t => {
@@ -40,12 +69,14 @@ test("loopback server scopes routes, validates posts and handles action replies"
   const post = (path, body, origin) => fetch(new URL(path, instance.url), {
     method: "POST", headers: { "Content-Type": "application/json", ...(origin ? { Origin: origin } : {}) }, body: JSON.stringify(body),
   });
+
   assert.equal((await get("")).status, 200);
   assert.equal((await get("build/missing.wasm")).status, 404);
   assert.equal((await fetch(new URL("/index.html", instance.url))).status, 404);
   assert.equal((await get("%2e%2e%2fserver.mjs")).status, 404);
   assert.equal((await post("report", { lines: [] }, "https://example.org")).status, 403);
   assert.equal((await post("report", { lines: "invalid" })).status, 400);
+  assert.equal((await post("report", { lines: [], ready: "yes" })).status, 400);
   await post("report", { lines: ["[BOOT] ready"], ready: true });
   const output = await instance.action("get_output");
   assert.equal(output.status, "ready");
@@ -59,6 +90,10 @@ test("loopback server scopes routes, validates posts and handles action replies"
   const events = await fetch(new URL("events", instance.url), { signal: abort.signal });
   const reader = events.body.getReader();
   await reader.read();
+  await post("report", { lines: [], ready: false });
+  assert.equal((await instance.action("get_output")).pageReady, false);
+  await assert.rejects(instance.action("launch", { game: "brickbreaker" }), /firmware is not ready/);
+  await post("report", { lines: [], ready: true });
   const action = instance.action("launch", { game: "brickbreaker" });
   let text = "";
   while (!text.includes("event: request")) text += new TextDecoder().decode((await reader.read()).value);
@@ -73,4 +108,13 @@ test("loopback server scopes routes, validates posts and handles action replies"
   await assert.rejects(instance.action("reload"), /Multiple simulator pages/);
   secondAbort.abort();
   abort.abort();
+});
+
+test("reports the selected simulator board profile", async t => {
+  const artifacts = await mkdtemp(join(tmpdir(), "tinygame-profile-test-"));
+  const instance = await startSimulator({ root: resolve("."), artifacts, autoBuild: false, board: "169" });
+  t.after(async () => { await instance.close(); await rm(artifacts, { recursive: true }); });
+  const state = await (await fetch(new URL("state", instance.url))).json();
+  assert.equal(state.board, "169");
+  await assert.rejects(startSimulator({ root: resolve("."), artifacts, board: "unknown" }), /Invalid board/);
 });
