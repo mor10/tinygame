@@ -62,8 +62,9 @@ an unfiltered ESP32 pulse-counter measurement on the existing A/B inputs; the
 software count and errors are the existing interrupt decoder. The diagnostic
 uses two PCNT units and both channels per unit, sets those pins as inputs
 with pull-ups, and does not drive them or alter game input. It has not been
-physically verified. A `hardware_limit` of 1 invalidates that counter until
-reset; the hardware wraps at +/-30000. Initialization or read failures are
+independently verified against the electrical waveform. A `hardware_limit`
+of 1 invalidates that counter until reset; the hardware wraps at +/-30000.
+Initialization or read failures are
 reported rather than substituted with zero. This comparison is unavailable
 on the deferred 1.69 profile.
 

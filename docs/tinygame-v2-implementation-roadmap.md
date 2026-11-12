@@ -142,7 +142,7 @@ Any new image requires separate flash authorization. Retest any justified
 correction against the same reference on the 1.47B and later on the deferred
 1.69.
 
-**Prepared counter waypoint:** an unflashed 1.47B-only test-card candidate
+**Counter waypoint:** a 1.47B-only test-card candidate
 adds a `counter` command comparing unfiltered on-chip PCNT counts against
 the existing GPIO-interrupt decoder. It reserves PCNT units 0 and 1, two
 channels each, and routes only the existing encoder A/B pins as pulled-up
@@ -156,10 +156,30 @@ atomic; take baseline and final snapshots while both knobs are stationary.
 Confirm direction, counts, errors and limit flags with controlled marked turns
 before drawing conclusions. A new diagnostic flash requires separate
 authorization; its result cannot establish an input gate pass on its own.
-The prepared 1.47B application image has SHA-256
+The 1.47B application image has SHA-256
 `d6def8ac6ff7ecca62820f85098fa4dc0b9bfa6fe9ad793be94e399b401826a3`;
-it can replace the existing diagnostic application at `0x10000` without
-rewriting its already-corrected bootloader, partition table or OTA data.
+with explicit user approval it replaced only the existing diagnostic
+application at `0x10000`, without rewriting the bootloader, partition table
+or OTA data. Esptool verified the write; USB `info` and `counter` responded
+and the user confirmed the card was visible.
+
+With stationary snapshots before and after each user-marked five-turn trial,
+the counter changes were:
+
+| Knob and direction | PCNT | Interrupt decoder | New invalid |
+|---|---:|---:|---:|
+| Left clockwise | +399 | +389 | 5 |
+| Right clockwise | +403 | +395 | 4 |
+| Left counterclockwise | -401 | -389 | 6 |
+| Right counterclockwise | -403 | -383 | 10 |
+
+Hardware-limit and software-overrun flags remained zero. In these trials the
+count difference was twice the invalid count, consistent with the decoder
+skipping two-bit transitions that the pulse counter observed. This is
+comparative evidence, not proof the pulse counter saw clean contacts or an
+exact 400 transitions per five turns. It does not justify filling in missing
+directions or pass the input gate; compare repeated speeds and investigate
+the capture path and electrical signal before selecting a correction.
 
 The smallest useful hardware image is the isolated `test-card-147b`, not the
 full application. On 2026-11-12 it built successfully from the current worktree:
