@@ -1,0 +1,5 @@
+api = 1
+id = "knob_dodge"
+name = "KNOB DODGE"
+starter = "shooter"
+view = "fixed"

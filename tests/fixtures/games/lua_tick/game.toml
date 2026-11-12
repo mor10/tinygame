@@ -1,0 +1,5 @@
+api = 1
+id = "lua_tick"
+name = "LUA TICK"
+starter = "platformer"
+view = "fixed"
