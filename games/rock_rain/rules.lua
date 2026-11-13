@@ -49,6 +49,7 @@ local wave_rows_left = ROWS_PER_WAVE
 local wave_timer = 0.5
 local waves_done = 0
 local game_over = false
+local steer_speed = 0
 
 local function overlaps(ax, ay, aw, ah, bx, by, bw, bh)
   return ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah
@@ -79,6 +80,7 @@ local function reset(width, height)
   wave_timer = 0.5
   waves_done = 0
   game_over = false
+  steer_speed = 0
   boss.active = false
   for i = 1, BRICK_LIMIT do bricks[i].active = false end
   for i = 1, BOLT_LIMIT do bolts[i].active = false end
@@ -127,7 +129,7 @@ local function spawn_wave_row()
     first_width = 2
     second_width = 2
     first_start = math.random(0, half - first_width)
-    second_start = half + 1 + math.random(0, half - second_width)
+    second_start = half + 1 + math.random(0, half - second_width - 1)
   else
     first_width = 3
     first_start = math.random(0, slots - first_width)
@@ -442,8 +444,13 @@ local function draw()
 end
 
 local function update_game(dt, input)
+  local smoothing = dt > 0 and math.min(dt / 0.06, 1) or 0
+  local transitions_per_second = dt > 0 and math.abs(input.main.delta) / dt or 0
+  steer_speed = steer_speed + (transitions_per_second - steer_speed) * smoothing
+  local fast_turn = math.max(0, math.min(1, (steer_speed - 20) / 140))
+  local pixels_per_transition = 2.5 + fast_turn * 5.5
   robot_x = math.max(0, math.min(world_width - robot_width,
-                                 robot_x + input.main.delta * 0.5))
+                                 robot_x + input.main.delta * pixels_per_transition * scale))
   elapsed = elapsed + dt
   survive_timer = survive_timer + dt
   if survive_timer >= 1 then

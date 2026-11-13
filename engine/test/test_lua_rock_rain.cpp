@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cmath>
 #include <cstring>
 #include <cstdlib>
 #include <fstream>
@@ -72,10 +73,17 @@ void movementAndShootingUseKnobInput() {
     assert(game.callUpdate(1.0f / 60.0f, input, world));
     const float start_x = robotX(game.frame());
 
+    constexpr float scale = 152.0f / 320.0f;
+    input.main.delta = 1;
+    assert(game.callUpdate(0.1f, input, world));
+    const float precise_step = robotX(game.frame()) - start_x;
+    assert(std::fabs(precise_step - 2.5f * scale) < 0.02f);
+
     input.main.delta = 8;
     assert(game.callUpdate(1.0f / 60.0f, input, world));
-    const float moved_x = robotX(game.frame());
-    assert(moved_x > start_x);
+    const float fast_step = (robotX(game.frame()) - start_x - precise_step) /
+                            (8.0f * scale);
+    assert(fast_step > 2.5f && fast_step <= 8.0f);
     input.main.delta = -1000;
     assert(game.callUpdate(1.0f / 60.0f, input, world));
     assert(robotX(game.frame()) < 1.0f);
@@ -122,7 +130,7 @@ void ammoRunsOutAndCannotBeSpentTwiceDuringCooldown() {
 }
 
 void waveHasGapsAndCanBeOpenedWithAShot() {
-    tg::engine::LuaRuntime game(23);
+    tg::engine::LuaRuntime game(17);
     const std::string rules = readRules();
     const tg::engine::WorldSize world{152.0f, 86.0f};
     tg::Input input;
@@ -133,7 +141,12 @@ void waveHasGapsAndCanBeOpenedWithAShot() {
     }
 
     float row_width = 0.0f;
-    float target_left = -1.0f;
+    float rightmost_x = -1.0f;
+    float rightmost_width = 0.0f;
+    int row_segments = 0;
+    bool centre_is_solid = false;
+    constexpr float scale = 152.0f / 320.0f;
+    const float tile_width = 16.0f * scale;
     for (std::size_t i = 0; i < game.frame().size(); ++i) {
         const auto& command = game.frame().at(i);
         if (command.kind != tg::engine::DrawKind::Rectangle ||
@@ -141,18 +154,21 @@ void waveHasGapsAndCanBeOpenedWithAShot() {
             continue;
         }
         row_width += command.width;
-        if (target_left < 0.0f) {
-            target_left = command.x + command.width / 2.0f -
-                          14.0f * (152.0f / 320.0f) / 2.0f;
+        ++row_segments;
+        if (command.x > rightmost_x) {
+            rightmost_x = command.x;
+            rightmost_width = command.width;
         }
+        centre_is_solid = centre_is_solid ||
+            (command.x <= world.width / 2.0f &&
+             command.x + command.width >= world.width / 2.0f);
     }
-    assert(row_width > world.width * 0.7f && row_width < world.width * 0.95f);
-    assert(target_left >= 0.0f);
+    assert(std::fabs(row_width - 16.0f * tile_width) < 0.1f);
+    assert(row_segments == 3);
+    assert(std::fabs(rightmost_x - 18.0f * tile_width) < 0.1f);
+    assert(std::fabs(rightmost_width - 2.0f * tile_width) < 0.1f);
+    assert(centre_is_solid);
 
-    const float robot_left = robotX(game.frame()) - 2.0f * (152.0f / 320.0f);
-    input.main.delta = static_cast<std::int32_t>((target_left - robot_left) * 2.0f);
-    assert(game.callUpdate(1.0f / 60.0f, input, world));
-    input.main.delta = 0;
     input.pressed = true;
     assert(game.callUpdate(1.0f / 60.0f, input, world));
     input.pressed = false;
