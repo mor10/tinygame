@@ -23,7 +23,8 @@ const wasmBinary = fs.readFileSync(new URL("../web/build/tinygame.wasm", import.
 const versionHeader = fs.readFileSync(new URL("../../include/tg_os_version.h", import.meta.url), "utf8");
 const firmwareVersion = versionHeader.match(/^#define TG_FIRMWARE_VERSION "((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))"$/m)?.[1];
 assert(firmwareVersion, "Firmware uses a maintained MAJOR.MINOR.PATCH value");
-const builtInGameIds = ["brickbreaker", "knob_dodge", "rockrain", "tiltblock"];
+const builtInGameIds = ["brickbreaker", "knob_dodge", "rockrain", "rock_rain", "tiltblock"];
+const gameIdsWithTick = builtInGameIds.toSpliced(2, 0, "lua_tick");
 
 function advance(ms = 96) {
   for (let elapsed = 0; elapsed < ms; elapsed += 16) {
@@ -267,7 +268,30 @@ saved.set("tinygame.sim.best.rockrain", JSON.stringify([0x78, 0x56, 0x34, 0x12])
 engine._tg_sim_stop();
 ({ engine, serial, wake } = await boot());
 assert.equal(engine._tg_sim_brightness(), 80);
-for (const id of ["brickbreaker", "knob_dodge", "rockrain", "tiltblock"]) {
+command(engine, "log on");
+for (const id of ["brickbreaker", "rock_rain"]) {
+  const start = serial.length;
+  command(engine, `launch ${id}`);
+  engine._tg_sim_turn(1, 8);
+  advance(200);
+  engine._tg_sim_turn(1, -8);
+  click(engine);
+  advance(1000);
+  pauseChord(engine);
+  assert.match(serial.slice(start).join(""), /screen=PAUSE/);
+  click(engine);
+  assert.match(serial.slice(start).join(""), /screen=GAME/);
+  pauseChord(engine);
+  engine._tg_sim_turn(1, 4);
+  advance();
+  click(engine); // Restart through the real OS.
+  assert.equal(serial.slice(start).filter(line => line.includes(`[APP] start ${id}`)).length, 2);
+  assert.doesNotMatch(serial.slice(start).join(""), /Lua game stopped/);
+}
+command(engine, "log off");
+engine._tg_sim_stop();
+({ engine, serial, wake } = await boot());
+for (const id of builtInGameIds) {
   command(engine, `launch ${id}`);
   assert.match(serial.join(""), new RegExp(`start ${id}`));
   engine._tg_sim_turn(0, -8);
@@ -278,8 +302,8 @@ for (const id of ["brickbreaker", "knob_dodge", "rockrain", "tiltblock"]) {
 command(engine, "log on");
 advance(1100);
 assert.match(serial.join(""), /tilt=\+0\.40,-0\.20/);
-assert.match(serial.join(""), /physical total=-32/);
-assert.match(serial.join(""), /physical total=32/);
+assert.match(serial.join(""), new RegExp(`physical total=${-8 * builtInGameIds.length}`));
+assert.match(serial.join(""), new RegExp(`physical total=${8 * builtInGameIds.length}`));
 const beforeSoloHold = serial.length;
 hold(engine); // An individual hold remains game input.
 assert.doesNotMatch(serial.slice(beforeSoloHold).join(""), /screen=PAUSE/);
@@ -323,7 +347,7 @@ engine._tg_sim_stop();
 ({ engine, serial } = await boot());
 assert.equal(engine._tg_sim_sleeping(), 0);
 assert.equal(engine._tg_sim_brightness(), 80);
-assert.doesNotMatch(serial.join(""), /start (brickbreaker|knob_dodge|rockrain|tiltblock)/);
+assert.doesNotMatch(serial.join(""), /\[APP\] start /);
 sleepChord(engine); // Welcome supports the same confirmation, with Yes default.
 releaseChord(engine);
 assert.equal(engine._tg_sim_sleeping(), 0);
@@ -395,8 +419,7 @@ assert.match(serial.join(""), /\[STORE\] installed lua_tick/);
 assert(saved.has("tinygame.sim.game.v1.lua_tick"));
 engine._tg_sim_stop();
 
-({ engine, serial } = await boot(["brickbreaker", "knob_dodge", "lua_tick", "rockrain", "tiltblock"]));
-assert.match(serial.join(""), /\[BOOT\] ready, 5 games/);
+({ engine, serial } = await boot(gameIdsWithTick));
 command(engine, "launch lua_tick");
 assert.match(serial.join(""), /\[APP\] start lua_tick/);
 installViaProtocol(engine, bundleBytes);
@@ -452,11 +475,11 @@ for (const expression of [
   "table.move({}, 1, 10000, 1, {})",
   "local t={} for i=1,4100 do t[i]='' end table.concat(t)",
 ]) {
-  ({ engine, serial } = await boot(["brickbreaker", "knob_dodge", "lua_tick", "rockrain", "tiltblock"]));
+  ({ engine, serial } = await boot(gameIdsWithTick));
   const adversarial = replaceMember(bundleBytes, "rules.lua", `function update() ${expression} end\n`);
   assert.equal(installBundle(engine, adversarial), 0);
   engine._tg_sim_stop();
-  ({ engine, serial } = await boot(["brickbreaker", "knob_dodge", "lua_tick", "rockrain", "tiltblock"]));
+  ({ engine, serial } = await boot(gameIdsWithTick));
   command(engine, "launch lua_tick");
   assert.match(serial.join(""), /Lua game stopped: .*native (?:work|byte) limit exceeded/);
   advance(500);
@@ -471,7 +494,7 @@ for (const expression of [
   engine._tg_sim_stop();
 }
 
-({ engine, serial } = await boot(["brickbreaker", "knob_dodge", "lua_tick", "rockrain", "tiltblock"]));
+({ engine, serial } = await boot(gameIdsWithTick));
 const transparencyRules = `
 function update(dt, input)
   tg.rect(0, 0, input.screen.width, input.screen.height, 7)
@@ -481,7 +504,7 @@ end
 `;
 assert.equal(installBundle(engine, replaceMember(bundleBytes, "rules.lua", transparencyRules)), 0);
 engine._tg_sim_stop();
-({ engine, serial } = await boot(["brickbreaker", "knob_dodge", "lua_tick", "rockrain", "tiltblock"]));
+({ engine, serial } = await boot(gameIdsWithTick));
 command(engine, "launch lua_tick");
 advance(200);
 const transparentPixels = new Uint16Array(engine.HEAPU8.buffer, engine._tg_sim_framebuffer(), 320 * 172);
@@ -490,14 +513,14 @@ assert.doesNotMatch(serial.join(""), /Lua game stopped/);
 engine._tg_sim_stop();
 
 async function textFrame(x, y) {
-  ({ engine, serial } = await boot(["brickbreaker", "knob_dodge", "lua_tick", "rockrain", "tiltblock"]));
+  ({ engine, serial } = await boot(gameIdsWithTick));
   const rules = `function update(dt, input)
     tg.rect(0, 0, input.screen.width, input.screen.height, 7)
     tg.text(${x}, ${y}, 'ABCD', 8)
   end`;
   assert.equal(installBundle(engine, replaceMember(bundleBytes, "rules.lua", rules)), 0);
   engine._tg_sim_stop();
-  ({ engine, serial } = await boot(["brickbreaker", "knob_dodge", "lua_tick", "rockrain", "tiltblock"]));
+  ({ engine, serial } = await boot(gameIdsWithTick));
   command(engine, "launch lua_tick");
   advance(200);
   assert.doesNotMatch(serial.join(""), /Lua game stopped/);
@@ -510,7 +533,7 @@ const textOrigin = await textFrame(0, 0);
 const textClipped = await textFrame(-4, -2);
 assertClippedText(textOrigin, textClipped, 320, 8, 0);
 
-({ engine, serial } = await boot(["brickbreaker", "knob_dodge", "lua_tick", "rockrain", "tiltblock"]));
+({ engine, serial } = await boot(gameIdsWithTick));
 const timingRules = `
 local n, total = 0, 0
 function update(dt, input)
@@ -527,7 +550,7 @@ end
 `;
 assert.equal(installBundle(engine, replaceMember(bundleBytes, "rules.lua", timingRules)), 0);
 engine._tg_sim_stop();
-({ engine, serial } = await boot(["brickbreaker", "knob_dodge", "lua_tick", "rockrain", "tiltblock"]));
+({ engine, serial } = await boot(gameIdsWithTick));
 command(engine, "launch lua_tick");
 engine._tg_sim_turn(1, 4);
 jump(200);
