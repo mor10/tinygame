@@ -78,4 +78,6 @@ private:
 
 }  // namespace brickbreaker
 
+#ifndef __EMSCRIPTEN__
 TINYGAME(brickbreaker::BrickBreaker, "brickbreaker", "BRICK BREAKER", tg::color::ORANGE)
+#endif

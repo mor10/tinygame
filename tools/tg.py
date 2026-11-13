@@ -660,7 +660,8 @@ def cmd_test(_):
             objects = []
             extra_sources = []
             if os.path.basename(test) in ("test_lua_runtime.cpp", "test_bundle_script.cpp",
-                                          "test_lua_dodge.cpp", "test_lua_rock_rain.cpp"):
+                                          "test_lua_dodge.cpp", "test_lua_rock_rain.cpp",
+                                          "test_lua_brickbreaker.cpp"):
                 lua_dir = lua_source_dir()
                 flags = ["-I", str(lua_dir)]
                 extra_sources = [os.path.join(ROOT, "engine", "lua_runtime.cpp")]

@@ -1,0 +1,1 @@
+# Palette indices are supplied by the shared renderer.
