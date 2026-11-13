@@ -205,7 +205,7 @@ Require explicit authorization before flashing the new test image. Passing
 this experiment would establish a candidate rollover mechanism, not validate
 contact noise, full 1.47B gameplay, or the deferred 1.69.
 
-**Next 1.47B gameplay waypoint:** the existing v2 application firmware
+**1.47B gameplay waypoint:** the existing v2 application firmware
 includes the shell, v1-style knob decoder, and built-in Brick Breaker. It is
 not the complete v2 release or an installed Lua game. The prepared application
 SHA-256 is `1b0bdd1ecaef4fec02b9a6795a225d7b63c52353cf9a28341a0aae80cbe433f7`.
@@ -222,6 +222,16 @@ paddle follows naturally; click to launch and play briefly. Press both knobs
 together and release before three seconds to pause, then resume. A successful
 experience is useful 1.47B gameplay evidence, not proof of sleep, auto-off,
 Lua installation, all v2 controls or the deferred 1.69.
+
+**Observed 2026-11-13 UTC:** with explicit approval, the prepared application
+was written and hash-verified at `0x10000` on the confirmed 1.47B; bootloader
+and partition table were not rewritten. The automatic 1200-baud ROM-entry
+attempt reported a serial configuration error, but the same device appeared
+in ROM mode and the upload completed. The application returned on USB and
+reported Brick Breaker available. The user opened it, tried turning both ways
+and launching, and reported that it plays well; they also confirmed that the
+two-knob pause and resume worked. This clears the practical 1.47B gameplay
+checkpoint, not the remaining physical gates or 1.69 testing.
 
 The smallest useful hardware image is the isolated `test-card-147b`, not the
 full application. On 2026-11-12 it built successfully from the current worktree:
