@@ -234,8 +234,18 @@ and launching, and reported that it plays well; they also confirmed that the
 two-knob pause and resume worked. They subsequently reported: "3s press to
 sleep works." This clears the practical 1.47B gameplay checkpoint, not the
 full sleep/wake and control-policy gates, other remaining physical gates or
-1.69 testing; the report does not establish release/fresh-click, No or wake
-behavior.
+1.69 testing.
+
+**1.47B idle sleep/wake check complete (user report):** the user subsequently
+confirmed that the board slept after three minutes and woke on a press. This
+records the observed interval, not a new timeout requirement or a measurement
+of deep-sleep current. Together with the reported three-second gesture, it
+closes this practical 1.47B sleep/wake waypoint only. Release/fresh-click, No,
+USB-host versus power-only behavior and the deferred 1.69 are not established
+by this report; further sleep testing is deferred at the user's direction.
+Do not add a separate power-detection or charging-indicator feature: the user
+will use the board's existing charging LED. Prioritize the game-runtime ports
+next; broader v2 release gates remain open.
 
 The smallest useful hardware image is the isolated `test-card-147b`, not the
 full application. On 2026-11-12 it built successfully from the current worktree:
