@@ -119,10 +119,10 @@ reload events; ordinary HTTP posts carry serial output, replies and PNGs.
 Each server URL has an unguessable prefix and rejects cross-origin posts.
 App theme tokens style the page around the intentionally dark console.
 
-Watching `src/`, `include/`, `sim/` and `engine/` triggers debounced incremental builds.
-Changes to `games/knob_dodge/` also rebuild its packed Lua bundle into the
-simulator, so the preview runs the same source through the C++ `BundleGame`
-adapter without a browser-side rules copy.
+Watching `src/`, `include/`, `sim/`, `engine/` and `games/` triggers debounced
+incremental builds. Changes to a valid `games/<id>/` bundle rebuild its packed
+Lua source into the simulator, so the preview runs the same source through the
+C++ `BundleGame` adapter without a browser-side rules copy.
 Successful builds reload the page; failures keep the last working page and show
 the compiler error. Build output is ignored by Git. Settings and best scores
 persist in browser localStorage; game state does not. This is not an electrical

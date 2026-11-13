@@ -1,0 +1,5 @@
+api = 1
+id = "rock_rain"
+name = "ROCK RAIN"
+starter = "shooter"
+view = "fixed"
