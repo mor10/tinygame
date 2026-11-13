@@ -6,6 +6,12 @@ local BRICK_GAP = 1
 local PADDLE_HEIGHT = 3
 local BALL_RADIUS = 1.5
 local STEP = 1 / 120
+local STEER_SLOW_PX = 2.5
+local STEER_FAST_PX = 8
+local STEER_SLOW_SPEED = 20
+local STEER_FAST_SPEED = 160
+local STEER_SPEED_SMOOTH_SECONDS = 0.06
+local BALL_MAX_SPEED = 220
 
 local layouts = {
   { {0x3ff, 0x3ff, 0x3ff, 0x3ff, 0x3ff}, {} },
@@ -20,6 +26,7 @@ local world_width = 152
 local world_height = 86
 local paddle_x = 0
 local paddle_width = 22
+local paddle_turn_speed = 0
 local ball_x = 0
 local ball_y = 0
 local ball_vx = 0
@@ -68,6 +75,7 @@ local function reset(width, height)
   world_height = height
   paddle_width = math.min(22, world_width * 0.2)
   paddle_x = (world_width - paddle_width) / 2
+  paddle_turn_speed = 0
   level = 1
   lives = 3
   score = 0
@@ -81,7 +89,7 @@ local function start_game()
   if game_over then
     reset(world_width, world_height)
   elseif not launched then
-    local speed = 62 + (level - 1) * 3
+    local speed = math.min(62 + (level - 1) * 3, BALL_MAX_SPEED * world_width / 320)
     ball_vx = speed * 0.34
     ball_vy = -speed * 0.94
     launched = true
@@ -118,7 +126,7 @@ local function hit_brick(index, x, y, previous_x, previous_y)
   if dx * dx + dy * dy >= BALL_RADIUS * BALL_RADIUS then return false end
 
   bricks[index] = bricks[index] - 1
-  if bricks[index] == 0 then score = score + 100 end
+  score = score + 100
 
   if previous_y + BALL_RADIUS <= brick_y or previous_y - BALL_RADIUS >= brick_y + BRICK_HEIGHT then
     ball_vy = -ball_vy
@@ -217,13 +225,28 @@ local function draw()
   end
 end
 
+local function move_paddle(transitions, dt)
+  if dt > 0 then
+    local smoothing = math.min(dt / STEER_SPEED_SMOOTH_SECONDS, 1)
+    local transition_speed = math.abs(transitions) / dt
+    paddle_turn_speed = paddle_turn_speed + (transition_speed - paddle_turn_speed) * smoothing
+  end
+  if transitions == 0 then return end
+
+  local speed_fraction = math.max(0, math.min(1,
+    (paddle_turn_speed - STEER_SLOW_SPEED) / (STEER_FAST_SPEED - STEER_SLOW_SPEED)))
+  local pixels_per_transition = STEER_SLOW_PX +
+    (STEER_FAST_PX - STEER_SLOW_PX) * speed_fraction
+  paddle_x = paddle_x + transitions * pixels_per_transition * (world_width / 320)
+end
+
 function update(dt, input)
   if not initialized or input.screen.width ~= world_width or input.screen.height ~= world_height then
     reset(input.screen.width, input.screen.height)
   end
 
-  paddle_x = math.max(0, math.min(world_width - paddle_width,
-    paddle_x + input.main.delta * (world_width / 120)))
+  move_paddle(input.main.delta, dt)
+  paddle_x = math.max(0, math.min(world_width - paddle_width, paddle_x))
   if not launched then
     ball_x = paddle_x + paddle_width / 2
     ball_y = paddle_y() - BALL_RADIUS - 1
