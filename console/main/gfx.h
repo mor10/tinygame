@@ -17,3 +17,5 @@ void gfx_rect(int x, int y, int w, int h, int c);
 void gfx_fill_rect(int x, int y, int w, int h, int c);
 int  gfx_text(const char *s, int x, int y, int c, int scale);   // returns the width drawn
 int  gfx_text_width(const char *s, int scale);
+#define GFX_CLEAR 0xFF   // see-through pixel in sprite data
+void gfx_blit(const uint8_t *px, int w, int h, int x, int y, int flip_x, int flip_y, int scale);

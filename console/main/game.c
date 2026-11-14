@@ -8,6 +8,7 @@
 #include "gfx.h"
 #include "display.h"
 #include "input.h"
+#include "engine.h"
 #include "lua.h"
 #include "lauxlib.h"
 #include "lualib.h"
@@ -159,15 +160,18 @@ static int l_fill_rect(lua_State *L) { gfx_fill_rect(arg_int(L, 1), arg_int(L, 2
 
 static int l_text(lua_State *L)
 {
+    // Read every argument before luaL_tolstring pushes a string, which would land in a missing
+    // argument's slot (lua_toboolean(L, 5) would then see that string and turn big text on).
+    int x = arg_int(L, 2), y = arg_int(L, 3), c = arg_color(L, 4), scale = lua_toboolean(L, 5) ? 2 : 1;
     const char *s = luaL_tolstring(L, 1, NULL);
-    int w = gfx_text(s, arg_int(L, 2), arg_int(L, 3), arg_color(L, 4), lua_toboolean(L, 5) ? 2 : 1);
-    lua_pushinteger(L, w);
+    lua_pushinteger(L, gfx_text(s, x, y, c, scale));
     return 1;
 }
 
 static int l_text_width(lua_State *L)
 {
-    lua_pushinteger(L, gfx_text_width(luaL_tolstring(L, 1, NULL), lua_toboolean(L, 2) ? 2 : 1));
+    int scale = lua_toboolean(L, 2) ? 2 : 1;
+    lua_pushinteger(L, gfx_text_width(luaL_tolstring(L, 1, NULL), scale));
     return 1;
 }
 
@@ -271,6 +275,8 @@ static void open_sandbox(lua_State *L)
     luaL_newlib(L, gfx_fns);
     lua_pushinteger(L, SCREEN_W); lua_setfield(L, -2, "W");
     lua_pushinteger(L, SCREEN_H); lua_setfield(L, -2, "H");
+    engine_open(L, -1);                     // adds gfx.sprite/gfx.map, pushes the map table
+    make_readonly(L, "map");  lua_setglobal(L, "map");
     make_readonly(L, "gfx");  lua_setglobal(L, "gfx");
     luaL_newlib(L, knob_fns); make_readonly(L, "knob"); lua_setglobal(L, "knob");
     luaL_newlib(L, sys_fns);  make_readonly(L, "sys");  lua_setglobal(L, "sys");
@@ -373,6 +379,29 @@ static int call_cb(lua_State *L, const char *name, int required)
     return st;
 }
 
+static int pcall_c(lua_State *L, lua_CFunction f)
+{
+    lua_pushcfunction(L, msgh);
+    lua_pushcfunction(L, f);
+    cb_start = esp_timer_get_time();
+    int st = lua_pcall(L, 0, 0, -2);
+    if (st == LUA_OK) lua_pop(L, 1); else lua_remove(L, -2);
+    return st;
+}
+
+static int run_chunk(lua_State *L, const char *src, size_t len, const char *chunkname)
+{
+    // Text only ("t"): precompiled bytecode can crash the VM, so it is never accepted.
+    int st = luaL_loadbufferx(L, src, len, chunkname, "t");
+    if (st != LUA_OK) return st;
+    lua_pushcfunction(L, msgh);
+    lua_insert(L, -2);
+    cb_start = esp_timer_get_time();
+    st = lua_pcall(L, 0, 0, -2);
+    if (st == LUA_OK) lua_pop(L, 1); else lua_remove(L, -2);
+    return st;
+}
+
 static int cart_fps(lua_State *L, int *fps)
 {
     lua_getglobal(L, "cart");
@@ -391,6 +420,18 @@ static int cart_fps(lua_State *L, int *fps)
     return LUA_OK;
 }
 
+#define HIST_MS 64
+static uint32_t frame_hist[HIST_MS];   // frame work time in 1 ms buckets since the cart started
+static uint32_t gc_max;
+
+static int frame_p99_ms(void)
+{
+    uint32_t total = 0, acc = 0;
+    for (int i = 0; i < HIST_MS; i++) total += frame_hist[i];
+    for (int i = 0; i < HIST_MS; i++) { acc += frame_hist[i]; if (acc * 100 >= total * 99) return i + 1; }
+    return HIST_MS;
+}
+
 static void stats_tick(int64_t *window, int *frames, int *late, uint32_t *upd_max, uint32_t *draw_max)
 {
     int64_t now = esp_timer_get_time();
@@ -400,12 +441,14 @@ static void stats_tick(int64_t *window, int *frames, int *late, uint32_t *upd_ma
     fps_now = *frames / ((now - *window) / 1e6f);
     printf("{\"t\":\"stats\",\"cart\":\"%s\",\"fps\":%.1f,\"late\":%d,\"update_us_max\":%u,\"draw_us_max\":%u,"
            "\"flush_us_avg\":%u,\"flush_us_max\":%u,\"kb_per_frame\":%.1f,\"lua_kb\":%u,\"lua_int_kb\":%u,"
-           "\"lua_peak_kb\":%u,\"heap_int\":%u}\n",
+           "\"lua_peak_kb\":%u,\"assets_kb\":%u,\"gc_us_max\":%u,\"frame_ms_p99\":%d,\"heap_int\":%u}\n",
            cur_name, fps_now, *late, (unsigned)*upd_max, (unsigned)*draw_max,
            ds.flushes ? (unsigned)(ds.flush_us_sum / ds.flushes) : 0, (unsigned)ds.flush_us_max,
            ds.flushes ? ds.bytes_sum / (float)ds.flushes / 1024.f : 0.f,
            (unsigned)(mem_used / 1024), (unsigned)(mem_int / 1024), (unsigned)(mem_peak / 1024),
+           engine_asset_bytes() / 1024, (unsigned)gc_max, frame_p99_ms(),
            (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    gc_max = 0;
     *window = now; *frames = 0; *late = 0; *upd_max = 0; *draw_max = 0;
 }
 
@@ -416,9 +459,13 @@ static void wait_until(int64_t t)
 }
 
 // Runs the current cart until it errors, is stopped, or another cart arrives.
+extern const char prelude_lua_start[] asm("_binary_prelude_lua_start");
+extern const char prelude_lua_end[] asm("_binary_prelude_lua_end");
+
 static void run_cart(void)
 {
     stuck = 0; err_kind = ERR_NONE; mem_peak = 0;
+    engine_reset();
     lua_State *L = lua_newstate(l_alloc, NULL);
     if (!L) { err_kind = ERR_MEMORY; strlcpy(err_msg, "Your game ran out of memory", sizeof err_msg); return; }
     lua_gc(L, LUA_GCGEN, 0, 0);
@@ -430,17 +477,12 @@ static void run_cart(void)
     cart_t0 = esp_timer_get_time();
     frame_no = 0;
     input_snapshot(&in);   // drop events from before the cart started
+    memset(frame_hist, 0, sizeof frame_hist);
     memset(notch_acc, 0, sizeof notch_acc);
 
-    // Text only ("t"): precompiled bytecode can crash the VM, so it is never accepted.
-    int st = luaL_loadbufferx(L, cur_src, cur_len, "=game", "t");
-    if (st == LUA_OK) {
-        lua_pushcfunction(L, msgh);
-        lua_insert(L, -2);
-        cb_start = esp_timer_get_time();
-        st = lua_pcall(L, 0, 0, -2);
-        if (st == LUA_OK) lua_pop(L, 1); else lua_remove(L, -2);
-    }
+    int st = run_chunk(L, prelude_lua_start, (size_t)(prelude_lua_end - prelude_lua_start) - 1, "=prelude");
+    if (st == LUA_OK) st = run_chunk(L, cur_src, cur_len, "=game");
+    if (st == LUA_OK) st = pcall_c(L, engine_load_assets);
     if (st == LUA_OK) st = cart_fps(L, &fps);
     if (st == LUA_OK) st = call_cb(L, "init", 0);
 
@@ -463,9 +505,15 @@ static void run_cart(void)
         if (st == LUA_OK) st = call_cb(L, "draw", 1);
         int64_t t2 = esp_timer_get_time();
         if (st != LUA_OK) break;
+        cb_start = t2;
+        lua_gc(L, LUA_GCSTEP, 0);   // one young collection per frame, after draw, so pauses stay small
+        int64_t t3 = esp_timer_get_time();
         if ((uint32_t)(t1 - t0) > upd_max) upd_max = (uint32_t)(t1 - t0);
         if ((uint32_t)(t2 - t1) > draw_max) draw_max = (uint32_t)(t2 - t1);
+        if ((uint32_t)(t3 - t2) > gc_max) gc_max = (uint32_t)(t3 - t2);
         display_present();
+        int work_ms = (int)((esp_timer_get_time() - t0) / 1000);   // game work plus waiting for the flush
+        frame_hist[work_ms < HIST_MS ? work_ms : HIST_MS - 1]++;
         frame_no++; frames++;
         stats_tick(&window, &frames, &late, &upd_max, &draw_max);
         next += period;
@@ -476,6 +524,7 @@ static void run_cart(void)
     if (st != LUA_OK) record_error(L, st);
     cb_start = esp_timer_get_time();   // finalizers run inside lua_close under the same watchdog
     lua_close(L);
+    engine_reset();
     stuck = 0;
 }
 

@@ -1,5 +1,4 @@
 // 8-bit indexed rasterizer: clipped primitives and the 5x7 font, drawing into the back buffer.
-#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include "gfx.h"
@@ -71,11 +70,29 @@ int gfx_text(const char *s, int x, int y, int c, int scale)
 {
     int x0 = x;
     for (; *s; s++, x += 6 * scale) {
-        const uint8_t *g = font_glyph((char)toupper((unsigned char)*s));
-        if (!g) continue;   // characters the font lacks leave a gap
+        const uint8_t *g = font_glyph(*s);
         for (int col = 0; col < 5; col++)
             for (int row = 0; row < 7; row++)
                 if ((g[col] >> row) & 1) gfx_fill_rect(x + col * scale, y + row * scale, scale, scale, c);
     }
     return x - x0 - (x > x0 ? scale : 0);
+}
+
+void gfx_blit(const uint8_t *px, int w, int h, int x, int y, int flip_x, int flip_y, int scale)
+{
+    uint8_t *f = fb();
+    int dw = w * scale, dh = h * scale;
+    int x0 = x < 0 ? 0 : x, y0 = y < 0 ? 0 : y;
+    int x1 = x + dw > SCREEN_W ? SCREEN_W : x + dw, y1 = y + dh > SCREEN_H ? SCREEN_H : y + dh;
+    for (int dy = y0; dy < y1; dy++) {
+        int sy = (dy - y) / scale;
+        if (flip_y) sy = h - 1 - sy;
+        const uint8_t *row = px + sy * w;
+        uint8_t *out = f + dy * SCREEN_W;
+        for (int dx = x0; dx < x1; dx++) {
+            int sx = (dx - x) / scale;
+            uint8_t c = row[flip_x ? w - 1 - sx : sx];
+            if (c != GFX_CLEAR) out[dx] = c;
+        }
+    }
 }

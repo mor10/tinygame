@@ -1,7 +1,7 @@
 // TinyTwist console: boots the display and input, runs Lua carts, and takes dev commands over
 // USB-Serial-JTAG. Commands (one per line):
 //   cart <bytes>   then exactly <bytes> of Lua source: load and run it (max 128 KB)
-//   builtin        run the cart compiled into the firmware
+//   builtin [name] run a cart compiled into the firmware: brick (default) or hello
 //   restart        rerun the current cart
 //   reboot
 // Output is JSON lines: boot, cart, stats (1/s), log, error.
@@ -25,10 +25,15 @@
 
 extern const char hello_lua_start[] asm("_binary_hello_lua_start");
 extern const char hello_lua_end[] asm("_binary_hello_lua_end");
+extern const char brick_lua_start[] asm("_binary_brick_lua_start");
+extern const char brick_lua_end[] asm("_binary_brick_lua_end");
 
-static void load_builtin(void)
+static void load_builtin(const char *name)
 {
-    game_load(hello_lua_start, (size_t)(hello_lua_end - hello_lua_start) - 1, "hello");   // -1: embedded NUL
+    // -1: the embedded text carries a trailing NUL
+    if (!strcmp(name, "hello")) game_load(hello_lua_start, (size_t)(hello_lua_end - hello_lua_start) - 1, "hello");
+    else if (!strcmp(name, "brick")) game_load(brick_lua_start, (size_t)(brick_lua_end - brick_lua_start) - 1, "brick");
+    else printf("{\"t\":\"error\",\"kind\":\"command\",\"msg\":\"builtins: hello, brick\"}\n");
 }
 
 static int read_byte(void)
@@ -71,7 +76,8 @@ static void console_task(void *arg)
         if (!n) continue;
         line[n] = 0; n = 0;
         if (!strncmp(line, "cart ", 5)) receive_cart(atol(line + 5));
-        else if (!strcmp(line, "builtin")) load_builtin();
+        else if (!strcmp(line, "builtin")) load_builtin("brick");
+        else if (!strncmp(line, "builtin ", 8)) load_builtin(line + 8);
         else if (!strcmp(line, "restart")) game_restart();
         else if (!strcmp(line, "reboot")) esp_restart();
         else printf("{\"t\":\"error\",\"kind\":\"command\",\"msg\":\"unknown command\"}\n");
@@ -96,6 +102,6 @@ void app_main(void)
     display_backlight(100);
 
     game_start();
-    load_builtin();
+    load_builtin("brick");
     xTaskCreatePinnedToCore(console_task, "console", 4096, NULL, 3, NULL, 0);
 }

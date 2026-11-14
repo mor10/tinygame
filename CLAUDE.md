@@ -19,7 +19,9 @@ Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
 
 **Phase 3 (Lua core): done (2026-11-14).** It lives in `console/`; see the Console section below. An infinite loop reaches a readable "stuck" screen in about 0.2 s with no reset. All failure tests in `console/carts/tests` pass. Still open: the font has no lowercase, and the explicit GC step after `draw()` and GC pause measurement aren't done.
 
-**Next: Phase 4 (engine v1).** Roadmap: `docs/scope-v0.1.md` section 14.
+**Phase 4 (engine v1): done (2026-11-14).** Sprites, maps, `hit`, `group`, the helpers and lowercase text are in; the format is in `docs/engine-v1.md`. Brick Breaker (`console/carts/brick.lua`) ran 175 s on autoplay at 30 fps with no late frames and a p99 frame time of 2 ms (budget 33 ms). The explicit GC step after `draw()` costs 0.1-0.4 ms.
+
+**Next: Phase 5 (simulator + CLI).** Roadmap: `docs/scope-v0.1.md` section 14.
 
 ### Screen lab notes (history)
 
@@ -52,10 +54,12 @@ Build and flash with `idf.py -C console -p /dev/cu.usbmodem* build flash`. The U
 - `main/game.c`: the Lua host. It runs one cart at a time in a sandbox (base without load/dofile/loadfile/collectgarbage, plus string without dump, table, math and utf8). `pcall`/`xpcall` can't swallow the watchdog or out-of-memory errors. The API tables are read-only, and only text source is accepted, never bytecode.
   - Memory is capped at 1 MB per cart. Blocks of 256 bytes or less go to internal RAM up to 64 KB, the rest to PSRAM.
   - The watchdog fires after 250 ms in one callback.
-  - The API so far is `cart`, `init`/`update`/`draw`, `gfx.clear/pixel/line/rect/fill_rect/text/text_width/W/H`, `knob.turn/pos/speed/pressed/held/released/long` (sides are `"left"`/`"right"`; `turn` is in notches, 20 per revolution) and `sys.time/frame/fps/log`.
+  - The API so far is `cart`, `init`/`update`/`draw`, `gfx.clear/pixel/line/rect/fill_rect/text/text_width/sprite/map/W/H`, `map.load`, `map_get/map_set/map_hit`, `knob.turn/pos/speed/pressed/held/released/long` (sides are `"left"`/`"right"`; `turn` is in notches, 20 per revolution) and `sys.time/frame/fps/log`.
+- `main/engine.c`: text-art sprites and tile maps (`docs/engine-v1.md`), decoded on first use or right after the cart file runs, kept outside the Lua cap with their own 512 KB cap.
+- `main/prelude.lua`: Lua helpers every cart gets: `hit`, `group`, `clamp`, `lerp`, `dist`, `rnd`, `rnd_int`, `choose`.
 - `main/main.c`: the serial dev console. `cart <bytes>` followed by the source uploads and runs a cart; `builtin`, `restart` and `reboot` also work.
 - `tools/send_cart.py PORT FILE.lua [--seconds N] [--timestamps]`: uploads a cart and prints its JSON output. Run it with the ESP-IDF Python environment.
-- `carts/hello.lua`: the built-in cart. `carts/tests/*.lua` are failure tests: stuck, stuck inside pcall, bug, out of memory (also inside pcall), the sandbox probe, and a cart without a `cart` table.
+- `carts/brick.lua` (boots by default) and `carts/hello.lua` are built in; switch with `builtin brick|hello`. `carts/tests/*.lua` are failure tests: stuck, stuck inside pcall, bug, out of memory (also inside pcall), the sandbox probe, a cart without a `cart` table, bad sprite and map art, and `engine_selftest.lua` (22 checks). `brick_autoplay_patch.lua` is appended to `brick.lua` for unattended frame-time runs.
 
 ## Firmware: `firmware/` (ESP-IDF, v5.5 line)
 
