@@ -7,9 +7,12 @@ enum {
     C_BLACK, C_NAVY, C_DGREY, C_GREY, C_WHITE, C_CREAM, C_CORAL, C_RED,
     C_YELLOW, C_ORANGE, C_GREEN, C_TEAL, C_MINT, C_BLUE, C_PINK, C_BROWN,
     OS_NAVY = 16, OS_CREAM, OS_CORAL, OS_WHITE, OS_YELLOW, OS_GREY, OS_TEAL,
+    OS_RED, OS_MINT, OS_DGREY,
+    OS_DIM = 32,   // 32-47: game colours 0-15 darkened, for the pause screen
 };
 
 void gfx_init_palette(void);
+uint32_t gfx_palette_rgb(int index);   // the built-in colour for index, 0xRRGGBB
 void gfx_clear(int c);
 void gfx_pixel(int x, int y, int c);
 void gfx_line(int x0, int y0, int x1, int y1, int c);

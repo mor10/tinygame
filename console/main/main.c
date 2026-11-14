@@ -1,8 +1,7 @@
 // TinyTwist console: boots the display and input, runs Lua carts, and takes dev commands over
 // USB-Serial-JTAG. Commands (one per line):
-//   cart <bytes>   then exactly <bytes> of Lua source: load and run it (max 128 KB)
-//   builtin [name] run a cart compiled into the firmware: brick (default) or hello
-//   restart        rerun the current cart
+//   cart <bytes>   then exactly <bytes> of Lua source: it becomes the "Uploaded" cart and plays (max 128 KB)
+//   restart        relaunch the last game
 //   hash <n> [seed] rerun the current cart deterministically for n frames, printing frame hashes
 //   reboot
 // Output is JSON lines: boot, cart, stats (1/s), log, error.
@@ -24,19 +23,6 @@
 #include "esp_idf_version.h"
 
 #define CART_MAX (128 * 1024)
-
-extern const char hello_lua_start[] asm("_binary_hello_lua_start");
-extern const char hello_lua_end[] asm("_binary_hello_lua_end");
-extern const char brick_lua_start[] asm("_binary_brick_lua_start");
-extern const char brick_lua_end[] asm("_binary_brick_lua_end");
-
-static void load_builtin(const char *name)
-{
-    // -1: the embedded text carries a trailing NUL
-    if (!strcmp(name, "hello")) game_load(hello_lua_start, (size_t)(hello_lua_end - hello_lua_start) - 1, "hello");
-    else if (!strcmp(name, "brick")) game_load(brick_lua_start, (size_t)(brick_lua_end - brick_lua_start) - 1, "brick");
-    else printf("{\"t\":\"error\",\"kind\":\"command\",\"msg\":\"builtins: hello, brick\"}\n");
-}
 
 static int read_byte(void)
 {
@@ -78,8 +64,6 @@ static void console_task(void *arg)
         if (!n) continue;
         line[n] = 0; n = 0;
         if (!strncmp(line, "cart ", 5)) receive_cart(atol(line + 5));
-        else if (!strcmp(line, "builtin")) load_builtin("brick");
-        else if (!strncmp(line, "builtin ", 8)) load_builtin(line + 8);
         else if (!strcmp(line, "restart")) game_restart();
         else if (!strncmp(line, "hash ", 5)) {
             char *end;
@@ -106,9 +90,14 @@ void app_main(void)
     gfx_init_palette();
     if (input_init() != ESP_OK) printf("{\"t\":\"error\",\"kind\":\"boot\",\"msg\":\"input_init failed\"}\n");
     display_present();
-    display_backlight(100);
 
-    game_start();
-    load_builtin("brick");
+    // Safe mode: right knob held down at power-on. The shell then ignores saved settings.
+    vTaskDelay(pdMS_TO_TICKS(30));   // let the click debounce settle
+    input_state_t boot_in;
+    input_snapshot(&boot_in);
+    int safe = boot_in.down[KNOB_RIGHT];
+    if (safe) printf("{\"t\":\"boot\",\"safe_mode\":1}\n");
+
+    game_start(safe);
     xTaskCreatePinnedToCore(console_task, "console", 4096, NULL, 3, NULL, 0);
 }

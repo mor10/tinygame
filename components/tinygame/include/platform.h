@@ -20,3 +20,8 @@ int   plat_is_fast(const void *ptr);               // 1 if ptr is in the fast (i
 // Decoded sprites and maps.
 void *plat_asset_alloc(size_t n);
 void  plat_asset_free(void *ptr);
+
+// Shell services.
+void plat_backlight(int percent);
+int  plat_settings_load(void *buf, size_t n);        // 0 when n bytes were read
+void plat_settings_save(const void *buf, size_t n);

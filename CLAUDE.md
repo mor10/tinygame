@@ -23,7 +23,13 @@ Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
 
 **Phase 5 (simulator + CLI): done (2026-11-14).** `sim/` builds the same engine natively and to WebAssembly. Board, native simulator and browser engine produce identical frame hashes on `hello`, `engine_selftest`, `determinism` (600 frames of random numbers, trig and moving objects) and Brick Breaker on autoplay (900 frames). In the browser the engine takes about 0.1 ms per frame.
 
-**Next: Phase 6 (OS shell).** Roadmap: `docs/scope-v0.1.md` section 14.
+**Phase 6 (OS shell): done (2026-11-14).** `components/tinygame/os.c` has Welcome, Cartridges, Game Card, Settings (sound, light, hands), Paused and the error state, matching `docs/ref-designs`. It was checked by hand on the board.
+  - It is written in C, not as a Lua system cart, so the launcher can't hit a Lua error and needs no special API. The reviewed mock, `console/carts/system/launcher_mock.lua`, stays as the design reference.
+  - Controls: right-handed (the default) turns the right knob to scroll and adjust; left-handed turns the left knob. A click on either knob selects. Back is the scrollable "<" on the gallery and game card, and the BACK row in Settings. In a game, clicking both knobs pauses and holding both for 3 s leaves the game.
+  - Settings persist in NVS. Holding the right knob at power-on boots safe mode, which ignores saved settings.
+  - Still open: Resume relaunches the last game from the start (real resume needs saves, Phase 7). Games read both knobs directly and ignore the Hands setting. Carts can't have a hero image yet, so the game card draws the icon twice.
+
+**Next: Phase 7 (storage).** Roadmap: `docs/scope-v0.1.md` section 14.
 
 ### Screen lab notes (history)
 
@@ -62,9 +68,10 @@ Build and flash with `idf.py -C console -p /dev/cu.usbmodem* build flash`. The U
   - The API so far is `cart`, `init`/`update`/`draw`, `gfx.clear/pixel/line/rect/fill_rect/text/text_width/sprite/map/W/H`, `map.load`, `map_get/map_set/map_hit`, `knob.turn/pos/speed/pressed/held/released/long` (sides are `"left"`/`"right"`; `turn` is in notches, 20 per revolution) and `sys.time/frame/fps/log`.
 - `components/tinygame/engine.c`: text-art sprites and tile maps (`docs/engine-v1.md`), decoded on first use or right after the cart file runs, kept outside the Lua cap with their own 512 KB cap.
 - `components/tinygame/prelude.lua`: Lua helpers every cart gets: `hit`, `group`, `clamp`, `lerp`, `dist`, `rnd`, `rnd_int`, `choose`.
-- `main/main.c`: the serial dev console. `cart <bytes>` followed by the source uploads and runs a cart. `hash <frames> [seed]` reruns the current cart deterministically and prints frame hashes. `builtin`, `restart` and `reboot` also work.
+- `components/tinygame/os.c`: the OS shell around the vm. Carts declare `title`, `tagline` and a 16x16 text-art `icon` in their `cart` table; the shell reads them with `vm_scan` at boot.
+- `main/main.c`: the serial dev console. `cart <bytes>` followed by the source makes it the "Uploaded" cart (first in the gallery) and plays it. `hash <frames> [seed]` relaunches the last game deterministically and prints frame hashes. `restart` relaunches the last game, and `reboot` restarts the board.
 - `tools/send_cart.py PORT FILE.lua [--seconds N] [--timestamps]`: uploads a cart and prints its JSON output. Run it with the ESP-IDF Python environment.
-- `carts/brick.lua` (boots by default) and `carts/hello.lua` are built in; switch with `builtin brick|hello`. `carts/tests/*.lua` are failure tests: stuck, stuck inside pcall, bug, out of memory (also inside pcall), the sandbox probe, a cart without a `cart` table, bad sprite and map art, and `engine_selftest.lua` (22 checks). `brick_autoplay_patch.lua` is appended to `brick.lua` for unattended frame-time runs.
+- `carts/brick.lua` and `carts/hello.lua` are built into the gallery. `carts/tests/*.lua` are failure tests: stuck, stuck inside pcall, bug, out of memory (also inside pcall), the sandbox probe, a cart without a `cart` table, bad sprite and map art, and `engine_selftest.lua` (22 checks). `brick_autoplay_patch.lua` is appended to `brick.lua` for unattended frame-time runs.
 
 ## Simulator: `sim/`
 
@@ -74,6 +81,7 @@ Build it with `cmake -S sim -B sim/build && cmake --build sim/build`.
   - It prints the same JSON lines as the board, plus frame hashes for frame 1, every 30th frame and the last frame.
   - It writes a PNG of the final frame, or of the error screen if the cart failed.
   - Exit status: 0 when the cart ran every frame, 1 after an error, 2 for usage problems.
+- `sim/build/tinygame-sim --shell CART.lua... [--frames N] [--press ...] [--turn ...] [--chord pause|exit@frame] [--png FILE]` runs the OS shell with those carts in the gallery and prints a `mode` line at each screen change.
 - Runs are deterministic: `math.random` is seeded, `sys.time()` follows the frame count, and input comes only from `--press` and `--turn`.
 - Browser build: Emscripten lives in `~/emsdk` (`source ~/emsdk/emsdk_env.sh`). Build with `emcmake cmake -S sim -B sim/build-web && cmake --build sim/build-web`. Then serve the repository root over HTTP (`python3 -m http.server 8766`) and open `/sim/web/`. The page runs carts live with keyboard (A/D/S and J/L/K), mouse or touch knobs, and takes dropped `.lua` files. WASM can't load from `file://`.
 - `node sim/web/hash_node.cjs CART.lua [frames] [seed]` prints the WASM engine's frame hashes for comparison with `tinygame-sim`.

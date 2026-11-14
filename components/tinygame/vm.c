@@ -315,7 +315,7 @@ void vm_draw_error_screen(void)
         snprintf(b, sizeof b, "LINE %d", err_line);
         gfx_text(b, 10, 100, OS_CORAL, 2);
     }
-    gfx_text("CLICK RIGHT KNOB TO RESTART", 10, SCREEN_H - 16, OS_GREY, 1);
+    gfx_text("CLICK A KNOB TO GO BACK", 10, SCREEN_H - 16, OS_GREY, 1);
 }
 
 // ---------- running a cart ----------
@@ -468,6 +468,46 @@ int vm_frame(const vm_input_t *input)
     last_gc_us = (uint32_t)(t3 - t2);
     frame_no++;
     return 0;
+}
+
+static void copy_field(lua_State *L, const char *k, char *out, size_t n)
+{
+    lua_getfield(L, -1, k);
+    const char *v = lua_type(L, -1) == LUA_TSTRING ? lua_tostring(L, -1) : NULL;
+    if (v) { strncpy(out, v, n - 1); out[n - 1] = 0; }
+    lua_pop(L, 1);
+}
+
+int vm_scan(const char *src, size_t len, const vm_opts_t *opts, vm_meta_t *m)
+{
+    memset(m, 0, sizeof *m);
+    if (L_) return -1;   // a cart is running; scanning shares the one Lua slot
+    stuck = 0;
+    lua_State *L = lua_newstate(l_alloc, NULL);
+    if (!L) return -1;
+    lua_gc(L, LUA_GCGEN, 0, 0);
+    lua_sethook(L, hook, LUA_MASKCOUNT, HOOK_COUNT);
+    L_ = L;
+    open_sandbox(L);
+    int st = run_chunk(L, opts->prelude, opts->prelude_len, "=prelude");
+    if (st == LUA_OK) st = run_chunk(L, src, len, "=game");
+    int ok = 0;
+    if (st == LUA_OK) {
+        lua_getglobal(L, "cart");
+        if (lua_istable(L, -1)) {
+            copy_field(L, "title", m->title, sizeof m->title);
+            copy_field(L, "tagline", m->tagline, sizeof m->tagline);
+            copy_field(L, "icon", m->icon, sizeof m->icon);
+            ok = 1;
+        }
+        lua_pop(L, 1);
+    }
+    cb_start = plat_time_us();
+    lua_close(L);
+    L_ = NULL;
+    engine_reset();
+    stuck = 0;
+    return ok ? 0 : -1;
 }
 
 void vm_stop(void)

@@ -40,8 +40,8 @@
 #define BOARD_ENC_R_A         4
 #define BOARD_ENC_R_B         5
 #define BOARD_ENC_R_CLICK     6
-#define BOARD_ENC_L_DIR       1   // +1 = clockwise counts up; flip if a knob reads backwards
-#define BOARD_ENC_R_DIR       1
+#define BOARD_ENC_L_DIR       -1  // +1 = A-leads-B counts up; -1 makes clockwise count up on this board (verified 2026-11-14)
+#define BOARD_ENC_R_DIR       -1
 
 // QMI8658 IMU. Screen X/Y come from PCB axes (0=X, 1=Y, 2=Z) with a sign; confirm on the tilt page.
 #define BOARD_IMU_SDA         48

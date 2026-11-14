@@ -1,9 +1,10 @@
-// Cart runner on the board: takes carts from the console, runs them through the portable vm
-// on core 1 at the cart's frame rate, prints stats once a second, and shows error screens.
+// Board runner: drives the OS shell (components/tinygame/os.c) on core 1 at os_fps(), takes
+// requests from the serial console, and prints stats while a game runs.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "game.h"
+#include "os.h"
 #include "vm.h"
 #include "display.h"
 #include "input.h"
@@ -15,28 +16,30 @@
 
 extern const char prelude_lua_start[] asm("_binary_prelude_lua_start");
 extern const char prelude_lua_end[] asm("_binary_prelude_lua_end");
+extern const char brick_lua_start[] asm("_binary_brick_lua_start");
+extern const char brick_lua_end[] asm("_binary_brick_lua_end");
+extern const char hello_lua_start[] asm("_binary_hello_lua_start");
+extern const char hello_lua_end[] asm("_binary_hello_lua_end");
 
-// ---------- cart handoff ----------
-static SemaphoreHandle_t cart_lock;
-static char *pending_src, *cur_src;
-static size_t pending_len, cur_len;
-static char pending_name[32], cur_name[32];
-static volatile int restart_req;
-static volatile int hash_frames_req;   // >0: rerun deterministically and print frame hashes
+// ---------- requests from the console task ----------
+static SemaphoreHandle_t req_lock;
+static char *upload_src;
+static size_t upload_len;
+static volatile int restart_req, hash_frames_req;
 static volatile uint32_t hash_seed_req;
 
 void game_load(const char *src, size_t len, const char *name)
 {
+    (void)name;
     char *copy = heap_caps_malloc(len + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!copy) { printf("{\"t\":\"error\",\"kind\":\"load\",\"msg\":\"no memory for cart\"}\n"); return; }
     memcpy(copy, src, len);
     copy[len] = 0;
-    xSemaphoreTake(cart_lock, portMAX_DELAY);
-    free(pending_src);
-    pending_src = copy;
-    pending_len = len;
-    strlcpy(pending_name, name, sizeof pending_name);
-    xSemaphoreGive(cart_lock);
+    xSemaphoreTake(req_lock, portMAX_DELAY);
+    free(upload_src);
+    upload_src = copy;
+    upload_len = len;
+    xSemaphoreGive(req_lock);
 }
 
 void game_restart(void) { restart_req = 1; }
@@ -45,34 +48,31 @@ void game_hash(int frames, uint32_t seed)
 {
     hash_seed_req = seed;
     hash_frames_req = frames;
-    restart_req = 1;
 }
 
-static int take_pending(void)
+static void handle_requests(void)
 {
-    int got = 0;
-    xSemaphoreTake(cart_lock, portMAX_DELAY);
-    if (pending_src) {
-        free(cur_src);
-        cur_src = pending_src; cur_len = pending_len;
-        strlcpy(cur_name, pending_name, sizeof cur_name);
-        pending_src = NULL;
-        got = 1;
-    }
-    xSemaphoreGive(cart_lock);
-    return got;
+    char *src = NULL;
+    size_t len = 0;
+    xSemaphoreTake(req_lock, portMAX_DELAY);
+    src = upload_src; len = upload_len; upload_src = NULL;
+    xSemaphoreGive(req_lock);
+    if (src) { os_run_source(src, len); free(src); }
+    if (restart_req) { restart_req = 0; os_restart_game(); }
+    if (hash_frames_req) { int n = hash_frames_req; hash_frames_req = 0; os_hash_game(n, hash_seed_req); }
 }
 
-static int has_pending(void) { return pending_src != NULL; }
-
-// ---------- running ----------
-static void to_vm_input(const input_state_t *s, vm_input_t *o)
+// ---------- loop ----------
+static void to_os_input(const input_state_t *s, os_input_t *o)
 {
+    memset(o, 0, sizeof *o);
     for (int i = 0; i < 2; i++) {
-        o->pos[i] = s->pos[i]; o->delta[i] = s->delta[i]; o->speed[i] = s->speed[i];
-        o->down[i] = s->down[i]; o->pressed[i] = s->pressed[i];
-        o->released[i] = s->released[i]; o->long_press[i] = s->long_press[i];
+        o->in.pos[i] = s->pos[i]; o->in.delta[i] = s->delta[i]; o->in.speed[i] = s->speed[i];
+        o->in.down[i] = s->down[i]; o->in.pressed[i] = s->pressed[i];
+        o->in.released[i] = s->released[i]; o->in.long_press[i] = s->long_press[i];
     }
+    o->chord_pause = s->chord_pause;
+    o->chord_exit = s->chord_exit;
 }
 
 #define HIST_MS 64
@@ -91,44 +91,50 @@ static int p99_ms(const uint32_t *hist)
     return HIST_MS;
 }
 
-// Runs the current cart until it errors, is stopped, or another cart or a restart arrives.
-static void run_cart(void)
+static int safe_boot;
+
+static void game_task(void *arg)
 {
-    int hash_frames = hash_frames_req;
-    hash_frames_req = 0;
+    // Scanning carts runs Lua, so it happens here on the game task's big stack, not in app_main.
     vm_opts_t opts = {
         .prelude = prelude_lua_start, .prelude_len = (size_t)(prelude_lua_end - prelude_lua_start) - 1,
-        .deterministic = hash_frames > 0, .seed = hash_seed_req,
     };
-    input_state_t raw;
-    input_snapshot(&raw);   // drop events from before the cart started
-    if (vm_start(cur_src, cur_len, cur_name, &opts) != 0) { vm_stop(); return; }
+    os_init(&opts, safe_boot);
+    // -1: embedded text carries a trailing NUL
+    os_add_cart(brick_lua_start, (size_t)(brick_lua_end - brick_lua_start) - 1, "Brick Bop");
+    os_add_cart(hello_lua_start, (size_t)(hello_lua_end - hello_lua_start) - 1, "Hello");
 
     static uint32_t hist[HIST_MS];
-    memset(hist, 0, sizeof hist);
-    int64_t period = 1000000 / vm_fps(), next = esp_timer_get_time(), window = next;
+    int64_t next = esp_timer_get_time(), window = next;
     int frames = 0, late = 0;
     uint32_t upd_max = 0, draw_max = 0, gc_max = 0;
-    vm_input_t in;
-    while (!has_pending() && !restart_req) {
+    os_mode_t prev_mode = os_mode();
+    for (;;) {
+        handle_requests();
+        input_state_t raw;
         input_snapshot(&raw);
-        if (raw.chord_exit) { vm_stopped_by_user(); break; }
-        to_vm_input(&raw, &in);
-        if (hash_frames) memset(&in, 0, sizeof in);   // hash runs use no input, like the simulator
+        os_input_t in;
+        to_os_input(&raw, &in);
+
+        int hashing = os_hash_frames_left() > 0;
         int64_t t0 = esp_timer_get_time();
-        if (vm_frame(&in) != 0) break;
+        os_frame(&in);
+        os_mode_t m = os_mode();
+        if (m != prev_mode) { memset(hist, 0, sizeof hist); prev_mode = m; }
+        if (hashing && m == OS_GAME) {
+            uint32_t n = vm_frame_count();
+            if (n % 30 == 0 || n == 1 || os_hash_frames_left() == 0)
+                printf("{\"t\":\"hash\",\"frame\":%u,\"fnv\":\"%08x\"}\n", (unsigned)n, (unsigned)vm_frame_hash());
+        }
         vm_stats_t s;
         vm_get_stats(&s);
-        if (s.update_us > upd_max) upd_max = s.update_us;
-        if (s.draw_us > draw_max) draw_max = s.draw_us;
-        if (s.gc_us > gc_max) gc_max = s.gc_us;
-        uint32_t n = vm_frame_count();
-        if (hash_frames && (n % 30 == 0 || n == 1 || n == (uint32_t)hash_frames)) {
-            printf("{\"t\":\"hash\",\"frame\":%u,\"fnv\":\"%08x\"}\n", (unsigned)n, (unsigned)vm_frame_hash());
-            if (n == (uint32_t)hash_frames) hash_frames = 0;   // done; keep running normally
+        if (m == OS_GAME) {
+            if (s.update_us > upd_max) upd_max = s.update_us;
+            if (s.draw_us > draw_max) draw_max = s.draw_us;
+            if (s.gc_us > gc_max) gc_max = s.gc_us;
         }
         display_present();
-        int work_ms = (int)((esp_timer_get_time() - t0) / 1000);   // game work plus waiting for the flush
+        int work_ms = (int)((esp_timer_get_time() - t0) / 1000);
         hist[work_ms < HIST_MS ? work_ms : HIST_MS - 1]++;
         frames++;
 
@@ -138,47 +144,28 @@ static void run_cart(void)
             display_take_stats(&ds);
             float fps = frames / ((now - window) / 1e6f);
             vm_set_measured_fps(fps);
-            printf("{\"t\":\"stats\",\"cart\":\"%s\",\"fps\":%.1f,\"late\":%d,\"update_us_max\":%u,\"draw_us_max\":%u,"
-                   "\"gc_us_max\":%u,\"flush_us_avg\":%u,\"flush_us_max\":%u,\"kb_per_frame\":%.1f,\"lua_kb\":%u,"
-                   "\"lua_int_kb\":%u,\"lua_peak_kb\":%u,\"assets_kb\":%u,\"frame_ms_p99\":%d,\"heap_int\":%u}\n",
-                   cur_name, fps, late, (unsigned)upd_max, (unsigned)draw_max, (unsigned)gc_max,
+            static const char *modes[] = { "welcome", "gallery", "card", "settings", "level", "game", "paused", "error" };
+            printf("{\"t\":\"stats\",\"mode\":\"%s\",\"cart\":\"%s\",\"fps\":%.1f,\"late\":%d,\"update_us_max\":%u,"
+                   "\"draw_us_max\":%u,\"gc_us_max\":%u,\"flush_us_avg\":%u,\"flush_us_max\":%u,\"kb_per_frame\":%.1f,"
+                   "\"lua_kb\":%u,\"lua_int_kb\":%u,\"lua_peak_kb\":%u,\"assets_kb\":%u,\"frame_ms_p99\":%d,\"heap_int\":%u}\n",
+                   modes[m], os_game_name(), fps, late, (unsigned)upd_max, (unsigned)draw_max, (unsigned)gc_max,
                    ds.flushes ? (unsigned)(ds.flush_us_sum / ds.flushes) : 0, (unsigned)ds.flush_us_max,
                    ds.flushes ? ds.bytes_sum / (float)ds.flushes / 1024.f : 0.f,
                    (unsigned)(s.lua_bytes / 1024), (unsigned)(s.lua_fast_bytes / 1024), (unsigned)(s.lua_peak_bytes / 1024),
                    s.asset_bytes / 1024, p99_ms(hist), (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
             window = now; frames = 0; late = 0; upd_max = draw_max = gc_max = 0;
         }
-        next += period;
+        next += 1000000 / os_fps();
         now = esp_timer_get_time();
-        if (hash_frames) next = now;   // hash runs go as fast as the flush allows
+        if (os_hash_frames_left() > 0) next = now;   // hash runs go as fast as the flush allows
         else if (now > next) { late++; next = now; vTaskDelay(1); }
         else wait_until(next);
     }
-    vm_stop();
 }
 
-static void game_task(void *arg)
+void game_start(int safe_mode)
 {
-    for (;;) {
-        while (!take_pending() && !cur_src) vTaskDelay(pdMS_TO_TICKS(20));
-        restart_req = 0;
-        run_cart();
-        if (vm_error() == VM_ERR_NONE) continue;   // replaced by a new cart or restarted
-        vm_draw_error_screen();
-        display_present();
-        for (;;) {   // wait for a restart click, a restart command or a new cart
-            vTaskDelay(pdMS_TO_TICKS(33));
-            input_state_t raw;
-            input_snapshot(&raw);
-            if (raw.pressed[KNOB_RIGHT] || restart_req || has_pending()) break;
-        }
-        take_pending();
-        restart_req = 0;
-    }
-}
-
-void game_start(void)
-{
-    cart_lock = xSemaphoreCreateMutex();
+    req_lock = xSemaphoreCreateMutex();
+    safe_boot = safe_mode;
     xTaskCreatePinnedToCore(game_task, "game", 16384, NULL, 5, NULL, 1);
 }

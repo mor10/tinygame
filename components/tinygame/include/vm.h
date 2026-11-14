@@ -42,3 +42,7 @@ uint32_t vm_frame_count(void);
 void     vm_get_stats(vm_stats_t *out);
 void     vm_reset_peak(void);
 uint32_t vm_frame_hash(void);              // FNV-1a of the current back buffer
+
+// Reads a cart's title, tagline and icon art without running init(). Only while no cart runs.
+typedef struct { char title[24]; char tagline[48]; char icon[1024]; } vm_meta_t;
+int      vm_scan(const char *src, size_t len, const vm_opts_t *opts, vm_meta_t *m);   // 0 = has a cart table

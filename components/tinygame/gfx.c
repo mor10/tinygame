@@ -5,16 +5,30 @@
 #include "platform.h"
 #include "font.h"
 
-// Game palette (0-15), flat colours from the reference designs, then the OS copies (16-22).
+// Game palette (0-15), flat colours from the reference designs, then the OS copies (16-25).
 static const uint32_t PALETTE[] = {
     0x000000, 0x1E2340, 0x3A3F4B, 0x8A8F99, 0xFFFFFF, 0xF7F0DC, 0xE8604C, 0xC0392B,
     0xF2B632, 0xF08A3C, 0x5FB04B, 0x3FA89A, 0x9FD8CB, 0x3B6FD1, 0xF29BB0, 0x8A5A3C,
     0x1E2340, 0xF7F0DC, 0xE8604C, 0xFFFFFF, 0xF2B632, 0x8A8F99, 0x3FA89A,
+    0xC0392B, 0x9FD8CB, 0x3A3F4B,
 };
+
+uint32_t gfx_palette_rgb(int index)
+{
+    return index >= 0 && index < (int)(sizeof PALETTE / sizeof PALETTE[0]) ? PALETTE[index] : 0;
+}
 
 void gfx_init_palette(void)
 {
     for (int i = 0; i < (int)(sizeof PALETTE / sizeof PALETTE[0]); i++) plat_set_color(i, PALETTE[i]);
+    for (int i = 0; i < 16; i++) {   // dimmed copies: 30% of the colour over the OS navy
+        uint32_t c = PALETTE[i], n = 0x1E2340, out = 0;
+        for (int sh = 0; sh <= 16; sh += 8) {
+            uint32_t a = (c >> sh) & 0xFF, b = (n >> sh) & 0xFF;
+            out |= ((a * 3 + b * 7) / 10) << sh;
+        }
+        plat_set_color(OS_DIM + i, out);
+    }
 }
 
 static inline uint8_t *fb(void) { return plat_framebuffer(); }

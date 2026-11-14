@@ -27,7 +27,7 @@ file(WRITE ${CMAKE_BINARY_DIR}/prelude_gen.c
 
 set(ENGINE_SRCS
   platform_host.c ${CMAKE_BINARY_DIR}/prelude_gen.c
-  ${ROOT}/components/tinygame/vm.c ${ROOT}/components/tinygame/gfx.c ${ROOT}/components/tinygame/engine.c
+  ${ROOT}/components/tinygame/vm.c ${ROOT}/components/tinygame/gfx.c ${ROOT}/components/tinygame/engine.c ${ROOT}/components/tinygame/os.c
   ${ROOT}/components/font/font5x7.c
   ${LUA_SRCS})
 
