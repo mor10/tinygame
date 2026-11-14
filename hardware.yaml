@@ -63,6 +63,7 @@ profiles:
         flush_ms_full_frame: {40mhz: 23.2, 80mhz: 12.2}
         flush_ms_diff_hline_speed8_80mhz: {min: 9.5, avg: 10.1, max: 14.6}   # sw, 30 fps
         soak_10min_rain_speed4: "590 one-second windows: fps 29.9-30.1, 0 late frames, max flush 9.1 ms, 0 errors or resets (second run; first run logged one unexplained line, not reproduced)"
+        input_pcnt_test: "both knobs: N full turns each way returns POS to exactly 0, clockwise counts up, clicks and both chords detected (2026-11-13)"
         scroll_page_speed8: "clean by eye at 8 px/frame with diff on (5.1 ms avg flush, 19.3 KB) and with diff off, i.e. forced full-frame writes (12.2 ms flush, 107.5 KB, 0 late frames)"
         scroll_page_speed4: "parallax side-scroller looks clean by eye with diff flush; 5.2 ms avg flush, 19.9 KB per frame, 0 late frames"
         rain_page_speed8: "still clean by eye at up to 8 px/frame; diff flush 5.6/6.5/7.3 ms"

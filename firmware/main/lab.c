@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include "board.h"
 #include "lcd.h"
+#include "input.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -29,8 +30,8 @@ static uint16_t pal_be[256];   // byte-swapped for the wire
 static uint8_t fb[LW * LH];
 static uint8_t prev[LW * LH];
 
-enum { PG_GEOMETRY, PG_HLINE, PG_VLINE, PG_BOX, PG_CHECKER, PG_STRIPES, PG_RAIN, PG_FLASH, PG_SCROLL, PG_COUNT };
-static const char *PAGE_NAMES[PG_COUNT] = { "geometry", "hline", "vline", "box", "checker", "stripes", "rain", "flash", "scroll" };
+enum { PG_GEOMETRY, PG_HLINE, PG_VLINE, PG_BOX, PG_CHECKER, PG_STRIPES, PG_RAIN, PG_FLASH, PG_SCROLL, PG_INPUT, PG_COUNT };
+static const char *PAGE_NAMES[PG_COUNT] = { "geometry", "hline", "vline", "box", "checker", "stripes", "rain", "flash", "scroll", "input" };
 
 enum { MODE_HW, MODE_SW };
 
@@ -73,40 +74,29 @@ static void apply_tune(void)
     }
 }
 
-typedef struct { int a, b, click; int8_t last; int acc; } enc_t;
-static const int8_t ENC_STEP[16] = { 0, 1, -1, 0, -1, 0, 0, 1, 1, 0, 0, -1, 0, -1, 1, 0 };
+static input_state_t in_st;                 // latest snapshot, taken once per frame
+static int64_t ev_until[8];                 // sticky display time for events (us)
+enum { EV_L_PRESS, EV_R_PRESS, EV_L_LONG, EV_R_LONG, EV_PAUSE, EV_EXIT };
+static int tune_acc[2];                     // transitions not yet turned into a tuning step
 
-static void enc_task(void *arg)
+static void input_frame(int64_t now)
 {
-    enc_t e[2] = { { BOARD_ENC_L_A, BOARD_ENC_L_B, BOARD_ENC_L_CLICK, 0, 0 },
-                   { BOARD_ENC_R_A, BOARD_ENC_R_B, BOARD_ENC_R_CLICK, 0, 0 } };
-    int click_prev[2] = { 1, 1 };
+    input_snapshot(&in_st);
     for (int i = 0; i < 2; i++) {
-        gpio_config_t g = { .pin_bit_mask = (1ULL << e[i].a) | (1ULL << e[i].b) | (1ULL << e[i].click),
-                            .mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE };
-        gpio_config(&g);
-        e[i].last = (gpio_get_level(e[i].a) << 1) | gpio_get_level(e[i].b);
-    }
-    for (;;) {
-        for (int i = 0; i < 2; i++) {
-            int8_t cur = (gpio_get_level(e[i].a) << 1) | gpio_get_level(e[i].b);
-            if (cur != e[i].last) {
-                e[i].acc += ENC_STEP[(e[i].last << 2) | cur];
-                e[i].last = cur;
-                while (e[i].acc >= 4 || e[i].acc <= -4) {      // 4 transitions per full cycle
-                    int d = e[i].acc > 0 ? 1 : -1;
-                    e[i].acc -= 4 * d;
-                    if (!tune_on) continue;
-                    if (i == 0) { int v = tune_fr + d; tune_fr = v < 0 ? 0 : v > 31 ? 31 : v; }
-                    else        { int v = tune_fp + d; tune_fp = v < 1 ? 1 : v > 64 ? 64 : v; }
-                }
-            }
-            int c = gpio_get_level(e[i].click);
-            if (!c && click_prev[i] && tune_on) { if (i == 0) tune_fr = TUNE_FR_DEFAULT; else tune_fp = TUNE_FP_DEFAULT; }
-            click_prev[i] = c;
+        tune_acc[i] += in_st.delta[i];
+        while (tune_acc[i] >= 4 || tune_acc[i] <= -4) {      // 4 transitions = one tuning step
+            int d = tune_acc[i] > 0 ? 1 : -1;
+            tune_acc[i] -= 4 * d;
+            if (!tune_on) continue;
+            if (i == 0) { int v = tune_fr + d; tune_fr = v < 0 ? 0 : v > 31 ? 31 : v; }
+            else        { int v = tune_fp + d; tune_fp = v < 1 ? 1 : v > 64 ? 64 : v; }
         }
-        vTaskDelay(1);   // 1 ms poll; EC11 contact bounce is shorter than a full cycle at hand speed
+        if (in_st.pressed[i] && tune_on) { if (i == 0) tune_fr = TUNE_FR_DEFAULT; else tune_fp = TUNE_FP_DEFAULT; }
+        if (in_st.pressed[i])    { ev_until[EV_L_PRESS + i] = now + 400000; printf("{\"t\":\"input\",\"ev\":\"%s_press\"}\n", i ? "right" : "left"); }
+        if (in_st.long_press[i]) { ev_until[EV_L_LONG + i] = now + 800000;  printf("{\"t\":\"input\",\"ev\":\"%s_long\"}\n", i ? "right" : "left"); }
     }
+    if (in_st.chord_pause) { ev_until[EV_PAUSE] = now + 1000000; printf("{\"t\":\"input\",\"ev\":\"chord_pause\"}\n"); }
+    if (in_st.chord_exit)  { ev_until[EV_EXIT] = now + 1500000;  printf("{\"t\":\"input\",\"ev\":\"chord_exit\"}\n"); }
 }
 
 // ---------- drawing ----------
@@ -233,6 +223,27 @@ static void draw_page(int f)
         for (int y = 0; y < LH; y++)
             for (int x = 0; x < LW; x++)
                 fb[y * LW + x] = ((((x + off) >> 4) ^ (y >> 4)) & 1) ? C_TEAL : C_CREAM;
+        break;
+    }
+    case PG_INPUT: {
+        // Input bench: positions in fine steps (80 per turn), turns, speed, click state and events.
+        // Pass test: N full turns clockwise then N back must return POS to exactly 0.
+        int64_t now = esp_timer_get_time();
+        memset(fb, C_NAVY, sizeof fb);
+        for (int i = 0; i < 2; i++) {
+            int x = i ? 168 : 8;
+            char b[32];
+            text(i ? "RIGHT" : "LEFT", x, 8, C_YELLOW, 2);
+            snprintf(b, sizeof b, "POS %ld", (long)in_st.pos[i]);              text(b, x, 30, C_WHITE, 2);
+            snprintf(b, sizeof b, "TURNS %.2f", in_st.pos[i] / (float)INPUT_TRANSITIONS_PER_TURN); text(b, x, 50, C_CYAN, 2);
+            snprintf(b, sizeof b, "SPD %d/S", (int)in_st.speed[i]);            text(b, x, 70, C_WHITE, 1);
+            fill(x, 86, 60, 24, in_st.down[i] ? C_CORAL : C_DGREY);
+            text(in_st.down[i] ? "DOWN" : "UP", x + 8, 94, C_WHITE, 2);
+            if (now < ev_until[EV_L_PRESS + i]) text("PRESS", x, 116, C_GREEN, 1);
+            if (now < ev_until[EV_L_LONG + i])  text("LONG", x + 40, 116, C_GREEN, 1);
+        }
+        if (now < ev_until[EV_PAUSE]) text("CHORD: PAUSE", 8, 132, C_GREEN, 2);
+        if (now < ev_until[EV_EXIT])  text("CHORD: FORCE EXIT", 8, 150, C_CORAL, 2);
         break;
     }
     case PG_SCROLL: {
@@ -523,6 +534,7 @@ static void lab_task(void *arg)
     for (int f = 0;; f++) {
         while (xQueueReceive(s_cmdq, line, 0) == pdTRUE) handle_cmd(line);
         apply_tune();
+        input_frame(esp_timer_get_time());
         int bv = gpio_get_level(BOARD_BOOT_BTN);
         if (!bv && btn_prev) { cfg.page = (cfg.page + 1) % PG_COUNT; invalidate(); print_cfg(); }
         btn_prev = bv;
@@ -580,6 +592,6 @@ void lab_start(void)
 {
     s_cmdq = xQueueCreate(8, 96);
     if (cfg.mhz != 40) lcd_set_pclk(cfg.mhz * 1000000);
-    xTaskCreatePinnedToCore(enc_task, "enc", 3072, NULL, 4, NULL, 0);
+    if (input_init() != ESP_OK) printf("{\"t\":\"error\",\"msg\":\"input_init failed\"}\n");
     xTaskCreatePinnedToCore(lab_task, "lab", 8192, NULL, 5, NULL, 1);
 }

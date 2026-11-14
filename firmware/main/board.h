@@ -40,6 +40,8 @@
 #define BOARD_ENC_R_A         4
 #define BOARD_ENC_R_B         5
 #define BOARD_ENC_R_CLICK     6
+#define BOARD_ENC_L_DIR       1   // +1 = clockwise counts up; flip if a knob reads backwards
+#define BOARD_ENC_R_DIR       1
 
 // BOOT button doubles as "next page" in the lab
 #define BOARD_BOOT_BTN        0
