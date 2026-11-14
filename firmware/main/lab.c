@@ -6,6 +6,7 @@
 #include "board.h"
 #include "lcd.h"
 #include "input.h"
+#include "imu.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -30,8 +31,8 @@ static uint16_t pal_be[256];   // byte-swapped for the wire
 static uint8_t fb[LW * LH];
 static uint8_t prev[LW * LH];
 
-enum { PG_GEOMETRY, PG_HLINE, PG_VLINE, PG_BOX, PG_CHECKER, PG_STRIPES, PG_RAIN, PG_FLASH, PG_SCROLL, PG_INPUT, PG_COUNT };
-static const char *PAGE_NAMES[PG_COUNT] = { "geometry", "hline", "vline", "box", "checker", "stripes", "rain", "flash", "scroll", "input" };
+enum { PG_GEOMETRY, PG_HLINE, PG_VLINE, PG_BOX, PG_CHECKER, PG_STRIPES, PG_RAIN, PG_FLASH, PG_SCROLL, PG_INPUT, PG_TILT, PG_COUNT };
+static const char *PAGE_NAMES[PG_COUNT] = { "geometry", "hline", "vline", "box", "checker", "stripes", "rain", "flash", "scroll", "input", "tilt" };
 
 enum { MODE_HW, MODE_SW };
 
@@ -74,6 +75,8 @@ static void apply_tune(void)
     }
 }
 
+static imu_state_t imu_st;
+static int64_t shake_until;
 static input_state_t in_st;                 // latest snapshot, taken once per frame
 static int64_t ev_until[8];                 // sticky display time for events (us)
 enum { EV_L_PRESS, EV_R_PRESS, EV_L_LONG, EV_R_LONG, EV_PAUSE, EV_EXIT };
@@ -82,6 +85,9 @@ static int tune_acc[2];                     // transitions not yet turned into a
 static void input_frame(int64_t now)
 {
     input_snapshot(&in_st);
+    imu_snapshot(&imu_st);
+    if (imu_st.shake) { shake_until = now + 600000; printf("{\"t\":\"imu\",\"ev\":\"shake\"}\n"); }
+    if (cfg.page == PG_TILT && in_st.pressed[0]) imu_zero();
     for (int i = 0; i < 2; i++) {
         tune_acc[i] += in_st.delta[i];
         while (tune_acc[i] >= 4 || tune_acc[i] <= -4) {      // 4 transitions = one tuning step
@@ -244,6 +250,22 @@ static void draw_page(int f)
         }
         if (now < ev_until[EV_PAUSE]) text("CHORD: PAUSE", 8, 132, C_GREEN, 2);
         if (now < ev_until[EV_EXIT])  text("CHORD: FORCE EXIT", 8, 150, C_CORAL, 2);
+        break;
+    }
+    case PG_TILT: {
+        // Tilt bench: the dot is where a ball would roll. Tilt the board right and the dot must go right
+        // (tilt x positive); tilt the top edge away from you and it must go up. Left click = "hold me flat".
+        int64_t now = esp_timer_get_time();
+        memset(fb, C_NAVY, sizeof fb);
+        fill(160, 10, 1, 120, C_DGREY); fill(20, 70, 280, 1, C_DGREY);
+        int bx = 160 + (int)(imu_st.tilt_x * 130), by = 70 + (int)(imu_st.tilt_y * 55);
+        fill(bx - 6, by - 6, 12, 12, imu_st.ok ? C_CORAL : C_RED);
+        char b[48];
+        snprintf(b, sizeof b, "TX %+.2f TY %+.2f", imu_st.tilt_x, imu_st.tilt_y); text(b, 8, 138, C_WHITE, 2);
+        snprintf(b, sizeof b, "ANG %+.0f %+.0f  G %+.2f %+.2f %+.2f", imu_st.ang_x, imu_st.ang_y, imu_st.g[0], imu_st.g[1], imu_st.g[2]);
+        text(b, 8, 158, C_CYAN, 1);
+        if (now < shake_until) text("SHAKE", 250, 8, C_YELLOW, 2);
+        if (!imu_st.ok) text("IMU NOT RESPONDING", 8, 8, C_RED, 2);
         break;
     }
     case PG_SCROLL: {
@@ -477,6 +499,12 @@ static void handle_cmd(char *line)
         lcd_cmd(0xC6, &v, 1);   // FRCTRL2: 0x0F = 60 Hz default, lower = faster, 0x1F = 39 Hz
         if (v < 32) { tune_fr = v; applied_fr = v; }
         printf("{\"t\":\"note\",\"frctrl\":\"0x%02X\"}\n", v);
+    } else if (!strcmp(cmd, "imumap") && a && b) {
+        // imumap <x axis 0-2> <x sign +/-1> <y axis 0-2> <y sign +/-1>
+        char *c3 = strtok(NULL, " \t\r\n"), *c4 = strtok(NULL, " \t\r\n");
+        if (c3 && c4) imu_set_map(atoi(a), atoi(b), atoi(c3), atoi(c4)); else ok = false;
+    } else if (!strcmp(cmd, "tiltzero")) {
+        imu_zero();
     } else if (!strcmp(cmd, "tune") && a) {
         tune_on = atoi(a) ? 1 : 0;
     } else if (!strcmp(cmd, "init") && a && !strcmp(a, "vendor")) {
@@ -498,7 +526,7 @@ static void handle_cmd(char *line)
     } else if (!strcmp(cmd, "help")) {
         printf("{\"t\":\"help\",\"cmds\":\"page <n|name|next> | mode hw|sw | madctl <hex> | swflip <fx> <fy> | "
                "mhz <n> | fps <n, 0=unlimited> | diff 0|1 | strip <1-32> | speed <px/frame> | hud 0|1 | "
-               "inv 0|1 | bl <0-100> | frctrl <hex> | tune 0|1 | init vendor | raw <cmd> [bytes] | cfg | reboot\"}\n");
+               "inv 0|1 | bl <0-100> | frctrl <hex> | imumap <xax> <xsg> <yax> <ysg> | tiltzero | tune 0|1 | init vendor | raw <cmd> [bytes] | cfg | reboot\"}\n");
     } else {
         ok = false;
     }
@@ -567,6 +595,11 @@ static void lab_task(void *arg)
                    cfg.diff, cfg.strip, cfg.fps, hud_fps, st.late, st.render_sum / st.frames, st.flush_min,
                    st.flush_sum / st.frames, st.flush_max, st.bytes_sum / (float)st.frames / 1024.f,
                    (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+            {
+                int xa, xs, ya, ys; imu_get_map(&xa, &xs, &ya, &ys);
+                printf("{\"t\":\"imu\",\"ok\":%d,\"g\":[%.3f,%.3f,%.3f],\"ang\":[%.1f,%.1f],\"tilt\":[%.2f,%.2f],\"map\":[%d,%d,%d,%d]}\n",
+                       imu_st.ok, imu_st.g[0], imu_st.g[1], imu_st.g[2], imu_st.ang_x, imu_st.ang_y, imu_st.tilt_x, imu_st.tilt_y, xa, xs, ya, ys);
+            }
             memset(&st, 0, sizeof st);
             st.flush_min = INT64_MAX;
             window_start = now;
@@ -592,6 +625,7 @@ void lab_start(void)
 {
     s_cmdq = xQueueCreate(8, 96);
     if (cfg.mhz != 40) lcd_set_pclk(cfg.mhz * 1000000);
+    if (imu_init() != ESP_OK) printf("{\"t\":\"error\",\"msg\":\"imu_init failed\"}\n");
     if (input_init() != ESP_OK) printf("{\"t\":\"error\",\"msg\":\"input_init failed\"}\n");
     xTaskCreatePinnedToCore(lab_task, "lab", 8192, NULL, 5, NULL, 1);
 }

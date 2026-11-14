@@ -73,6 +73,7 @@ profiles:
       left: {a: 9, b: 8, click: 7}
       right: {a: 4, b: 5, click: 6}
     imu_pins: {sda: 48, scl: 47}
+    imu_map: "screen x = -PCB Y, screen y = -PCB X (tilting an edge down rolls the ball toward it); confirmed on the tilt page 2026-11-13"
     rgb_led_gpio: 38
   "169":
     board: Waveshare ESP32-S3-LCD-1.69 non-Touch

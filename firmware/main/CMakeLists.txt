@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "main.c" "lcd.c" "lab.c" "font5x7.c" "input.c"
+    SRCS "main.c" "lcd.c" "lab.c" "font5x7.c" "input.c" "imu.c"
     INCLUDE_DIRS "."
-    REQUIRES esp_lcd esp_driver_spi esp_driver_gpio esp_driver_ledc esp_driver_pcnt esp_driver_usb_serial_jtag esp_timer esp_psram
+    REQUIRES esp_lcd esp_driver_spi esp_driver_gpio esp_driver_ledc esp_driver_pcnt esp_driver_i2c esp_driver_usb_serial_jtag esp_timer esp_psram
 )

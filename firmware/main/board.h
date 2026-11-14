@@ -43,5 +43,13 @@
 #define BOARD_ENC_L_DIR       1   // +1 = clockwise counts up; flip if a knob reads backwards
 #define BOARD_ENC_R_DIR       1
 
+// QMI8658 IMU. Screen X/Y come from PCB axes (0=X, 1=Y, 2=Z) with a sign; confirm on the tilt page.
+#define BOARD_IMU_SDA         48
+#define BOARD_IMU_SCL         47
+#define BOARD_IMU_SX_AXIS     1
+#define BOARD_IMU_SX_SIGN     -1
+#define BOARD_IMU_SY_AXIS     0
+#define BOARD_IMU_SY_SIGN     -1
+
 // BOOT button doubles as "next page" in the lab
 #define BOARD_BOOT_BTN        0
