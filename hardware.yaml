@@ -1,0 +1,93 @@
+# Reference only;
+platform: ESP32-S3
+firmware:
+  flash_mb: 16
+  psram: OPI
+  usb: TinyUSB CDC
+  default_profile: "147b"
+
+shared:
+  touch: false
+  knobs:
+    type: EC11
+    contacts: "A, B and normally-open click use internal pull-ups; common and switch return to GND"
+    nominal_transitions_per_turn: 80
+  imu:
+    model: QMI8658
+    i2c_address: 0x6B
+    i2c_frequency_hz: 400000
+    who_am_i: 0x05
+  display:
+    controller: ST7789
+    pixel_format: RGB565
+    inversion: true
+    render_buffer_lines: 16
+    backlight_pwm_hz: 1000
+    backlight_pwm_bits: 10
+
+profiles:
+  "147b":
+    board: Waveshare ESP32-S3-LCD-1.47B
+    display:
+      panel_width: 172
+      panel_height: 320
+      logical_width: 320
+      logical_height: 172
+      orientation: landscape
+      physical_mounting: "Board turned 90 degrees clockwise from its normal position."
+      physical_scan_direction: "left_to_right on the landscape screen (portrait row 0 to 319, MADCTL ML=0); measured 2026-11-13"
+      madctl: 0x70
+      colmod: 0x05
+      column_offset: 0
+      row_offset: 34
+      spi_frequency_hz: 80000000
+      spi_mode: 0
+      pins: {mosi: 45, sclk: 40, cs: 42, dc: 41, reset: 39, backlight: 46}
+      # Screen lab result (firmware/, measured 2026-11-13). The madctl/offset keys above describe the
+      # old controller-rotation (hw) mode; the settings below are the winning software-rotation mode.
+      lab_result:
+        mode: sw                       # native portrait, rotate in software
+        madctl: 0x00                   # ML (0x10) made tearing worse
+        column_offset: 34
+        row_offset: 0
+        swflip: {fx: 0, fy: 1}         # geometry page correct in sw; hw mode with 0x70 also correct
+        spi_frequency_hz: 80000000     # no errors logged; visual glitches judged by eye only
+        fps: 30
+        flush: diff                    # push changed bands only
+        init: vendor                   # generic ST7789 tuning (B2 B7 BB C0 C2 C3 C4 C6 D0 E0 E1); clearly better than power-on defaults
+        frctrl2: 0x00                  # ~119 Hz nominal; fastest refresh tested best
+        porch_lines: 1                 # back and front porch (B2); twisting either knob from here got worse
+        backlight_pwm_hz: 20000        # 1 kHz banded in phone slow-motion
+        physical_scan_direction: "left_to_right on the landscape screen (portrait row 0 to 319, MADCTL ML=0)"   # filmed slow-mo of a full-screen flip at frctrl 0x1F; matches sw write order
+        residual: "occasional tear glitches on a fast full-width line (no TE pin); not eliminated"
+        flush_ms_full_frame: {40mhz: 23.2, 80mhz: 12.2}
+        flush_ms_diff_hline_speed8_80mhz: {min: 9.5, avg: 10.1, max: 14.6}   # sw, 30 fps
+        rain_page_speed8: "still clean by eye at up to 8 px/frame; diff flush 5.6/6.5/7.3 ms"
+        rain_page_speed4: "looks clean by eye; diff flush 6.0/6.7/7.2 ms (min/avg/max), 34 KB per frame, 0 late frames"
+        fps60: "much worse (wide diagonal waves); stays opt-in only"
+    knobs:
+      left: {a: 9, b: 8, click: 7}
+      right: {a: 4, b: 5, click: 6}
+    imu_pins: {sda: 48, scl: 47}
+    rgb_led_gpio: 38
+  "169":
+    board: Waveshare ESP32-S3-LCD-1.69 non-Touch
+    display:
+      panel_width: 240
+      panel_height: 280
+      logical_width: 280
+      logical_height: 240
+      orientation: landscape
+      physical_mounting: "Board turned 90 degrees counterclockwise from its normal position."
+      madctl: 0xA0
+      colmod: 0x55
+      column_offset: 20
+      row_offset: 0
+      spi_frequency_hz: 40000000
+      spi_mode: 3
+      pins: {mosi: 7, sclk: 6, cs: 5, dc: 4, reset: 8, backlight: 15}
+    knobs:
+      left: {a: 43, b: 2, click: 3}
+      right: {a: 16, b: 17, click: 18}
+    imu_pins: {sda: 11, scl: 10}
+    rgb_led_gpio: null
