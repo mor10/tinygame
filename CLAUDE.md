@@ -13,7 +13,11 @@ Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
 
 **Phase 0, screen lab: done (2026-11-13).** Settings and measurements are in `hardware.yaml` under `lab_result`. In short: `sw` mode (native portrait, rotated in software), 80 MHz SPI, vendor-style panel init, FRCTRL2 `0x00`, porch 1, diff flush, locked 30 fps. Game-like content (falling blocks, parallax scroller) looks clean even with forced full-frame writes. A fast full-width line (`hline` at speed 8) still glitches because there is no TE pin. The panel scans left to right on the landscape screen. 60 fps was much worse and stays opt-in. The lab code stays in `firmware/` as the bench tool.
 
-**Next: Phase 1 (display) then Phase 2 (input)** per `docs/scope-v0.1.md` section 14.
+**Phase 1 (display): done.** A 10-minute soak held 30 fps with no late frames or resets.
+
+**Phase 2 (input): done.** PCNT encoders count exactly, and clicks, long press and both chords work. The IMU axis map is confirmed (see `imu_map` in `hardware.yaml`).
+
+**Phase 3 (Lua core): in progress in `console/`.** See the Console section below. Roadmap: `docs/scope-v0.1.md` section 14.
 
 ### Screen lab notes (history)
 
@@ -28,6 +32,28 @@ Getting the display right was the main blocker in earlier experiments. The sympt
 4. Tune FRCTRL2 (0xC6) against a locked 30 fps.
 
 ML (MADCTL bit 0x10) may also change the panel's refresh direction, so test it in both modes.
+
+## Layout
+
+- `components/tthal/`: board drivers shared by both apps (`board.h`, `lcd`, `input`, `imu`). It is named `tthal` because ESP-IDF already has a component called `hal`.
+- `components/font/`: the 5x7 bitmap font.
+- `components/lua/`: Lua 5.4.9 from lua.org, vendored. The only change is a guard in `luaconf.h` so `LUA_32BITS=1` can come from the build. io/os/package/debug libraries and the standalone tools are left out of the build.
+- `firmware/`: the screen lab (bench tool).
+- `console/`: the Lua console (the product firmware).
+
+## Console: `console/` (ESP-IDF)
+
+Build and flash with `idf.py -C console -p /dev/cu.usbmodem* build flash`. The USB port name changes between replugs, so use the glob.
+
+- `main/display.c`: triple 8-bit buffers. The game draws into the back buffer; a flush task on core 0 diffs, expands, rotates and DMA-pushes. It uses the lab-winning panel settings.
+- `main/gfx.c`: clipped primitives and text. Colours 0-15 are the game palette and 16-22 are OS-only, so carts can't break error screens.
+- `main/game.c`: the Lua host. It runs one cart at a time in a sandbox (base without load/dofile/loadfile/collectgarbage, plus string without dump, table, math and utf8). `pcall`/`xpcall` can't swallow the watchdog or out-of-memory errors. The API tables are read-only, and only text source is accepted, never bytecode.
+  - Memory is capped at 1 MB per cart. Blocks of 256 bytes or less go to internal RAM up to 64 KB, the rest to PSRAM.
+  - The watchdog fires after 250 ms in one callback.
+  - The API so far is `cart`, `init`/`update`/`draw`, `gfx.clear/pixel/line/rect/fill_rect/text/text_width/W/H`, `knob.turn/pos/speed/pressed/held/released/long` (sides are `"left"`/`"right"`; `turn` is in notches, 20 per revolution) and `sys.time/frame/fps/log`.
+- `main/main.c`: the serial dev console. `cart <bytes>` followed by the source uploads and runs a cart; `builtin`, `restart` and `reboot` also work.
+- `tools/send_cart.py PORT FILE.lua [--seconds N] [--timestamps]`: uploads a cart and prints its JSON output. Run it with the ESP-IDF Python environment.
+- `carts/hello.lua`: the built-in cart. `carts/tests/*.lua` are failure tests: stuck, stuck inside pcall, bug, out of memory (also inside pcall), the sandbox probe, and a cart without a `cart` table.
 
 ## Firmware: `firmware/` (ESP-IDF, v5.5 line)
 

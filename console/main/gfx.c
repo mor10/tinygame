@@ -1,0 +1,81 @@
+// 8-bit indexed rasterizer: clipped primitives and the 5x7 font, drawing into the back buffer.
+#include <ctype.h>
+#include <stdlib.h>
+#include <string.h>
+#include "gfx.h"
+#include "display.h"
+#include "font.h"
+
+// Game palette (0-15), flat colours from the reference designs, then the OS copies (16-22).
+static const uint32_t PALETTE[] = {
+    0x000000, 0x1E2340, 0x3A3F4B, 0x8A8F99, 0xFFFFFF, 0xF7F0DC, 0xE8604C, 0xC0392B,
+    0xF2B632, 0xF08A3C, 0x5FB04B, 0x3FA89A, 0x9FD8CB, 0x3B6FD1, 0xF29BB0, 0x8A5A3C,
+    0x1E2340, 0xF7F0DC, 0xE8604C, 0xFFFFFF, 0xF2B632, 0x8A8F99, 0x3FA89A,
+};
+
+void gfx_init_palette(void)
+{
+    for (int i = 0; i < (int)(sizeof PALETTE / sizeof PALETTE[0]); i++) display_set_color(i, PALETTE[i]);
+}
+
+static inline uint8_t *fb(void) { return display_backbuffer(); }
+
+void gfx_clear(int c) { memset(fb(), c, SCREEN_W * SCREEN_H); }
+
+void gfx_pixel(int x, int y, int c)
+{
+    if ((unsigned)x < SCREEN_W && (unsigned)y < SCREEN_H) fb()[y * SCREEN_W + x] = (uint8_t)c;
+}
+
+void gfx_fill_rect(int x, int y, int w, int h, int c)
+{
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > SCREEN_W) w = SCREEN_W - x;
+    if (y + h > SCREEN_H) h = SCREEN_H - y;
+    if (w <= 0 || h <= 0) return;
+    uint8_t *p = fb() + y * SCREEN_W + x;
+    for (int r = 0; r < h; r++, p += SCREEN_W) memset(p, c, w);
+}
+
+void gfx_rect(int x, int y, int w, int h, int c)
+{
+    if (w <= 0 || h <= 0) return;
+    gfx_fill_rect(x, y, w, 1, c);
+    gfx_fill_rect(x, y + h - 1, w, 1, c);
+    gfx_fill_rect(x, y, 1, h, c);
+    gfx_fill_rect(x + w - 1, y, 1, h, c);
+}
+
+void gfx_line(int x0, int y0, int x1, int y1, int c)
+{
+    int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    int err = dx + dy;
+    for (int guard = 0; guard < 4096; guard++) {   // longest on-screen line is well under this
+        gfx_pixel(x0, y0, c);
+        if (x0 == x1 && y0 == y1) break;
+        int e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+}
+
+int gfx_text_width(const char *s, int scale)
+{
+    int n = (int)strlen(s);
+    return n ? n * 6 * scale - scale : 0;
+}
+
+int gfx_text(const char *s, int x, int y, int c, int scale)
+{
+    int x0 = x;
+    for (; *s; s++, x += 6 * scale) {
+        const uint8_t *g = font_glyph((char)toupper((unsigned char)*s));
+        if (!g) continue;   // characters the font lacks leave a gap
+        for (int col = 0; col < 5; col++)
+            for (int row = 0; row < 7; row++)
+                if ((g[col] >> row) & 1) gfx_fill_rect(x + col * scale, y + row * scale, scale, scale, c);
+    }
+    return x - x0 - (x > x0 ? scale : 0);
+}

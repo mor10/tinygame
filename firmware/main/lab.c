@@ -17,7 +17,7 @@
 #define LW LOGICAL_W
 #define LH LOGICAL_H
 
-const uint8_t *font_glyph(char c);
+#include "font.h"
 
 enum { C_BLACK, C_WHITE, C_RED, C_GREEN, C_BLUE, C_NAVY, C_CREAM, C_CORAL,
        C_TEAL, C_YELLOW, C_GREY, C_DGREY, C_MAGENTA, C_CYAN, C_COUNT };
