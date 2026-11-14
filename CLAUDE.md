@@ -17,7 +17,9 @@ Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
 
 **Phase 2 (input): done.** PCNT encoders count exactly, and clicks, long press and both chords work. The IMU axis map is confirmed (see `imu_map` in `hardware.yaml`).
 
-**Phase 3 (Lua core): in progress in `console/`.** See the Console section below. Roadmap: `docs/scope-v0.1.md` section 14.
+**Phase 3 (Lua core): done (2026-11-14).** It lives in `console/`; see the Console section below. An infinite loop reaches a readable "stuck" screen in about 0.2 s with no reset. All failure tests in `console/carts/tests` pass. Still open: the font has no lowercase, and the explicit GC step after `draw()` and GC pause measurement aren't done.
+
+**Next: Phase 4 (engine v1).** Roadmap: `docs/scope-v0.1.md` section 14.
 
 ### Screen lab notes (history)
 
