@@ -9,11 +9,17 @@ Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
 - Games will be written in Lua 5.4. The full plan is in `docs/scope-v0.1.md`, which is a reference, not doctrine.
 - `hardware.yaml` holds the board facts from earlier experiments. It is the source of truth for pins, offsets and MADCTL.
 
-## Current phase: screen lab (nothing else until the display is right)
+## Phase status
+
+**Phase 0, screen lab: done (2026-11-13).** Settings and measurements are in `hardware.yaml` under `lab_result`. In short: `sw` mode (native portrait, rotated in software), 80 MHz SPI, vendor-style panel init, FRCTRL2 `0x00`, porch 1, diff flush, locked 30 fps. Game-like content (falling blocks, parallax scroller) looks clean even with forced full-frame writes. A fast full-width line (`hline` at speed 8) still glitches because there is no TE pin. The panel scans left to right on the landscape screen. 60 fps was much worse and stays opt-in. The lab code stays in `firmware/` as the bench tool.
+
+**Next: Phase 1 (display) then Phase 2 (input)** per `docs/scope-v0.1.md` section 14.
+
+### Screen lab notes (history)
 
 Getting the display right was the main blocker in earlier experiments. The symptom: horizontal lines scrolling down showed "pixel waves".
 
-**Working diagnosis (not yet confirmed).** The earlier setup used MADCTL 0x70 (MV set), so the controller did the landscape rotation. Writes then run across the panel's physical refresh direction. With no TE pin, the write sweep and the refresh sweep cross at a different point in every column, so a moving horizontal line turns into a drifting wave.
+**Original diagnosis (largely confirmed: `sw` mode cut the wave a lot; the rest came from panel init and refresh tuning).** The earlier setup used MADCTL 0x70 (MV set), so the controller did the landscape rotation. Writes then run across the panel's physical refresh direction. With no TE pin, the write sweep and the refresh sweep cross at a different point in every column, so a moving horizontal line turns into a drifting wave.
 
 **Fix to test:**
 1. Keep the panel in native portrait (MV off) and rotate in software while expanding to RGB565. Writes then follow the refresh, so the wave should become a single seam.
