@@ -1,0 +1,22 @@
+#pragma once
+// The platform contract for the portable engine (vm, gfx, engine). Everything in
+// components/tinygame is plain C11 plus Lua; each target supplies these functions:
+// console/main/platform_esp.c on the board, sim/platform_host.c in the simulator.
+#include <stdint.h>
+#include <stddef.h>
+
+#define SCREEN_W 320
+#define SCREEN_H 172
+
+int64_t  plat_time_us(void);                       // monotonic microseconds
+uint8_t *plat_framebuffer(void);                   // the 8-bit back buffer for this frame
+void     plat_set_color(int index, uint32_t rgb);  // palette entry, 0xRRGGBB
+
+// Lua heap. realloc semantics with nsize > 0; prefer_fast asks for internal RAM where it exists.
+void *plat_lua_realloc(void *ptr, size_t nsize, int prefer_fast);
+void  plat_lua_free(void *ptr);
+int   plat_is_fast(const void *ptr);               // 1 if ptr is in the fast (internal) heap
+
+// Decoded sprites and maps.
+void *plat_asset_alloc(size_t n);
+void  plat_asset_free(void *ptr);

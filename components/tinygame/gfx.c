@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "gfx.h"
-#include "display.h"
+#include "platform.h"
 #include "font.h"
 
 // Game palette (0-15), flat colours from the reference designs, then the OS copies (16-22).
@@ -14,10 +14,10 @@ static const uint32_t PALETTE[] = {
 
 void gfx_init_palette(void)
 {
-    for (int i = 0; i < (int)(sizeof PALETTE / sizeof PALETTE[0]); i++) display_set_color(i, PALETTE[i]);
+    for (int i = 0; i < (int)(sizeof PALETTE / sizeof PALETTE[0]); i++) plat_set_color(i, PALETTE[i]);
 }
 
-static inline uint8_t *fb(void) { return display_backbuffer(); }
+static inline uint8_t *fb(void) { return plat_framebuffer(); }
 
 void gfx_clear(int c) { memset(fb(), c, SCREEN_W * SCREEN_H); }
 

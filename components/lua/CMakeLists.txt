@@ -14,3 +14,5 @@ idf_component_register(
 )
 target_compile_definitions(${COMPONENT_LIB} PUBLIC LUA_32BITS=1)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-error -O2)
+# Same float behaviour as the simulator: no fused multiply-add (the S3 FPU has one).
+target_compile_options(${COMPONENT_LIB} PRIVATE -ffp-contract=off)

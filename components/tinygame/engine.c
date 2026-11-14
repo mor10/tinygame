@@ -3,9 +3,8 @@
 #include <math.h>
 #include "engine.h"
 #include "gfx.h"
-#include "display.h"
+#include "platform.h"
 #include "lauxlib.h"
-#include "esp_heap_caps.h"
 
 #define MAX_SPRITES 256
 #define MAX_MAPS    16
@@ -39,7 +38,7 @@ static const char *REG_SPR = "tt_sprites", *REG_MAP = "tt_maps";
 static void *amalloc(lua_State *L, size_t n)
 {
     if (asset_bytes + n > ASSET_CAP) luaL_error(L, "your sprites and maps need more than %d KB", ASSET_CAP / 1024);
-    void *p = heap_caps_malloc(n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    void *p = plat_asset_alloc(n);
     if (!p) luaL_error(L, "no memory left for sprites and maps");
     asset_bytes += n;
     return p;
@@ -47,10 +46,10 @@ static void *amalloc(lua_State *L, size_t n)
 
 void engine_reset(void)
 {
-    for (int i = 0; i < nspr; i++) heap_caps_free(spr[i].px);
+    for (int i = 0; i < nspr; i++) plat_asset_free(spr[i].px);
     for (int i = 0; i < nmaps; i++)
-        for (int l = 0; l < MAX_LAYERS; l++) heap_caps_free(maps[i].art[l]);
-    for (int l = 0; l < MAX_LAYERS; l++) { heap_caps_free(live[l]); live[l] = NULL; }
+        for (int l = 0; l < MAX_LAYERS; l++) plat_asset_free(maps[i].art[l]);
+    for (int l = 0; l < MAX_LAYERS; l++) { plat_asset_free(live[l]); live[l] = NULL; }
     memset(spr, 0, sizeof spr);
     memset(maps, 0, sizeof maps);
     nspr = nmaps = 0;
@@ -267,10 +266,10 @@ static int l_map_load(lua_State *L)
     if (!lua_isinteger(L, -1)) return luaL_error(L, "there's no map named '%s'", lua_tostring(L, 1));
     int idx = (int)lua_tointeger(L, -1);
     mapdef_t *m = &maps[idx];
-    for (int l = 0; l < MAX_LAYERS; l++) { heap_caps_free(live[l]); live[l] = NULL; }
+    for (int l = 0; l < MAX_LAYERS; l++) { plat_asset_free(live[l]); live[l] = NULL; }
     for (int l = 0; l < m->nlayers; l++) {
         size_t n = (size_t)m->cols * m->rows;
-        live[l] = heap_caps_malloc(n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        live[l] = plat_asset_alloc(n);
         if (!live[l]) return luaL_error(L, "no memory left to load map '%s'", m->name);
         memcpy(live[l], m->art[l], n);
     }

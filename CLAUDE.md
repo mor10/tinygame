@@ -21,7 +21,7 @@ Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
 
 **Phase 4 (engine v1): done (2026-11-14).** Sprites, maps, `hit`, `group`, the helpers and lowercase text are in; the format is in `docs/engine-v1.md`. Brick Breaker (`console/carts/brick.lua`) ran 175 s on autoplay at 30 fps with no late frames and a p99 frame time of 2 ms (budget 33 ms). The explicit GC step after `draw()` costs 0.1-0.4 ms.
 
-**Next: Phase 5 (simulator + CLI).** Roadmap: `docs/scope-v0.1.md` section 14.
+**Phase 5 (simulator + CLI): native part done (2026-11-14).** `sim/` builds the same engine for the host. Board and simulator frame hashes match frame for frame on `hello`, `engine_selftest`, `determinism` (600 frames of random numbers, trig and moving objects) and Brick Breaker on autoplay (900 frames). Still open: the browser (WASM) build, which needs Emscripten installed.
 
 ### Screen lab notes (history)
 
@@ -43,23 +43,38 @@ ML (MADCTL bit 0x10) may also change the panel's refresh direction, so test it i
 - `components/font/`: the 5x7 bitmap font.
 - `components/lua/`: Lua 5.4.9 from lua.org, vendored. The only change is a guard in `luaconf.h` so `LUA_32BITS=1` can come from the build. io/os/package/debug libraries and the standalone tools are left out of the build.
 - `firmware/`: the screen lab (bench tool).
-- `console/`: the Lua console (the product firmware).
+- `components/tinygame/`: the portable engine, plain C11 plus Lua with no ESP-IDF headers. It holds `vm.c` (the Lua host), `gfx.c`, `engine.c` and `prelude.lua`. Each target implements `include/platform.h`.
+- `console/`: the Lua console (the product firmware). It is the board platform plus the cart runner.
+- `sim/`: the simulator. It is the host platform plus a headless CLI.
 
 ## Console: `console/` (ESP-IDF)
 
 Build and flash with `idf.py -C console -p /dev/cu.usbmodem* build flash`. The USB port name changes between replugs, so use the glob.
 
+- `main/game.c`: the cart runner on core 1. It handles cart handoff, frame pacing, stats, error screens and the `hash` command. `main/platform_esp.c` implements `platform.h`.
 - `main/display.c`: triple 8-bit buffers. The game draws into the back buffer; a flush task on core 0 diffs, expands, rotates and DMA-pushes. It uses the lab-winning panel settings.
-- `main/gfx.c`: clipped primitives and text. Colours 0-15 are the game palette and 16-22 are OS-only, so carts can't break error screens.
-- `main/game.c`: the Lua host. It runs one cart at a time in a sandbox (base without load/dofile/loadfile/collectgarbage, plus string without dump, table, math and utf8). `pcall`/`xpcall` can't swallow the watchdog or out-of-memory errors. The API tables are read-only, and only text source is accepted, never bytecode.
+- `components/tinygame/gfx.c`: clipped primitives and text. Colours 0-15 are the game palette and 16-22 are OS-only, so carts can't break error screens.
+- `components/tinygame/vm.c`: the Lua host. It runs one cart at a time in a sandbox (base without load/dofile/loadfile/collectgarbage, plus string without dump, table, math and utf8). `pcall`/`xpcall` can't swallow the watchdog or out-of-memory errors. The API tables are read-only, and only text source is accepted, never bytecode.
   - Memory is capped at 1 MB per cart. Blocks of 256 bytes or less go to internal RAM up to 64 KB, the rest to PSRAM.
   - The watchdog fires after 250 ms in one callback.
   - The API so far is `cart`, `init`/`update`/`draw`, `gfx.clear/pixel/line/rect/fill_rect/text/text_width/sprite/map/W/H`, `map.load`, `map_get/map_set/map_hit`, `knob.turn/pos/speed/pressed/held/released/long` (sides are `"left"`/`"right"`; `turn` is in notches, 20 per revolution) and `sys.time/frame/fps/log`.
-- `main/engine.c`: text-art sprites and tile maps (`docs/engine-v1.md`), decoded on first use or right after the cart file runs, kept outside the Lua cap with their own 512 KB cap.
-- `main/prelude.lua`: Lua helpers every cart gets: `hit`, `group`, `clamp`, `lerp`, `dist`, `rnd`, `rnd_int`, `choose`.
-- `main/main.c`: the serial dev console. `cart <bytes>` followed by the source uploads and runs a cart; `builtin`, `restart` and `reboot` also work.
+- `components/tinygame/engine.c`: text-art sprites and tile maps (`docs/engine-v1.md`), decoded on first use or right after the cart file runs, kept outside the Lua cap with their own 512 KB cap.
+- `components/tinygame/prelude.lua`: Lua helpers every cart gets: `hit`, `group`, `clamp`, `lerp`, `dist`, `rnd`, `rnd_int`, `choose`.
+- `main/main.c`: the serial dev console. `cart <bytes>` followed by the source uploads and runs a cart. `hash <frames> [seed]` reruns the current cart deterministically and prints frame hashes. `builtin`, `restart` and `reboot` also work.
 - `tools/send_cart.py PORT FILE.lua [--seconds N] [--timestamps]`: uploads a cart and prints its JSON output. Run it with the ESP-IDF Python environment.
 - `carts/brick.lua` (boots by default) and `carts/hello.lua` are built in; switch with `builtin brick|hello`. `carts/tests/*.lua` are failure tests: stuck, stuck inside pcall, bug, out of memory (also inside pcall), the sandbox probe, a cart without a `cart` table, bad sprite and map art, and `engine_selftest.lua` (22 checks). `brick_autoplay_patch.lua` is appended to `brick.lua` for unattended frame-time runs.
+
+## Simulator: `sim/`
+
+Build it with `cmake -S sim -B sim/build && cmake --build sim/build`.
+
+- `sim/build/tinygame-sim CART.lua [--frames N] [--seed S] [--png FILE] [--scale K] [--press side@frame] [--turn side@frame:notches]` runs a cart headless.
+  - It prints the same JSON lines as the board, plus frame hashes for frame 1, every 30th frame and the last frame.
+  - It writes a PNG of the final frame, or of the error screen if the cart failed.
+  - Exit status: 0 when the cart ran every frame, 1 after an error, 2 for usage problems.
+- Runs are deterministic: `math.random` is seeded, `sys.time()` follows the frame count, and input comes only from `--press` and `--turn`.
+- `sim/compare.py PORT CART.lua [--frames N] [--seed S]` runs a cart on the board (`hash` command) and in the simulator, then compares hashes line by line. Run it with the ESP-IDF Python environment.
+- Both builds use `-ffp-contract=off` so float results match; the S3 FPU has a fused multiply-add.
 
 ## Firmware: `firmware/` (ESP-IDF, v5.5 line)
 

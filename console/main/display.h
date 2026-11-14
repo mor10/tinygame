@@ -6,8 +6,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define SCREEN_W 320
-#define SCREEN_H 172
+#include "platform.h"   // SCREEN_W, SCREEN_H
 
 void     display_init(void);
 uint8_t *display_backbuffer(void);              // valid until the next display_present()

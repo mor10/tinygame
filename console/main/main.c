@@ -3,6 +3,7 @@
 //   cart <bytes>   then exactly <bytes> of Lua source: load and run it (max 128 KB)
 //   builtin [name] run a cart compiled into the firmware: brick (default) or hello
 //   restart        rerun the current cart
+//   hash <n> [seed] rerun the current cart deterministically for n frames, printing frame hashes
 //   reboot
 // Output is JSON lines: boot, cart, stats (1/s), log, error.
 #include <stdio.h>
@@ -11,6 +12,7 @@
 #include "board.h"
 #include "display.h"
 #include "gfx.h"
+#include "vm.h"
 #include "game.h"
 #include "input.h"
 #include "freertos/FreeRTOS.h"
@@ -79,6 +81,11 @@ static void console_task(void *arg)
         else if (!strcmp(line, "builtin")) load_builtin("brick");
         else if (!strncmp(line, "builtin ", 8)) load_builtin(line + 8);
         else if (!strcmp(line, "restart")) game_restart();
+        else if (!strncmp(line, "hash ", 5)) {
+            char *end;
+            long frames = strtol(line + 5, &end, 10);
+            game_hash(frames > 0 ? (int)frames : 300, (uint32_t)strtoul(end, NULL, 10));
+        }
         else if (!strcmp(line, "reboot")) esp_restart();
         else printf("{\"t\":\"error\",\"kind\":\"command\",\"msg\":\"unknown command\"}\n");
     }
