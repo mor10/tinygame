@@ -21,7 +21,9 @@ Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
 
 **Phase 4 (engine v1): done (2026-11-14).** Sprites, maps, `hit`, `group`, the helpers and lowercase text are in; the format is in `docs/engine-v1.md`. Brick Breaker (`console/carts/brick.lua`) ran 175 s on autoplay at 30 fps with no late frames and a p99 frame time of 2 ms (budget 33 ms). The explicit GC step after `draw()` costs 0.1-0.4 ms.
 
-**Phase 5 (simulator + CLI): native part done (2026-11-14).** `sim/` builds the same engine for the host. Board and simulator frame hashes match frame for frame on `hello`, `engine_selftest`, `determinism` (600 frames of random numbers, trig and moving objects) and Brick Breaker on autoplay (900 frames). Still open: the browser (WASM) build, which needs Emscripten installed.
+**Phase 5 (simulator + CLI): done (2026-11-14).** `sim/` builds the same engine natively and to WebAssembly. Board, native simulator and browser engine produce identical frame hashes on `hello`, `engine_selftest`, `determinism` (600 frames of random numbers, trig and moving objects) and Brick Breaker on autoplay (900 frames). In the browser the engine takes about 0.1 ms per frame.
+
+**Next: Phase 6 (OS shell).** Roadmap: `docs/scope-v0.1.md` section 14.
 
 ### Screen lab notes (history)
 
@@ -73,6 +75,8 @@ Build it with `cmake -S sim -B sim/build && cmake --build sim/build`.
   - It writes a PNG of the final frame, or of the error screen if the cart failed.
   - Exit status: 0 when the cart ran every frame, 1 after an error, 2 for usage problems.
 - Runs are deterministic: `math.random` is seeded, `sys.time()` follows the frame count, and input comes only from `--press` and `--turn`.
+- Browser build: Emscripten lives in `~/emsdk` (`source ~/emsdk/emsdk_env.sh`). Build with `emcmake cmake -S sim -B sim/build-web && cmake --build sim/build-web`. Then serve the repository root over HTTP (`python3 -m http.server 8766`) and open `/sim/web/`. The page runs carts live with keyboard (A/D/S and J/L/K), mouse or touch knobs, and takes dropped `.lua` files. WASM can't load from `file://`.
+- `node sim/web/hash_node.cjs CART.lua [frames] [seed]` prints the WASM engine's frame hashes for comparison with `tinygame-sim`.
 - `sim/compare.py PORT CART.lua [--frames N] [--seed S]` runs a cart on the board (`hash` command) and in the simulator, then compares hashes line by line. Run it with the ESP-IDF Python environment.
 - Both builds use `-ffp-contract=off` so float results match; the S3 FPU has a fused multiply-add.
 

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TinyGame Simulator</title>
+<style>
+  :root {
+    --bg: #e9ecf2; --panel: #f7f0dc; --ink: #1e2340; --muted: #5a6072; --coral: #e8604c;
+    --teal: #3fa89a; --line: #d8cfb6; --screen-edge: #1e2340;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14172a; --panel: #1e2340; --ink: #f7f0dc; --muted: #a8adbd; --line: #343a5c; --screen-edge: #000; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 40px; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h1 span { color: var(--coral); }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  .device { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 18px;
+            display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 16px; align-items: center; }
+  .screen { width: 100%; aspect-ratio: 320 / 172; background: #000; border: 6px solid var(--screen-edge);
+            border-radius: 8px; image-rendering: pixelated; display: block; }
+  .knob { display: flex; flex-direction: column; align-items: center; gap: 8px; user-select: none; }
+  .dial { width: 64px; height: 64px; border-radius: 50%; background: var(--ink); position: relative;
+          cursor: grab; touch-action: none; border: 4px solid var(--line); }
+  .dial::after { content: ""; position: absolute; left: 50%; top: 6px; width: 4px; height: 16px;
+                 margin-left: -2px; border-radius: 2px; background: var(--panel); }
+  .dial.down { border-color: var(--coral); }
+  .knob small { color: var(--muted); font-size: 12px; text-align: center; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: center; }
+  select, button, label.file { font: inherit; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line);
+         background: var(--panel); color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--coral); border-color: var(--coral); color: #fff; }
+  label.file input { display: none; }
+  .status { color: var(--muted); font-size: 13px; margin-left: auto; font-variant-numeric: tabular-nums; }
+  aside { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+  aside h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 8px; }
+  #log { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; height: 300px; overflow: auto;
+         white-space: pre-wrap; word-break: break-word; margin: 0 0 14px; }
+  #log .error { color: var(--coral); }
+  #log .log { color: var(--teal); }
+  kbd { font: 12px ui-monospace, monospace; padding: 1px 5px; border: 1px solid var(--line); border-radius: 4px; }
+  .keys { font-size: 13px; color: var(--muted); margin: 0; padding-left: 18px; }
+  .drop { outline: 3px dashed var(--teal); outline-offset: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tiny<span>Game</span> simulator</h1>
+  <p class="sub">The console's own engine, compiled for the browser. Drop a <code>.lua</code> cart anywhere on the page.</p>
+  <div class="layout">
+    <section>
+      <div class="device" id="device">
+        <div class="knob"><div class="dial" id="dial-left" aria-label="Left knob"></div><small>Left<br>A / D, click S</small></div>
+        <canvas class="screen" id="screen" width="320" height="172"></canvas>
+        <div class="knob"><div class="dial" id="dial-right" aria-label="Right knob"></div><small>Right<br>J / L, click K</small></div>
+      </div>
+      <div class="controls">
+        <select id="builtin" aria-label="Built-in carts">
+          <option value="../../console/carts/brick.lua">Brick Bop</option>
+          <option value="../../console/carts/hello.lua">Hello</option>
+          <option value="../../console/carts/tests/determinism.lua">Determinism test</option>
+          <option value="../../console/carts/tests/stuck.lua">Stuck test</option>
+          <option value="../../console/carts/tests/bug.lua">Bug test</option>
+        </select>
+        <button id="restart" class="primary">Restart</button>
+        <label class="file">Open cart…<input type="file" id="file" accept=".lua,text/plain"></label>
+        <span class="status" id="status">loading…</span>
+      </div>
+    </section>
+    <aside>
+      <h2>Output</h2>
+      <div id="log"></div>
+      <h2>Keys</h2>
+      <ul class="keys">
+        <li>Left knob: <kbd>A</kbd>/<kbd>D</kbd> turn, <kbd>S</kbd> click</li>
+        <li>Right knob: <kbd>J</kbd>/<kbd>L</kbd> turn, <kbd>K</kbd> click</li>
+        <li>Or drag a knob sideways, scroll over it, or click it</li>
+      </ul>
+    </aside>
+  </div>
+</main>
+<script src="../build-web/tinygame.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

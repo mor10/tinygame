@@ -25,11 +25,27 @@ string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," PRELUDE_BYTES "${PRELUDE_HEX}
 file(WRITE ${CMAKE_BINARY_DIR}/prelude_gen.c
   "const char prelude_lua[] = {${PRELUDE_BYTES}0};\nconst unsigned prelude_lua_len = sizeof prelude_lua - 1;\n")
 
-add_executable(tinygame-sim
-  main.c platform_host.c png.c ${CMAKE_BINARY_DIR}/prelude_gen.c
+set(ENGINE_SRCS
+  platform_host.c ${CMAKE_BINARY_DIR}/prelude_gen.c
   ${ROOT}/components/tinygame/vm.c ${ROOT}/components/tinygame/gfx.c ${ROOT}/components/tinygame/engine.c
   ${ROOT}/components/font/font5x7.c
   ${LUA_SRCS})
+
+if(EMSCRIPTEN)
+  # Browser build: emcmake cmake -S sim -B sim/build-web && cmake --build sim/build-web
+  add_executable(tinygame-web web/wasm_main.c ${ENGINE_SRCS})
+  target_include_directories(tinygame-web PRIVATE ${CMAKE_CURRENT_LIST_DIR} ${ROOT}/components/tinygame/include ${ROOT}/components/font/include ${LUA})
+  target_compile_definitions(tinygame-web PRIVATE LUA_32BITS=1)
+  target_compile_options(tinygame-web PRIVATE -ffp-contract=off)
+  set_target_properties(tinygame-web PROPERTIES OUTPUT_NAME tinygame)
+  target_link_options(tinygame-web PRIVATE
+    -sMODULARIZE=1 -sEXPORT_NAME=TinyGame -sENVIRONMENT=web,node -sALLOW_MEMORY_GROWTH=1
+    -sEXPORTED_RUNTIME_METHODS=cwrap,HEAPU8,stringToNewUTF8,lengthBytesUTF8
+    -sEXPORTED_FUNCTIONS=_malloc,_free)
+  return()
+endif()
+
+add_executable(tinygame-sim main.c png.c ${ENGINE_SRCS})
 target_include_directories(tinygame-sim PRIVATE ${ROOT}/components/tinygame/include ${ROOT}/components/font/include ${LUA})
 target_compile_definitions(tinygame-sim PRIVATE LUA_32BITS=1)
 # Match the board's single-precision float behaviour: no fused multiply-add, no excess precision.
