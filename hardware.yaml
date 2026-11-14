@@ -62,6 +62,8 @@ profiles:
         residual: "occasional tear glitches on a fast full-width line (no TE pin); not eliminated"
         flush_ms_full_frame: {40mhz: 23.2, 80mhz: 12.2}
         flush_ms_diff_hline_speed8_80mhz: {min: 9.5, avg: 10.1, max: 14.6}   # sw, 30 fps
+        scroll_page_speed8: "clean by eye at 8 px/frame with diff on (5.1 ms avg flush, 19.3 KB) and with diff off, i.e. forced full-frame writes (12.2 ms flush, 107.5 KB, 0 late frames)"
+        scroll_page_speed4: "parallax side-scroller looks clean by eye with diff flush; 5.2 ms avg flush, 19.9 KB per frame, 0 late frames"
         rain_page_speed8: "still clean by eye at up to 8 px/frame; diff flush 5.6/6.5/7.3 ms"
         rain_page_speed4: "looks clean by eye; diff flush 6.0/6.7/7.2 ms (min/avg/max), 34 KB per frame, 0 late frames"
         fps60: "much worse (wide diagonal waves); stays opt-in only"

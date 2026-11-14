@@ -29,8 +29,8 @@ static uint16_t pal_be[256];   // byte-swapped for the wire
 static uint8_t fb[LW * LH];
 static uint8_t prev[LW * LH];
 
-enum { PG_GEOMETRY, PG_HLINE, PG_VLINE, PG_BOX, PG_CHECKER, PG_STRIPES, PG_RAIN, PG_FLASH, PG_COUNT };
-static const char *PAGE_NAMES[PG_COUNT] = { "geometry", "hline", "vline", "box", "checker", "stripes", "rain", "flash" };
+enum { PG_GEOMETRY, PG_HLINE, PG_VLINE, PG_BOX, PG_CHECKER, PG_STRIPES, PG_RAIN, PG_FLASH, PG_SCROLL, PG_COUNT };
+static const char *PAGE_NAMES[PG_COUNT] = { "geometry", "hline", "vline", "box", "checker", "stripes", "rain", "flash", "scroll" };
 
 enum { MODE_HW, MODE_SW };
 
@@ -233,6 +233,48 @@ static void draw_page(int f)
         for (int y = 0; y < LH; y++)
             for (int x = 0; x < LW; x++)
                 fb[y * LW + x] = ((((x + off) >> 4) ^ (y >> 4)) & 1) ? C_TEAL : C_CREAM;
+        break;
+    }
+    case PG_SCROLL: {
+        // Side-scroller stress test: three parallax layers (hills at 1/4, mid hills at 1/2, ground
+        // and platforms at full speed) moving left by `speed` px/frame. Flat colours mean only the
+        // shape edges change, so diff flush sends about a fifth of a full frame (use `diff 0` to force
+        // the full 107 KB write as the worst case).
+        memset(fb, C_CREAM, sizeof fb);
+        int off = f * v;
+        for (int x = 0; x < LW; x++) {
+            int p = (x + off / 4) % 160; if (p > 80) p = 160 - p;
+            int hh = 18 + p * 30 / 80;
+            fill(x, 118 - hh, 1, hh, C_CYAN);
+            int q = (x + off / 2 + 40) % 112; if (q > 56) q = 112 - q;
+            int h2 = 10 + q * 24 / 56;
+            fill(x, 122 - h2, 1, h2, C_TEAL);
+        }
+        for (int x = 0; x < LW; x++) {
+            int gw = x + off;
+            int seg = gw / 64;
+            uint32_t h = (uint32_t)(seg + 1) * 2654435761u;
+            if (((h >> 20) % 7) != 0) {
+                int top = 112 + ((h >> 16) % 3) * 12;
+                fill(x, top, 1, LH - top, C_NAVY);
+                fill(x, top, 1, 3, C_GREEN);
+            }
+            int m = gw % 64;
+            if (((h >> 8) % 4) == 1 && m >= 8 && m < 48) {
+                int py = 60 + ((h >> 12) % 3) * 14;
+                fill(x, py, 1, 6, C_NAVY);
+                fill(x, py, 1, 2, C_GREEN);
+                if (m >= 24 && m < 28) fill(x, py - 14, 1, 5, C_YELLOW);   // coin above the platform
+            }
+        }
+        {   // player: coral block standing on the terrain under it
+            int gw = 60 + off, seg = gw / 64;
+            uint32_t h = (uint32_t)(seg + 1) * 2654435761u;
+            int top = (((h >> 20) % 7) == 0) ? 112 : 112 + ((h >> 16) % 3) * 12;
+            fill(60, top - 16, 14, 16, C_CORAL);
+            fill(64, top - 12, 2, 3, C_WHITE);
+            fill(69, top - 12, 2, 3, C_WHITE);
+        }
         break;
     }
     case PG_FLASH: {
