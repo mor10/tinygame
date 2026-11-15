@@ -40,12 +40,13 @@ Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
 **Phase 9 (WebSerial uploader): done (2026-11-14).** `uploader/` is a static page for Chrome or Edge. It checks a cart for three seconds in the WASM engine with a live preview, shows errors with the code around the line, and copies a ready-made request for an AI helper. It then sends the cart over Web Serial with the console's own commands (`cart <bytes> <id>`, `play`, `rm`, `ls`). Connect, send and play were tested by hand on the board.
   - Serve the repository root over HTTP and open `/uploader/`. It loads `sim/build-web/tinygame.js`, so build the WASM engine first.
 
-**Phase 10 (AI kit): built (2026-11-14); the first-try eval hasn't run yet.**
+**Phase 10 (AI kit): done (2026-11-14).**
   - `docs/api-card.md` is the API card. `llms.txt` indexes it, and `.claude/skills/make-a-tinygame/SKILL.md` is the write, check, look and fix loop.
   - Golden carts: `console/carts/brick.lua` and `console/carts/examples/*.lua` (rocks, tilt, walkwalk, snake, paint). All are built into the board's gallery and pass the checker with no warnings.
   - `sim/build/tinygame-sim --check` is the checker: a dialect lint, cart-table checks, and two 300-frame strict runs.
   - The cart API gained `tilt.x/y/shake/zero` and `gfx.circle`/`gfx.fill_circle`.
-  - `ai/eval/run_eval.py` measures how many kid-style prompts (`ai/eval/prompts.txt`) pass on the first try. It needs the `anthropic` package and API credentials, and costs a few dollars per run.
+  - `ai/eval/run_eval.py` measures how many kid-style prompts (`ai/eval/prompts.txt`) pass on the first try. It needs the `anthropic` package (in `ai/eval/.venv`) and `ANTHROPIC_API_KEY`, which lives in `~/.zshrc`, so run it via `zsh -ic`. A run costs a few dollars.
+  - First run, 2026-11-14 (`claude-opus-5-5`, effort medium): 15/20 under the original checker. Four of the five failures were the checker wrongly rejecting `if not x then` reads of unset globals, so the strict mode now rejects only foreign names (`btn`, `spr`, ...). A malformed icon is now a warning. Re-checked, the same 20 answers pass 20/20 (one with an icon warning). A fresh run would confirm this on a new sample.
 
 ### Screen lab notes (history)
 

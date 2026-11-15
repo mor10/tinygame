@@ -25,7 +25,8 @@ PICO-8, LOVE2D or pygame, and the checker rejects their function names.
 1. Write the whole cart to a `.lua` file, for example `carts/<name>.lua`.
 2. Check it: `sim/build/tinygame-sim --check carts/<name>.lua --png /tmp/<name>.png`
    - It lints the code, checks the `cart` table, then plays 300 frames twice: once with no
-     input and once with busy knob and tilt input. Unknown names are errors.
+     input and once with busy knob and tilt input. Names from other consoles (`btn`, `spr`, ...)
+     are errors, and so is anything that crashes or gets stuck.
    - Fix every `"level":"error"` line and rerun until it prints `"ok":1`. Fix warnings too
      (a missing tagline or icon makes the gallery look broken).
    - If `sim/build/tinygame-sim` is missing, build it: `cmake -S sim -B sim/build && cmake --build sim/build`.

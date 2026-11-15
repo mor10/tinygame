@@ -157,6 +157,8 @@ measured frame rate, `sys.log(...)` a message for the developer (also `print`).
 - Not available: `io`, `os`, `require`, `load`, `dofile`, `debug`, `collectgarbage`, coroutines.
 - Numbers are 32-bit. Whole numbers stay whole (`//` is whole-number division, `%` remainder) and
   wrap around past about 2 billion. Decimals have about 7 digits of precision.
+- A number that has been through `/` or a decimal prints with a `.0` ("SCORE 39.0"). Keep scores
+  whole by adding whole numbers, or show them with `math.floor(score)` or `score // 1`.
 
 ## Limits
 

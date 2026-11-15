@@ -7,7 +7,8 @@
 //
 // --check lints the source (other consoles' words, other languages' operators), checks the cart
 // table (title, tagline, 16x16 icon), then runs the cart N frames (default 300) twice in strict mode
-// (unknown names are errors): once with no input, once with busy knob and tilt input. It prints
+// (names from other consoles, like btn or spr, are errors): once with no input, once with busy knob
+// and tilt input. It prints
 // {"t":"check"} lines and a final {"t":"check_done","ok":...}; exit status 0 = passed, 1 = errors.
 //
 // --storage DIR keeps carts and saves in DIR/carts and DIR/saves (otherwise saves last one run).

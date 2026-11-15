@@ -125,11 +125,14 @@ int lint_icon(const char *art, lint_report_fn report, void *ctx)
         if (b > a) {
             int w = (int)(b - a);
             if (width < 0) width = w;
-            if (w != width) { report(ctx, 1, -1, "cart.icon rows must all be the same length"); return 1; }
+            if (w != width) {   // the game still runs; the gallery shows the title's first letter instead
+                report(ctx, 0, -1, "cart.icon rows must all be the same length (the gallery will show a letter instead)");
+                return 0;
+            }
             for (const char *q = a; q < b; q++)
                 if (!(*q == '.' || isxdigit((unsigned char)*q))) {
-                    report(ctx, 1, -1, "cart.icon may only use . and 0-9 a-f");
-                    return 1;
+                    report(ctx, 0, -1, "cart.icon may only use . and 0-9 a-f (the gallery will show a letter instead)");
+                    return 0;
                 }
             rows++;
         }
@@ -138,8 +141,8 @@ int lint_icon(const char *art, lint_report_fn report, void *ctx)
     if (width != 16 || rows != 16) {
         char m[96];
         snprintf(m, sizeof m, "cart.icon is %dx%d; it should be 16x16 to fill the gallery tile", width, rows);
-        report(ctx, width > 16 || rows > 16, -1, m);
-        return width > 16 || rows > 16;
+        report(ctx, 0, -1, m);
+        return 0;
     }
     return 0;
 }

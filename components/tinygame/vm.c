@@ -406,6 +406,7 @@ static int cart_fps(lua_State *L, int *fps)
 }
 
 // ---------- strict globals (checking only) ----------
+// Reading a name from another console or language (btn, spr, love, ...) is an error with a hint.
 // Names from other consoles and languages, with what to use instead.
 static const char *const HINTS[][2] = {
     { "btn", "use knob.pressed(\"left\"), knob.held(...) or knob.turn(...)" },
@@ -431,7 +432,9 @@ static int strict_index(lua_State *L)
     if (!k) return 0;
     for (size_t i = 0; i < sizeof HINTS / sizeof HINTS[0]; i++)
         if (!strcmp(k, HINTS[i][0])) return luaL_error(L, "unknown name '%s': %s", k, HINTS[i][1]);
-    return luaL_error(L, "unknown name '%s' (a typo, or a variable used before it's set?)", k);
+    // Any other unset name reads as nil, as in normal Lua: `if not stars then stars = {} end` is a
+    // common, correct pattern. Calling a misspelt function still fails ("attempt to call a nil value").
+    return 0;
 }
 
 static void make_strict(lua_State *L)

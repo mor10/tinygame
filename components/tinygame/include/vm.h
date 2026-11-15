@@ -23,7 +23,7 @@ typedef struct {
     int         deterministic;   // sys.time() follows the frame count, math.random is seeded
     uint32_t    seed;
     const char *save_id;         // where save.set/get keep this cart's data; NULL turns saving off
-    int         strict;          // checking: reading a global that doesn't exist is an error
+    int         strict;          // checking: reading btn, spr, love and other foreign names is an error with a hint
 } vm_opts_t;
 
 typedef enum { VM_ERR_NONE, VM_ERR_BUG, VM_ERR_STUCK, VM_ERR_MEMORY, VM_ERR_STOPPED } vm_err_t;
