@@ -255,6 +255,7 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--press") && more) { if (parse_event(argv[++i], 0)) return usage(); }
         else if (!strcmp(a, "--turn") && more) { if (parse_event(argv[++i], 1)) return usage(); }
         else if (!strcmp(a, "--shell")) shell = 1;
+        else if (!strcmp(a, "--left-handed")) vm_set_left_handed(1);
         else if (!strcmp(a, "--check")) checking = 1;
         else if (!strcmp(a, "--storage") && more) sim_storage_dir = argv[++i];
         else if (!strcmp(a, "--runs") && more) runs = atoi(argv[++i]);

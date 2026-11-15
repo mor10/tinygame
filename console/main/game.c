@@ -18,13 +18,9 @@
 
 extern const char prelude_lua_start[] asm("_binary_prelude_lua_start");
 extern const char prelude_lua_end[] asm("_binary_prelude_lua_end");
-extern const char brick_lua_start[] asm("_binary_brick_lua_start");
-extern const char brick_lua_end[] asm("_binary_brick_lua_end");
-extern const char hello_lua_start[] asm("_binary_hello_lua_start");
-extern const char hello_lua_end[] asm("_binary_hello_lua_end");
 #define BUILTIN(n) extern const char n##_lua_start[] asm("_binary_" #n "_lua_start"); \
                    extern const char n##_lua_end[] asm("_binary_" #n "_lua_end");
-BUILTIN(rocks) BUILTIN(tilt) BUILTIN(walkwalk) BUILTIN(snake) BUILTIN(paint) BUILTIN(colorcard)
+BUILTIN(colorcard)
 #define ADD(n) os_add_cart(n##_lua_start, (size_t)(n##_lua_end - n##_lua_start) - 1, #n)
 
 // ---------- requests from the console task ----------
@@ -140,9 +136,7 @@ static void game_task(void *arg)
     plat_storage_init();
     os_init(&opts, safe_boot);
     // -1: embedded text carries a trailing NUL
-    os_add_cart(brick_lua_start, (size_t)(brick_lua_end - brick_lua_start) - 1, "brick");
-    os_add_cart(hello_lua_start, (size_t)(hello_lua_end - hello_lua_start) - 1, "hello");
-    ADD(rocks); ADD(tilt); ADD(walkwalk); ADD(snake); ADD(paint); ADD(colorcard);   // the golden example carts
+    ADD(colorcard);   // the only built-in entry: games are uploaded
     if (!safe_boot) os_scan_storage();   // safe mode shows only the built-in carts
 
     static uint32_t hist[HIST_MS];

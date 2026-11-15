@@ -20,19 +20,22 @@ cart = { title = "My Game", tagline = "Say what the game is about", api = 1, fps
     ................
   ]] }
 
-local COLOURS = { 6, 8, 10, 11, 13, 14 }
+local COLOURS = { 16, 17, 18, 20, 27, 25 }
 
 function init()
   x, colour = gfx.W // 2, 1
 end
 
 function update()
-  x = clamp(x + knob.turn("right") * 6, 10, gfx.W - 10)
+  x = clamp(x + knob.turn("right") * 6, ui.PAD + 14, gfx.W - ui.PAD - 14)
   if knob.pressed("left") or knob.pressed("right") then colour = colour % #COLOURS + 1 end
 end
 
 function draw()
-  gfx.clear(1)
-  gfx.fill_rect(x - 10, gfx.H // 2 - 10, 20, 20, COLOURS[colour])
-  gfx.text("Turn the right knob, click to change colour", 26, gfx.H - 14, 5)
+  gfx.clear(23)                                   -- electric blue background
+  gfx.fill_rect(x - 14 + 3, gfx.H // 2 - 14 + 3, 28, 28, 24)   -- drop edge, down and right
+  gfx.fill_rect(x - 14, gfx.H // 2 - 14, 28, 28, COLOURS[colour])
+  ui.bar()                                        -- the top bar, drawn last
+  gfx.label("My Game", ui.PAD, 8, 4, 2)
+  ui.pill("Click to change colour", gfx.H - 44)
 end

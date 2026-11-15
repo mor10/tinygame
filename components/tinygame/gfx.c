@@ -82,6 +82,19 @@ static int blend_slot(uint32_t rgb)
     return blend_next++;
 }
 
+int gfx_dim_slot(int i)
+{
+    if (i < 32) return OS_DIM + i;
+    if (i < BLEND_FIRST || i >= blend_next) return OS_DIM + (i & 31);
+    uint32_t c = pal_rgb[i], out = 0;
+    for (int sh = 0; sh <= 16; sh += 8) {
+        uint32_t a = (c >> sh) & 0xFF, b = (OS_NAVY >> sh) & 0xFF;
+        out |= ((a * 3 + b * 7) / 10) << sh;
+    }
+    int s = blend_slot(out);
+    return s < 0 ? OS_DIM : s;
+}
+
 int gfx_color(uint32_t rgb)
 {
     int i = blend_slot(rgb & 0xFFFFFF);

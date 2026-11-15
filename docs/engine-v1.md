@@ -1,6 +1,6 @@
 # Engine v1: sprites, maps, collision (Phase 4)
 
-Status: approved and built (2026-11-14). The worked example is `console/carts/brick.lua`.
+Status: approved and built (2026-11-14). The old worked example (Brick Bop) was removed in the clean-slate reset; see git history.
 Names follow `docs/scope-v0.1.md` section 9.2; this note pins down the parts that section left open.
 
 ## Sprites

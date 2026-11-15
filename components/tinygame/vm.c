@@ -133,6 +133,29 @@ static int l_text_width(lua_State *L)
     return 1;
 }
 
+// gfx.label(s, x, y, c, [size]): smooth OS-style text. size 1-4 (small, medium, large, extra large);
+// y is the top of the capital letters. Returns the width.
+static int label_size(lua_State *L, int i)
+{
+    int n = lua_isnoneornil(L, i) ? 2 : arg_int(L, i);
+    return n < 1 ? FONT_S : n > 4 ? FONT_XL : n - 1;
+}
+
+static int l_label(lua_State *L)
+{
+    int x = arg_int(L, 2), y = arg_int(L, 3), c = arg_color(L, 4), size = label_size(L, 5);
+    const char *s = luaL_tolstring(L, 1, NULL);
+    lua_pushinteger(L, gfx_aa_text(s, x, y, c, size));
+    return 1;
+}
+
+static int l_label_width(lua_State *L)
+{
+    int size = label_size(L, 2);
+    lua_pushinteger(L, gfx_aa_width(luaL_tolstring(L, 1, NULL), size));
+    return 1;
+}
+
 // ---------- API: knob ----------
 static vm_input_t in;             // input for the current frame
 static int notch_acc[2], notches[2];
@@ -178,6 +201,9 @@ static int l_time(lua_State *L)
     lua_pushinteger(L, ms);
     return 1;
 }
+static int left_handed;
+void vm_set_left_handed(int left) { left_handed = left != 0; }
+static int l_hands(lua_State *L) { lua_pushstring(L, left_handed ? "left" : "right"); return 1; }
 static int l_frame(lua_State *L) { lua_pushinteger(L, (lua_Integer)frame_no); return 1; }
 static int l_fps(lua_State *L)   { lua_pushnumber(L, det ? (lua_Number)cart_fps_v : fps_now); return 1; }
 
@@ -243,14 +269,14 @@ static void open_sandbox(lua_State *L, const char *save_id)
 
     static const luaL_Reg gfx_fns[] = {
         { "clear", l_clear }, { "pixel", l_pixel }, { "line", l_line }, { "rect", l_rect },
-        { "fill_rect", l_fill_rect }, { "circle", l_circle }, { "fill_circle", l_fill_circle }, { "text", l_text }, { "text_width", l_text_width }, { NULL, NULL },
+        { "fill_rect", l_fill_rect }, { "circle", l_circle }, { "fill_circle", l_fill_circle }, { "text", l_text }, { "text_width", l_text_width }, { "label", l_label }, { "label_width", l_label_width }, { NULL, NULL },
     };
     static const luaL_Reg knob_fns[] = {
         { "turn", l_turn }, { "pos", l_pos }, { "speed", l_speed }, { "pressed", l_pressed },
         { "held", l_held }, { "released", l_released }, { "long", l_long }, { NULL, NULL },
     };
     static const luaL_Reg sys_fns[] = {
-        { "time", l_time }, { "frame", l_frame }, { "fps", l_fps }, { "log", l_log }, { NULL, NULL },
+        { "time", l_time }, { "frame", l_frame }, { "hands", l_hands }, { "fps", l_fps }, { "log", l_log }, { NULL, NULL },
     };
     luaL_newlib(L, gfx_fns);
     lua_pushinteger(L, SCREEN_W); lua_setfield(L, -2, "W");
@@ -540,6 +566,32 @@ int vm_frame(const vm_input_t *input)
     last_gc_us = (uint32_t)(t3 - t2);
     frame_no++;
     return 0;
+}
+
+int vm_pause_stats(vm_stat_t *out, int max)
+{
+    lua_State *L = L_;
+    if (!L || err_kind != VM_ERR_NONE) return 0;
+    int top = lua_gettop(L), n = 0;
+    lua_getglobal(L, "stats");
+    if (lua_isfunction(L, -1)) {
+        cb_start = plat_time_us();
+        if (lua_pcall(L, 0, 1, 0) == LUA_OK && lua_istable(L, -1)) {
+            for (; n < max; n++) {
+                lua_rawgeti(L, -1, n + 1);
+                if (!lua_istable(L, -1)) { lua_pop(L, 1); break; }
+                lua_rawgeti(L, -1, 1);
+                lua_rawgeti(L, -2, 2);
+                const char *a = lua_type(L, -2) == LUA_TSTRING || lua_type(L, -2) == LUA_TNUMBER ? lua_tostring(L, -2) : "";
+                const char *b = lua_type(L, -1) == LUA_TSTRING || lua_type(L, -1) == LUA_TNUMBER ? lua_tostring(L, -1) : "";
+                snprintf(out[n].label, sizeof out[n].label, "%s", a);
+                snprintf(out[n].value, sizeof out[n].value, "%s", b);
+                lua_pop(L, 3);
+            }
+        }
+    }
+    lua_settop(L, top);
+    return n;
 }
 
 static void copy_field(lua_State *L, const char *k, char *out, size_t n)

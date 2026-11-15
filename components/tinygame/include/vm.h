@@ -35,6 +35,7 @@ typedef struct {
 } vm_stats_t;
 
 int      vm_start(const char *src, size_t len, const char *name, const vm_opts_t *opts);  // 0 = running
+void     vm_set_left_handed(int left);     // the console's Hands setting, for sys.hands()
 int      vm_frame(const vm_input_t *in);   // runs update, draw and a GC step; 0 = still running
 void     vm_stop(void);                    // closes the Lua state and frees assets
 void     vm_stopped_by_user(void);         // records "game stopped" (force-exit chord)
@@ -47,6 +48,11 @@ uint32_t vm_frame_count(void);
 void     vm_get_stats(vm_stats_t *out);
 void     vm_reset_peak(void);
 uint32_t vm_frame_hash(void);              // FNV-1a of the current back buffer
+
+// The pause screen's stats sidebar: asks the cart's optional stats() function for a list of
+// { label, value } pairs (strings or numbers). Returns how many (0 if there is no stats() or it fails).
+typedef struct { char label[20]; char value[24]; } vm_stat_t;
+int      vm_pause_stats(vm_stat_t *out, int max);
 
 // Reads a cart's title, tagline and icon art without running init(). Only while no cart runs.
 typedef struct { char title[24]; char tagline[48]; char icon[1024]; } vm_meta_t;

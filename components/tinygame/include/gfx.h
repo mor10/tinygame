@@ -37,6 +37,7 @@ void gfx_blit(const uint8_t *px, int w, int h, int x, int y, int flip_x, int fli
 // blended with whatever is already drawn, using palette slots 64+ that are allocated on demand.
 int  gfx_aa_text(const char *s, int x, int y, int c, int font);   // returns the width drawn
 int  gfx_aa_width(const char *s, int font);
+int  gfx_dim_slot(int index);   // the pause-screen version of a framebuffer index (game colours and blended text edges)
 int  gfx_aa_cap(int font);   // height of a capital letter
 
 int  gfx_color(uint32_t rgb888);   // a palette slot showing exactly this colour (allocated on demand; 0 if the palette is full)

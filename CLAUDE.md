@@ -34,7 +34,7 @@ Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
   - Colour Card: a built-in entry in the gallery (`console/carts/system/colorcard.lua` is a stand-in cart; the OS recognises the id `colorcard` and draws its own pages): SMPTE bars and greys, RGB and grey ramps, the OS colours, the 32 game colours, and a Tune page that changes the per-channel correction live. Use it to judge colour on the board.
   - Panel colours: the board's panel crushes the mid-tones, so the display pipeline lifts each channel (R 0.40, G 0.60, B 0.60, tuned on the Colour Card; `hardware.yaml`, `colour_correction`). The simulator shows exact colours, so it looks different from the glass: judge colour on the board. The correction applies to games too.
   - Settings persist in NVS. Holding the right knob at power-on boots safe mode, which ignores saved settings.
-  - Still open: Resume relaunches the last game from the start (real resume needs saves, Phase 7). Games read both knobs directly and ignore the Hands setting. Carts can't have a hero image yet.
+  - Still open: Resume relaunches the last game from the start (real resume needs saves, Phase 7). Games read both knobs directly; the Hands setting reaches them as `sys.hands()` (and `ui.sides()`), which each game uses to swap its controls. Carts can't have a hero image yet.
 
 **Phase 7 (storage): done (2026-11-14).** `console/partitions.csv` has nvs, otadata, factory (2 MB), ota_0/ota_1 (3 MB each), carts (LittleFS, 7.5 MB), saves (LittleFS, 256 KB) and coredump.
   - Uploaded carts are stored as `/carts/<id>.lua` and stay in the gallery after a reboot. Built-in carts stay compiled in.
@@ -49,12 +49,25 @@ Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
 
 **Phase 10 (AI kit): done (2026-11-14).**
   - `docs/api-card.md` is the API card. `llms.txt` indexes it, and `.claude/skills/make-a-tinygame/SKILL.md` is the write, check, look and fix loop.
-  - Golden carts: `console/carts/brick.lua` and `console/carts/examples/*.lua` (rocks, tilt, walkwalk, snake, paint). All are built into the board's gallery and pass the checker with no warnings.
+  - Golden carts: removed in the clean-slate reset (2026-11-15; see git history). Games now live in `games/`; the only built-in gallery entry is the Colour Card.
   - `sim/build/tinygame-sim --check` is the checker: a dialect lint, cart-table checks, and two 300-frame strict runs.
   - The cart API gained `tilt.x/y/shake/zero` and `gfx.circle`/`gfx.fill_circle`.
   - `ai/eval/run_eval.py` measures how many kid-style prompts (`ai/eval/prompts.txt`) pass on the first try. It needs the `anthropic` package (in `ai/eval/.venv`) and `ANTHROPIC_API_KEY`, which lives in `~/.zshrc`, so run it via `zsh -ic`. A run costs a few dollars.
   - First run, 2026-11-14 (`claude-opus-5-5`, effort medium): 15/20 under the original checker. Four of the five failures were the checker wrongly rejecting `if not x then` reads of unset globals, so the strict mode now rejects only foreign names (`btn`, `spr`, ...). A malformed icon is now a warning. Re-checked, the same 20 answers pass 20/20 (one with an icon warning).
   - Fresh run, 2026-11-14, same settings: **20/20 passed first try, 0 warnings** (about 74k output tokens, 34 s per answer). The first run cost $1.86. Spot-checked games, including a space shooter and Tetris with a ghost piece, are coherent and show their controls.
+
+**Phase 11 (clean slate + Brick Breaker): done (2026-11-15).** All old games and failure tests were deleted (git history has them); the only built-in gallery entry is the Colour Card. `games/brickbreaker.lua` is the first new game and the reference for the look.
+  - Engine additions made along the way, all documented in `docs/api-card.md`: `gfx.label`/`gfx.label_width` (the OS's smooth Space Grotesk text for carts), the `ui` kit in `prelude.lua` (`ui.card`, `ui.pill`, `ui.controls`, `ui.icon`, `ui.heart`, `ui.plate`, `ui.sides`, optional `ui.bar`), `sys.hands()` (the Hands setting; games swap knob roles with `ui.sides()`), and an optional `stats()` cart function that feeds the pause sidebar.
+  - Pause screen (`os.c`, `draw_paused`): wears the paused game's cartridge and window colours (from its icon), sidebar on the left with icon, name and up to 4 stats, menu card on the right. Blended text edges are dimmed through `gfx_dim_slot`.
+  - Control icon language: a ring with an arrowhead = TURN, an arrow pressing onto a surface = CLICK. The same 13x13 bitmaps live in `os.c` (`ICON_TURN`/`ICON_CLICK`, used by `footer`) and in `prelude.lua` (`ICONS`); change both together.
+  - Learnings, so the next game goes faster:
+    - Engine, prelude or `os.c` changes need `cmake --build sim/build` (the simulator embeds the prelude), `./tg web-build`, and `./tg flash` before the board sees them. `./tg send` alone only updates the cart.
+    - The glass is small and the bezel is round: keep 16 px from the sides, avoid tiny text, favour few big flat shapes. Bright reds read orange and pale yellows read cream on the panel, so judge colour on the board.
+    - Knob feel: don't scale a step by `knob.speed` directly (one step spikes it). Smooth your own velocity from `knob.pos` deltas, ramp gain gently, and glide the paddle toward a target. Half a turn per second should cross the screen.
+    - Balls trapped in a perfectly vertical loop: keep a minimum sideways speed and jitter paddle bounces.
+    - Autoplay without engine support: copy the cart, replace `knob.pos`/`knob.pressed` with a fake driven by game state, and run `tinygame-sim` for thousands of frames. Declare helpers after the locals they read, or they see nil globals.
+    - Icons only accept `.` and `0-9a-f`; sprites may use `a-v`.
+    - `--left-handed` on `tinygame-sim` tests mirrored controls.
 
 ### Screen lab notes (history)
 
@@ -107,7 +120,7 @@ Build and flash with `idf.py -C console -p /dev/cu.usbmodem* build flash`. The U
 - `main/platform_esp.c` mounts `/carts` and `/saves` (LittleFS, from the `joltwallet/littlefs` managed component; `idf.py` fetches it on the first build).
 - `components/tinygame/save.c`: the save store.
 - `tools/send_cart.py PORT FILE.lua [--seconds N] [--timestamps]`: uploads a cart (as `uploaded`) and prints its JSON output. Run it with the ESP-IDF Python environment.
-- `carts/brick.lua`, `carts/hello.lua` and `carts/examples/*.lua` are built into the gallery. `carts/tests/*.lua` are failure tests: stuck, stuck inside pcall, bug, out of memory (also inside pcall), the sandbox probe, a cart without a `cart` table, bad sprite and map art, and `engine_selftest.lua` (22 checks). `brick_autoplay_patch.lua` is appended to `brick.lua` for unattended frame-time runs.
+- `carts/system/colorcard.lua` is the only built-in gallery entry. The old failure tests (`carts/tests/*.lua`: stuck, bug, oom, sandbox, engine_selftest, determinism, save_torture, ...) were deleted in the clean-slate reset (2026-11-15) and are recoverable from git history; they covered: stuck, stuck inside pcall, bug, out of memory (also inside pcall), the sandbox probe, a cart without a `cart` table, bad sprite and map art, and `engine_selftest.lua` (22 checks). `brick_autoplay_patch.lua` is appended to `brick.lua` for unattended frame-time runs.
 
 ## Simulator: `sim/`
 

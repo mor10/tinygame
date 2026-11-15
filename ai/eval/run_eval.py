@@ -14,7 +14,7 @@ import argparse, concurrent.futures, json, pathlib, re, subprocess, sys, time
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SIM = ROOT / "sim" / "build" / "tinygame-sim"
-EXAMPLES = ["console/carts/examples/rocks.lua", "console/carts/examples/snake.lua"]
+EXAMPLES = ["games/_template.lua"]
 
 INSTRUCTIONS = """You write games for TinyGame, a pocket console for kids. Reply with one complete
 cart as a single ```lua code block, then at most two sentences on how to play.

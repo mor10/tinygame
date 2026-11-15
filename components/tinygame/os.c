@@ -329,23 +329,36 @@ static void battery(int x, int y)
     for (int i = 0; i < 3; i++) gfx_fill_rect(x + 2 + i * 6, y + 2, 5, 7, OS_WHITE);
 }
 
-static void knob_glyph(int x, int y, int c)
+// The control icon language, 13 x 13: a ring with an arrowhead means TURN the knob, an arrow pressing
+// onto a surface means CLICK it. Games get the same pair as ui.icon() (prelude.lua).
+static const char *const ICON_TURN[13] = {
+    "........#####", "....####.###.", "..######..#..", "..##.........", ".##..........", ".##.......##.", ".##.......##.",
+    ".##.......##.", ".##.......##.", "..##.....##..", "..#########..", "....#####....", ".............",
+};
+static const char *const ICON_CLICK[13] = {
+    ".....###.....", ".....###.....", ".....###.....", ".....###.....", "..#########..", "...#######...",
+    "....#####....", ".....###.....", "......#......", ".............", ".###########.", ".###########.", ".............",
+};
+
+static void control_icon(int x, int y, int click, int c)
 {
-    static const char *g[7] = { "..###..", ".#...#.", "#..#..#", "#..#..#", "#.....#", ".#...#.", "..###.." };
-    for (int r = 0; r < 7; r++)
-        for (int k = 0; k < 7; k++)
+    const char *const *g = click ? ICON_CLICK : ICON_TURN;
+    for (int r = 0; r < 13; r++)
+        for (int k = 0; k < 13; k++)
             if (g[r][k] == '#') gfx_pixel(x + k, y + r, c);
 }
 
-// Hints sit in the two bottom corners.
+// Hints sit in the two bottom corners, on the side of the knob they belong to: a turn icon for the
+// scroll knob and a click icon for the select knob.
 static void footer(const char *scroll_label, const char *select_label, int ink)
 {
-    const char *l = set.left_handed ? scroll_label : select_label;
-    const char *r = set.left_handed ? select_label : scroll_label;
+    int lh = set.left_handed;
+    const char *l = lh ? scroll_label : select_label;
+    const char *r = lh ? select_label : scroll_label;
     int y = SCREEN_H - 17;
-    knob_glyph(12, y + 1, ink);
-    text_l(l, 24, y, ink, FONT_S);
-    knob_glyph(SCREEN_W - 12 - 7 - 5 - gfx_aa_width(r, FONT_S), y + 1, ink);
+    control_icon(12, y - 2, !lh, ink);
+    text_l(l, 12 + 13 + 5, y, ink, FONT_S);
+    control_icon(SCREEN_W - 12 - 13 - 5 - gfx_aa_width(r, FONT_S), y - 2, lh, ink);
     text_r(r, SCREEN_W - 12, y, ink, FONT_S);
 }
 
@@ -508,18 +521,69 @@ static void draw_level(void)
     footer("Level", "Done", OS_WHITE);
 }
 
+#define PAUSE_STATS_MAX 4
+static vm_stat_t pause_stats[PAUSE_STATS_MAX];
+static int pause_stat_n, pause_t;   // how many stats the game gave, and frames since pausing (for the slide-in)
+
+static int ink_on(int slot)   // navy or white type, whichever reads better on this palette slot
+{
+    uint32_t bg = gfx_palette_rgb(slot);
+    return contrast(bg, gfx_palette_rgb(OS_INK)) >= contrast(bg, 0xFFFFFF) ? OS_INK : OS_WHITE;
+}
+
+// The pause screen wears the paused game's colours: the sidebar is its cartridge colour, the menu card
+// its icon-window colour, and the card carries its icon and title so it's clear what is paused.
+static void draw_stats_sidebar(const entry_t *e)
+{
+    int w = 128, slide = pause_t < 8 ? (8 - pause_t) * (8 - pause_t) * w / 64 : 0, x0 = -slide;
+    int ink = ink_on(e->body), sh = OS_SHADE + shade_slot(e->body);
+    gfx_fill_rect(x0 + SHADOW, SHADOW, w, SCREEN_H - 22, sh);
+    gfx_fill_rect(x0, 0, w, SCREEN_H - 22, e->body);
+    // the game: its icon on its sticker, then its name
+    gfx_fill_rect(x0 + 16 + 3, 10 + 3, 40, 40, sh);
+    gfx_fill_rect(x0 + 16, 10, 40, 40, e->win);
+    draw_icon(e, x0 + 36, 30, 2, 0);
+    char t[24];   // shortened with dots if it is too long for the sidebar
+    snprintf(t, sizeof t, "%s", e->title);
+    int font = gfx_aa_width(t, FONT_M) <= w - 30 ? FONT_M : FONT_S;
+    while (strlen(t) > 4 && gfx_aa_width(t, font) > w - 30) { size_t n = strlen(t); t[n - 3] = t[n - 2] = '.'; t[n - 1] = 0; }
+    text_l(t, x0 + 16, 58, ink, font);
+    // the stats: one line each, the label small on the left and the value on the right
+    for (int i = 0; i < pause_stat_n; i++) {
+        int y = 84 + i * 18;
+        if (i) gfx_fill_rect(x0 + 16, y - 5, w - 30, 1, sh);
+        text_l(pause_stats[i].label, x0 + 16, y + 2, ink, FONT_S);
+        text_r(pause_stats[i].value, x0 + w - 14, y, ink, FONT_M);
+    }
+}
+
 static void draw_paused(void)
 {
+    pause_t++;
     uint8_t *fb = plat_framebuffer();
-    for (int i = 0; i < SCREEN_W * SCREEN_H; i++) fb[i] = (uint8_t)(OS_DIM + (frozen[i] & 31));
-    gfx_fill_rect(48 + SHADOW, 8 + SHADOW, 224, 132, OS_SHADE + 5);
-    gfx_fill_rect(48, 8, 224, 132, OS_PALE);
-    text_l("Paused", 70, 18, OS_INK, FONT_L);
+    for (int i = 0; i < SCREEN_W * SCREEN_H; i++) fb[i] = (uint8_t)gfx_dim_slot(frozen[i]);
+    entry_t *e = &carts[last_game >= 0 && last_game < ncarts ? last_game : 0];
+    style_entry(e, last_game >= 0 ? last_game : 0);
+    int ink = ink_on(e->win), sh = OS_SHADE + shade_slot(e->body);
+    int cx = 48, cw = 224;   // the menu card; with stats it makes room for the sidebar on the left
+    if (pause_stat_n) { cx = 140; cw = 168; draw_stats_sidebar(e); }
+    gfx_fill_rect(cx + SHADOW, 8 + SHADOW, cw, 132, sh);
+    gfx_fill_rect(cx, 8, cw, 132, e->win);
+    text_l("Paused", cx + 18, 18, ink, FONT_L);
+    if (!pause_stat_n) {   // no sidebar: the card says which game is paused
+        char t[24];
+        snprintf(t, sizeof t, "%s", e->title);
+        while (strlen(t) > 4 && gfx_aa_width(t, FONT_S) > cw - 36) { size_t n = strlen(t); t[n - 3] = t[n - 2] = '.'; t[n - 1] = 0; }
+        text_l(t, cx + 18, 40, ink, FONT_S);
+    }
     static const char *items[] = { "Continue", "Settings", "Exit game" };
     for (int i = 1; i <= 3; i++) {
-        int y = 52 + (i - 1) * 28;
-        text_l(items[i - 1], 94, y, OS_INK, FONT_M);
-        if (focus == i) { pointer(74, y - 1, OS_INK); underline(94, y + 15, gfx_aa_width(items[i - 1], FONT_M), OS_RED); }
+        int y = 54 + (i - 1) * 28, on = focus == i;
+        if (on) {   // the chosen row is a block in the game's colour, like the OS's yellow buttons
+            gfx_fill_rect(cx + 14 + 3, y + 3, cw - 28, 24, sh);
+            gfx_fill_rect(cx + 14, y, cw - 28, 24, e->body);
+        }
+        text_l(items[i - 1], cx + 26, y + 5, on ? ink_on(e->body) : ink, FONT_M);
     }
     gfx_fill_rect(0, SCREEN_H - 22, SCREEN_W, 22, OS_INK);
     footer("Browse", "Select", OS_WHITE);
@@ -632,6 +696,7 @@ static void launch(int i)
         go(OS_ERROR, 1);
         return;
     }
+    vm_set_left_handed(set.left_handed);
     int ok = vm_start(src, len, e->title, &o) == 0;
     plat_asset_free(loaded);   // Lua has compiled it; the text isn't needed any more
     go(ok ? OS_GAME : OS_ERROR, 1);
@@ -780,6 +845,7 @@ void os_frame(const os_input_t *oi)
         if (hash_left > 0) {   // hash runs: no input, no chords, like the simulator
             vm_input_t none;
             memset(&none, 0, sizeof none);
+            vm_set_left_handed(set.left_handed);
             if (vm_frame(&none) != 0) { hash_left = 0; go(OS_ERROR, 1); break; }
             hash_left--;
             return;            // the game drew this frame
@@ -787,9 +853,12 @@ void os_frame(const os_input_t *oi)
         if (oi->chord_exit) { vm_stop(); go(OS_GALLERY, 1); break; }
         if (oi->chord_pause) {
             memcpy(frozen, plat_framebuffer(), SCREEN_W * SCREEN_H);
+            pause_stat_n = vm_pause_stats(pause_stats, PAUSE_STATS_MAX);
+            pause_t = 0;
             go(OS_PAUSED, 1);
             break;
         }
+        vm_set_left_handed(set.left_handed);
         if (vm_frame(in) != 0) go(OS_ERROR, 1);
         return;                // the game drew this frame
     case OS_PAUSED:

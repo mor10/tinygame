@@ -8,16 +8,8 @@ in `games/`, check it in the simulator, look at it, and send it to the console.
 
 1. `docs/api-card.md`: everything a cart can use, the limits, and a "Don't" list. Use only what
    it lists. TinyGame is not PICO-8, LOVE2D or pygame; their function names are rejected.
-2. One or two example carts close to the request:
-
-| Cart | Shows |
-|---|---|
-| `console/carts/brick.lua` | sprites, a tile map as a brick wall, `map_hit`/`map_set`, lives |
-| `console/carts/examples/rocks.lua` | `group()` of falling things, circles, tilt plus knob steering, a saved best score |
-| `console/carts/examples/tilt.lua` | tilt with a knob fallback, a maze map, coins, a "which way is down" marker |
-| `console/carts/examples/walkwalk.lua` | a scrolling platformer: gravity, jumping, `gfx.map` with a camera |
-| `console/carts/examples/snake.lua` | a grid game steered with knob notches, game over and restart |
-| `console/carts/examples/paint.lua` | `knob.pos` for direct control, a picture that stays between frames, shake |
+2. `games/_template.lua`, the smallest working cart. There are no golden example carts right now:
+   the repository was reset to a clean slate, and games are rebuilt one at a time.
 
 ## The loop
 
@@ -49,6 +41,11 @@ to make a game work: if the API can't do something, say so.
   `fps = 30`, and a 16x16 `icon` that shows what the game is about.
 - One clear control scheme, shown on screen in a few words ("Turn right knob to steer").
   Clicking both knobs together is the console's pause, so don't use it in a game.
+- Tell the player the controls from the start, with the control icons: `ui.controls(...)` (a ring-arrow icon means turn, a press-arrow icon means click). Use `ui.sides()` so left-handed players get the knobs swapped.
+- Look like the console: no big top bar; overlay only the vital score and lives on the board and put the rest in `stats()` (shown in the pause sidebar). Use `gfx.label` for text and `ui.card` /
+  `ui.pill` for level intros and game over (see "Console look" in `docs/api-card.md`). Keep 16 px from
+  the sides and below `ui.BAR` (28 px): the rounded bezel hides the corners. Make things chunky: the
+  screen is small and hard to read, so favour few big shapes over many small ones.
 - Readable colours: light text (4, 5, 8, 12, 18) on dark backgrounds (0, 1, 2, 24, 31), or navy on cream. Colours 16-31 are brighter and purer: use them for sprites and highlights, and 27-29 for pink animals.
 - A way to lose and start again, and a reason to replay (score, time or a saved best).
 - Short: under about 150 lines plus art. Kids read these and change them.

@@ -13,15 +13,6 @@ sending it to the console with `./tg send games/<name>.lua`.
 - [How to make a cart, step by step](AGENTS.md): the write, check, look and fix loop
 - [Template](games/_template.lua): the starting point for a new game
 
-## Example carts
-
-- [Brick Bop](console/carts/brick.lua): sprites and a tile-map brick wall
-- [Rock Dodge](console/carts/examples/rocks.lua): falling rocks, groups, tilt steering, saved best score
-- [Tilt Roll](console/carts/examples/tilt.lua): a tilt maze with a knob fallback
-- [WalkWalk](console/carts/examples/walkwalk.lua): a scrolling platformer
-- [Snake](console/carts/examples/snake.lua): a grid game steered with knob notches
-- [Knob Sketch](console/carts/examples/paint.lua): drawing with two knobs, shake to wipe
-
 ## Optional
 
 - [Engine format details](docs/engine-v1.md): sprites and maps in more depth

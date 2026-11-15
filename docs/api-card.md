@@ -56,6 +56,9 @@ In text art, `0`-`9` and `a`-`v` are these colours (`a` = 10 ... `f` = 15, `g` =
 | `gfx.map(layer, [x], [y])` | draw a layer of the loaded map, offset by x, y (use this to scroll) |
 | `gfx.W`, `gfx.H` | screen width and height (320 and 172) |
 
+| `gfx.label(s, x, y, c, [size])` | smooth console-style text, size 1-4 (small, medium, large, extra large; default 2). y is the top of the capital letters. Returns the width |
+| `gfx.label_width(s, [size])` | width of a label in pixels |
+
 Text has upper and lower case, digits and most punctuation (no `{ } | ~` or backtick).
 
 ## Sprites
@@ -97,6 +100,38 @@ maps = {
 | `map_hit(layer, x, y, w, h)` | for a box in pixels: returns `ch, tx, ty` of the first non-empty tile it touches, or `nil` |
 
 Layers are numbered from 1 (up to 4). Tile coordinates are `x // tile` and `y // tile`.
+
+## Pause stats: `stats()`
+
+Optional. When the player pauses, the console slides a sidebar in from the left with whatever
+`stats()` returns: up to 4 `{ label, value }` pairs (the game's name is shown above them) (text or numbers). Keep the game screen clean
+and put the details here (level, best score, timers).
+
+```lua
+function stats()
+  return { { "Level", level }, { "Score", score }, { "Best", best } }
+end
+```
+
+## Console look: `ui`
+
+Every game should look like part of the console. The screen has rounded corners and a thick bezel
+that hides the edges, so keep everything at least `ui.PAD` (16 px) from the left and right edges and
+below the bar. Use `gfx.label` for text (it is far easier to read than `gfx.text`; keep `gfx.text`
+for tiny things) and the big, chunky OS look: a flat electric blue background (23), deep blue
+bars (24), white cards, one yellow (18) action, and a darker drop-edge 2-4 px down and right of
+every block.
+
+| Call | What it does |
+|---|---|
+| `ui.BAR`, `ui.PAD` | top bar height (28) and the safe side margin (16) |
+| `ui.bar()` | an optional solid top bar, drawn last. Most games do better without it: put just the score and lives straight on the board, e.g. `gfx.label(score, ui.PAD, 6, 4, 2)`, and the rest in `stats()` |
+| `ui.heart(x, y, [c])` | a heart 11x9 px, for lives |
+| `ui.sides()` | returns `move, act`: the knobs to turn and to click for this player, e.g. `knob.pos(move)`, `knob.pressed(act)` |
+| `ui.icon(kind, x, y, c)` | a 13x13 control icon: `"turn"` (ring with an arrowhead) or `"click"` (arrow pressing down). The console uses the same two icons for "Browse" and "Select" |
+| `ui.pill(text, y, [c], [icon], [x])` | a hint block, centred (or left edge x), with an optional control icon in front |
+| `ui.controls(y, list)` | show the controls from the start, laid out like the knobs: `ui.controls(112, { { "click", act, "Launch" }, { "turn", move, "Move" } })` |
+| `ui.card(title, [line], [hint], [c], [age], [icon])` | a big colour card with a scrolling brick strip for level intros, wins and game over; `age` = frames since it appeared (drop-in bounce), `icon` goes with the hint pill |
 
 ## Knobs: `knob`
 
@@ -140,7 +175,7 @@ Saves survive power cuts and restarts. Each game gets 4 KB; storing more is an e
 
 ## System: `sys`
 
-`sys.time()` milliseconds since the game started, `sys.frame()` frame number, `sys.fps()` the
+`sys.hands()` is `"right"` or `"left"`: the player's Hands setting (it can change while the game is paused). Right-handed players turn the right knob and click the left one; left-handed players do the opposite, so use `ui.sides()` instead of hard-coding a knob. `sys.time()` milliseconds since the game started, `sys.frame()` frame number, `sys.fps()` the
 measured frame rate, `sys.log(...)` a message for the developer (also `print`).
 
 ## Helpers
@@ -176,5 +211,6 @@ measured frame rate, `sys.log(...)` a message for the developer (also `print`).
 - Don't assume a 128x128 (or any other) screen: use `gfx.W` and `gfx.H`.
 - Don't take a `dt` argument or time things with `os.clock()`: count frames or use `sys.time()`.
 - Don't call `require`, `load` or anything in `io` or `os`.
+- Don't draw tiny text near the screen edges or in the top 28 px: use `ui.bar()` and `gfx.label`, and keep a 16 px margin.
 - Don't use colours above 15 or names like `"red"`: colours are numbers.
 - Don't loop forever waiting for something inside `update()`: keep state and check it each frame.

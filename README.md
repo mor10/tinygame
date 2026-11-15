@@ -43,7 +43,6 @@ With `./tg serve` running:
 |---|---|
 | `games/` | your games (`_template.lua` is the starting point) |
 | `docs/api-card.md` | everything a game can use, on one page |
-| `console/carts/examples/` | example games to learn from and copy |
 | `tg` | the helper command above |
 | `console/` | the console firmware (ESP-IDF) |
 | `components/tinygame/` | the engine, shared by the console, the simulator and the browser |

@@ -12,8 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SIM = os.path.join(ROOT, "sim", "build", "tinygame-sim")
 FONT = os.path.join(ROOT, "components", "tinygame", "fonts", "SpaceGrotesk.ttf")
-CARTS = ["console/carts/brick.lua", "console/carts/examples/rocks.lua", "console/carts/examples/snake.lua",
-         "console/carts/examples/tilt.lua", "console/carts/examples/paint.lua", "console/carts/examples/walkwalk.lua"]
+CARTS = ["games/brickbreaker.lua"]   # the gallery shows whatever games exist now
 SHEET, NAVY, BLUE = (208, 220, 255), (10, 20, 80), (10, 46, 184)
 
 def font(size, weight=700):

@@ -76,7 +76,7 @@ case "$cmd" in
   setup)
     build_sim
     echo "Simulator built: sim/build/tinygame-sim"
-    "$SIM" --check "$ROOT/console/carts/examples/rocks.lua" | summarize >/dev/null && echo "Example game checks out. Ready."
+    "$SIM" --check "$ROOT/games/_template.lua" | summarize >/dev/null && echo "Template game checks out. Ready."
     ;;
   new)
     name="${1:-}"
