@@ -31,21 +31,28 @@ EMSCRIPTEN_KEEPALIVE int tg_load(const char *src, int len, int deterministic, un
 }
 
 // Turn deltas are in quadrature transitions (4 per notch). Bits: 1 = pressed, 2 = held, 4 = released.
-EMSCRIPTEN_KEEPALIVE int tg_frame(int delta_l, int delta_r, int bits_l, int bits_r)
+// Tilt is -1..1 per axis; shake is 1 for a shake this frame.
+EMSCRIPTEN_KEEPALIVE int tg_frame(int delta_l, int delta_r, int bits_l, int bits_r, float tilt_x, float tilt_y, int shake)
 {
     if (!running) return -1;
     static int32_t pos[2];
+    static float speed[2];   // smoothed transitions per second, like the board's driver
     vm_input_t in;
     memset(&in, 0, sizeof in);
     int d[2] = { delta_l, delta_r }, b[2] = { bits_l, bits_r };
     for (int i = 0; i < 2; i++) {
         pos[i] += d[i];
         in.pos[i] = pos[i];
+        speed[i] += (d[i] * 30.f - speed[i]) * 0.3f;
+        in.speed[i] = speed[i];
         in.delta[i] = d[i];
         in.pressed[i] = b[i] & 1;
         in.down[i] = (b[i] >> 1) & 1;
         in.released[i] = (b[i] >> 2) & 1;
     }
+    in.tilt[0] = tilt_x;
+    in.tilt[1] = tilt_y;
+    in.shake = (uint8_t)shake;
     if (vm_frame(&in) != 0) {
         vm_draw_error_screen();
         vm_stop();

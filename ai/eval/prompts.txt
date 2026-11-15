@@ -1,0 +1,21 @@
+# Kid-style requests for the first-try eval, one per line. Lines starting with # are skipped.
+make a game where a cat catches falling fish
+a racing game where you dodge other cars
+can you make pong but against the computer
+I want a game where you jump over cactuses like the dinosaur game
+make a space shooter with aliens
+a game where you tilt to roll a marble into a hole
+make flappy bird but it's a pig
+a game where you have to click at exactly the right time to stop a moving bar in the middle
+make a maze game with a ghost chasing you
+a fishing game where you lower a hook with a knob and catch fish
+a game where balloons float up and you pop them
+make a memory game where colours flash and you have to repeat them
+a drawing game where you make spirals
+a game with a frog crossing a road
+make a game where you stack blocks as high as you can
+a typing game but with knobs where you pick letters to spell words
+a game where you are a bee collecting flowers and avoiding spiders
+make tetris but simple
+a game where you balance a ball on a plank by tilting
+a clicker game where you bake cookies and buy upgrades

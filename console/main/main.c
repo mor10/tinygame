@@ -20,6 +20,7 @@
 #include "save.h"
 #include "game.h"
 #include "input.h"
+#include "imu.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/usb_serial_jtag.h"
@@ -103,6 +104,7 @@ void app_main(void)
 
     display_init();
     gfx_init_palette();
+    if (imu_init() != ESP_OK) printf("{\"t\":\"error\",\"kind\":\"boot\",\"msg\":\"imu_init failed\"}\n");
     if (input_init() != ESP_OK) printf("{\"t\":\"error\",\"kind\":\"boot\",\"msg\":\"input_init failed\"}\n");
     display_present();
 

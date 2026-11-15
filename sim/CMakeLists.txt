@@ -45,7 +45,7 @@ if(EMSCRIPTEN)
   return()
 endif()
 
-add_executable(tinygame-sim main.c png.c ${ENGINE_SRCS})
+add_executable(tinygame-sim main.c png.c lint.c ${ENGINE_SRCS})
 target_include_directories(tinygame-sim PRIVATE ${ROOT}/components/tinygame/include ${ROOT}/components/font/include ${LUA})
 target_compile_definitions(tinygame-sim PRIVATE LUA_32BITS=1)
 # Match the board's single-precision float behaviour: no fused multiply-add, no excess precision.

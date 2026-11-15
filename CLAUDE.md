@@ -40,7 +40,12 @@ Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
 **Phase 9 (WebSerial uploader): done (2026-11-14).** `uploader/` is a static page for Chrome or Edge. It checks a cart for three seconds in the WASM engine with a live preview, shows errors with the code around the line, and copies a ready-made request for an AI helper. It then sends the cart over Web Serial with the console's own commands (`cart <bytes> <id>`, `play`, `rm`, `ls`). Connect, send and play were tested by hand on the board.
   - Serve the repository root over HTTP and open `/uploader/`. It loads `sim/build-web/tinygame.js`, so build the WASM engine first.
 
-**Next: Phase 10 (AI kit).** Roadmap: `docs/scope-v0.1.md` section 14.
+**Phase 10 (AI kit): built (2026-11-14); the first-try eval hasn't run yet.**
+  - `docs/api-card.md` is the API card. `llms.txt` indexes it, and `.claude/skills/make-a-tinygame/SKILL.md` is the write, check, look and fix loop.
+  - Golden carts: `console/carts/brick.lua` and `console/carts/examples/*.lua` (rocks, tilt, walkwalk, snake, paint). All are built into the board's gallery and pass the checker with no warnings.
+  - `sim/build/tinygame-sim --check` is the checker: a dialect lint, cart-table checks, and two 300-frame strict runs.
+  - The cart API gained `tilt.x/y/shake/zero` and `gfx.circle`/`gfx.fill_circle`.
+  - `ai/eval/run_eval.py` measures how many kid-style prompts (`ai/eval/prompts.txt`) pass on the first try. It needs the `anthropic` package and API credentials, and costs a few dollars per run.
 
 ### Screen lab notes (history)
 
@@ -89,7 +94,7 @@ Build and flash with `idf.py -C console -p /dev/cu.usbmodem* build flash`. The U
 - `main/platform_esp.c` mounts `/carts` and `/saves` (LittleFS, from the `joltwallet/littlefs` managed component; `idf.py` fetches it on the first build).
 - `components/tinygame/save.c`: the save store.
 - `tools/send_cart.py PORT FILE.lua [--seconds N] [--timestamps]`: uploads a cart (as `uploaded`) and prints its JSON output. Run it with the ESP-IDF Python environment.
-- `carts/brick.lua` and `carts/hello.lua` are built into the gallery. `carts/tests/*.lua` are failure tests: stuck, stuck inside pcall, bug, out of memory (also inside pcall), the sandbox probe, a cart without a `cart` table, bad sprite and map art, and `engine_selftest.lua` (22 checks). `brick_autoplay_patch.lua` is appended to `brick.lua` for unattended frame-time runs.
+- `carts/brick.lua`, `carts/hello.lua` and `carts/examples/*.lua` are built into the gallery. `carts/tests/*.lua` are failure tests: stuck, stuck inside pcall, bug, out of memory (also inside pcall), the sandbox probe, a cart without a `cart` table, bad sprite and map art, and `engine_selftest.lua` (22 checks). `brick_autoplay_patch.lua` is appended to `brick.lua` for unattended frame-time runs.
 
 ## Simulator: `sim/`
 
@@ -99,6 +104,7 @@ Build it with `cmake -S sim -B sim/build && cmake --build sim/build`.
   - It prints the same JSON lines as the board, plus frame hashes for frame 1, every 30th frame and the last frame.
   - It writes a PNG of the final frame, or of the error screen if the cart failed.
   - Exit status: 0 when the cart ran every frame, 1 after an error, 2 for usage problems.
+- `sim/build/tinygame-sim --check CART.lua [--frames N] [--png FILE]` is the cart checker (`sim/lint.c` plus strict runs). The AI kit's loop is built on it.
 - `sim/build/tinygame-sim --shell CART.lua... [--frames N] [--press ...] [--turn ...] [--chord pause|exit@frame] [--png FILE]` runs the OS shell with those carts in the gallery and prints a `mode` line at each screen change.
 - `--storage DIR` keeps carts and saves in `DIR/carts` and `DIR/saves` (without it, saves last one run). `--runs R` plays a cart R times in a row to test saves across runs.
 - `sim/torture.py PORT [--cycles N]` resets the board at random moments while `save_torture` rewrites its save, and checks that every save survives.

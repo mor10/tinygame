@@ -8,6 +8,7 @@
 #include "vm.h"
 #include "display.h"
 #include "input.h"
+#include "imu.h"
 #include "platform.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
@@ -21,6 +22,10 @@ extern const char brick_lua_start[] asm("_binary_brick_lua_start");
 extern const char brick_lua_end[] asm("_binary_brick_lua_end");
 extern const char hello_lua_start[] asm("_binary_hello_lua_start");
 extern const char hello_lua_end[] asm("_binary_hello_lua_end");
+#define BUILTIN(n) extern const char n##_lua_start[] asm("_binary_" #n "_lua_start"); \
+                   extern const char n##_lua_end[] asm("_binary_" #n "_lua_end");
+BUILTIN(rocks) BUILTIN(tilt) BUILTIN(walkwalk) BUILTIN(snake) BUILTIN(paint)
+#define ADD(n) os_add_cart(n##_lua_start, (size_t)(n##_lua_end - n##_lua_start) - 1, #n)
 
 // ---------- requests from the console task ----------
 static SemaphoreHandle_t req_lock;
@@ -101,6 +106,11 @@ static void to_os_input(const input_state_t *s, os_input_t *o)
     }
     o->chord_pause = s->chord_pause;
     o->chord_exit = s->chord_exit;
+    imu_state_t imu;
+    imu_snapshot(&imu);
+    o->in.tilt[0] = imu.tilt_x;
+    o->in.tilt[1] = imu.tilt_y;
+    o->in.shake = imu.shake;
 }
 
 #define HIST_MS 64
@@ -132,6 +142,7 @@ static void game_task(void *arg)
     // -1: embedded text carries a trailing NUL
     os_add_cart(brick_lua_start, (size_t)(brick_lua_end - brick_lua_start) - 1, "brick");
     os_add_cart(hello_lua_start, (size_t)(hello_lua_end - hello_lua_start) - 1, "hello");
+    ADD(rocks); ADD(tilt); ADD(walkwalk); ADD(snake); ADD(paint);   // the golden example carts
     if (!safe_boot) os_scan_storage();   // safe mode shows only the built-in carts
 
     static uint32_t hist[HIST_MS];

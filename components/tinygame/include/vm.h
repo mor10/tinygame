@@ -13,6 +13,8 @@ typedef struct {
     int32_t pos[2], delta[2];
     float   speed[2];
     uint8_t down[2], pressed[2], released[2], long_press[2];
+    float   tilt[2];   // -1..1, x positive when the right edge is lower, y positive when the bottom edge is lower
+    uint8_t shake;     // a shake happened since the previous frame
 } vm_input_t;
 
 typedef struct {
@@ -21,6 +23,7 @@ typedef struct {
     int         deterministic;   // sys.time() follows the frame count, math.random is seeded
     uint32_t    seed;
     const char *save_id;         // where save.set/get keep this cart's data; NULL turns saving off
+    int         strict;          // checking: reading a global that doesn't exist is an error
 } vm_opts_t;
 
 typedef enum { VM_ERR_NONE, VM_ERR_BUG, VM_ERR_STUCK, VM_ERR_MEMORY, VM_ERR_STOPPED } vm_err_t;
@@ -36,6 +39,7 @@ int      vm_frame(const vm_input_t *in);   // runs update, draw and a GC step; 0
 void     vm_stop(void);                    // closes the Lua state and frees assets
 void     vm_stopped_by_user(void);         // records "game stopped" (force-exit chord)
 vm_err_t vm_error(void);
+const char *vm_error_message(int *line);   // the last error's message and line (-1 if none)
 void     vm_draw_error_screen(void);
 int      vm_fps(void);                     // the cart's declared fps, 30 or 60
 void     vm_set_measured_fps(float fps);   // what sys.fps() reports

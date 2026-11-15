@@ -74,6 +74,28 @@ void gfx_line(int x0, int y0, int x1, int y1, int c)
     }
 }
 
+void gfx_circle(int cx, int cy, int r, int c, int filled)
+{
+    if (r < 0) return;
+    int x = r, y = 0, err = 1 - r;   // midpoint circle
+    while (x >= y) {
+        if (filled) {
+            gfx_fill_rect(cx - x, cy + y, 2 * x + 1, 1, c);
+            gfx_fill_rect(cx - x, cy - y, 2 * x + 1, 1, c);
+            gfx_fill_rect(cx - y, cy + x, 2 * y + 1, 1, c);
+            gfx_fill_rect(cx - y, cy - x, 2 * y + 1, 1, c);
+        } else {
+            gfx_pixel(cx + x, cy + y, c); gfx_pixel(cx - x, cy + y, c);
+            gfx_pixel(cx + x, cy - y, c); gfx_pixel(cx - x, cy - y, c);
+            gfx_pixel(cx + y, cy + x, c); gfx_pixel(cx - y, cy + x, c);
+            gfx_pixel(cx + y, cy - x, c); gfx_pixel(cx - y, cy - x, c);
+        }
+        y++;
+        if (err < 0) err += 2 * y + 1;
+        else { x--; err += 2 * (y - x) + 1; }
+    }
+}
+
 int gfx_text_width(const char *s, int scale)
 {
     int n = (int)strlen(s);

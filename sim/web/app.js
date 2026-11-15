@@ -21,7 +21,7 @@
 
   const M = await TinyGame({ print: log, printErr: log });
   const tgLoad = M.cwrap("tg_load", "number", ["number", "number", "number", "number"]);
-  const tgFrame = M.cwrap("tg_frame", "number", ["number", "number", "number", "number"]);
+  const tgFrame = M.cwrap("tg_frame", "number", ["number", "number", "number", "number", "number", "number", "number"]);
   const tgRgba = M.cwrap("tg_rgba", "number", []);
   const tgFps = M.cwrap("tg_fps", "number", []);
 
@@ -44,6 +44,20 @@
   }
 
   const keyMap = { a: [0, -1], d: [0, 1], j: [1, -1], l: [1, 1] };
+  // Arrow keys tilt the board (held keys lean it all the way); space shakes it.
+  const tiltKeys = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [1, -1], ArrowDown: [1, 1] };
+  const tiltHeld = new Set();
+  let shake = 0;
+  addEventListener("keydown", (e) => {
+    if (tiltKeys[e.key]) { tiltHeld.add(e.key); e.preventDefault(); }
+    if (e.key === " " && !e.repeat) { shake = 1; e.preventDefault(); }
+  });
+  addEventListener("keyup", (e) => tiltHeld.delete(e.key));
+  function tiltNow() {
+    const t = [0, 0];
+    for (const k of tiltHeld) t[tiltKeys[k][0]] += tiltKeys[k][1];
+    return t;
+  }
   const clickKey = { s: 0, k: 1 };
   addEventListener("keydown", (e) => {
     const k = e.key.toLowerCase();
@@ -118,7 +132,9 @@
     let steps = 0;
     while (now >= nextFrame && steps < 2 && running) {
       const bits = knobs.map((k) => (k.pressed ? 1 : 0) | (k.down ? 2 : 0) | (k.released ? 4 : 0));
-      running = tgFrame(knobs[0].delta, knobs[1].delta, bits[0], bits[1]) === 0;
+      const t = tiltNow();
+      running = tgFrame(knobs[0].delta, knobs[1].delta, bits[0], bits[1], t[0], t[1], shake) === 0;
+      shake = 0;
       knobs.forEach((k) => { k.delta = 0; k.pressed = false; k.released = false; });
       nextFrame += period;
       steps++;

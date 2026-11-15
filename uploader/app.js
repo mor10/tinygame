@@ -12,7 +12,7 @@
   let sink = [];
   const M = await TinyGame({ print: (l) => sink.push(l), printErr: (l) => sink.push(l) });
   const tgLoad = M.cwrap("tg_load", "number", ["number", "number", "number", "number"]);
-  const tgFrame = M.cwrap("tg_frame", "number", ["number", "number", "number", "number"]);
+  const tgFrame = M.cwrap("tg_frame", "number", ["number", "number", "number", "number", "number", "number", "number"]);
   const tgRgba = M.cwrap("tg_rgba", "number", []);
   const preview = $("preview").getContext("2d");
   const previewImg = preview.createImageData(320, 172);
@@ -31,7 +31,7 @@
     const ptr = M.stringToNewUTF8(src);
     let ok = tgLoad(ptr, bytes, 1, 0) === 0;
     M._free(ptr);
-    for (let f = 0; ok && f < CHECK_FRAMES; f++) ok = tgFrame(0, 0, 0, 0) === 0;
+    for (let f = 0; ok && f < CHECK_FRAMES; f++) ok = tgFrame(0, 0, 0, 0, 0, 0, 0) === 0;
     drawPreview();
     const err = sink.map(tryJson).find((j) => j && j.t === "error");
     return { ok: ok && !err, error: err, logs: sink.map(tryJson).filter((j) => j && j.t === "log") };

@@ -10,14 +10,14 @@ const TinyGame = require(path.join(__dirname, "..", "build-web", "tinygame.js"))
   const frames = parseInt(framesArg || "300", 10), seed = parseInt(seedArg || "0", 10);
   const M = await TinyGame({ print: (l) => { if (!l.includes('"t":"stats"')) console.log(l); } });
   const load = M.cwrap("tg_load", "number", ["number", "number", "number", "number"]);
-  const frame = M.cwrap("tg_frame", "number", ["number", "number", "number", "number"]);
+  const frame = M.cwrap("tg_frame", "number", ["number", "number", "number", "number", "number", "number", "number"]);
   const hash = M.cwrap("tg_hash", "number", []);
   const src = fs.readFileSync(cart, "utf8");
   const ptr = M.stringToNewUTF8(src);
   let ok = load(ptr, M.lengthBytesUTF8(src), 1, seed) === 0;
   let n = 0;
   while (ok && n < frames) {
-    ok = frame(0, 0, 0, 0) === 0;
+    ok = frame(0, 0, 0, 0, 0, 0, 0) === 0;
     if (!ok) break;
     n++;
     if (n % 30 === 0 || n === 1 || n === frames)

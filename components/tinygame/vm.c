@@ -111,6 +111,8 @@ static int l_clear(lua_State *L) { gfx_clear(lua_isnoneornil(L, 1) ? 0 : arg_col
 static int l_pixel(lua_State *L) { gfx_pixel(arg_int(L, 1), arg_int(L, 2), arg_color(L, 3)); return 0; }
 static int l_line(lua_State *L) { gfx_line(arg_int(L, 1), arg_int(L, 2), arg_int(L, 3), arg_int(L, 4), arg_color(L, 5)); return 0; }
 static int l_rect(lua_State *L) { gfx_rect(arg_int(L, 1), arg_int(L, 2), arg_int(L, 3), arg_int(L, 4), arg_color(L, 5)); return 0; }
+static int l_circle(lua_State *L) { gfx_circle(arg_int(L, 1), arg_int(L, 2), arg_int(L, 3), arg_color(L, 4), 0); return 0; }
+static int l_fill_circle(lua_State *L) { gfx_circle(arg_int(L, 1), arg_int(L, 2), arg_int(L, 3), arg_color(L, 4), 1); return 0; }
 static int l_fill_rect(lua_State *L) { gfx_fill_rect(arg_int(L, 1), arg_int(L, 2), arg_int(L, 3), arg_int(L, 4), arg_color(L, 5)); return 0; }
 
 static int l_text(lua_State *L)
@@ -149,6 +151,20 @@ static int l_pressed(lua_State *L)  { lua_pushboolean(L, in.pressed[arg_side(L, 
 static int l_held(lua_State *L)     { lua_pushboolean(L, in.down[arg_side(L, 1)]); return 1; }
 static int l_released(lua_State *L) { lua_pushboolean(L, in.released[arg_side(L, 1)]); return 1; }
 static int l_long(lua_State *L)     { lua_pushboolean(L, in.long_press[arg_side(L, 1)]); return 1; }
+
+// ---------- API: tilt ----------
+static float tilt_zero[2];   // tilt.zero() makes the current tilt the new level
+
+static float tilt_axis(int i)
+{
+    float v = in.tilt[i] - tilt_zero[i];
+    return v < -1.f ? -1.f : v > 1.f ? 1.f : v;
+}
+
+static int l_tilt_x(lua_State *L)     { lua_pushnumber(L, tilt_axis(0)); return 1; }
+static int l_tilt_y(lua_State *L)     { lua_pushnumber(L, tilt_axis(1)); return 1; }
+static int l_tilt_shake(lua_State *L) { lua_pushboolean(L, in.shake); return 1; }
+static int l_tilt_zero(lua_State *L)  { tilt_zero[0] = in.tilt[0]; tilt_zero[1] = in.tilt[1]; (void)L; return 0; }
 
 // ---------- API: sys ----------
 static uint32_t frame_no;
@@ -226,7 +242,7 @@ static void open_sandbox(lua_State *L, const char *save_id)
 
     static const luaL_Reg gfx_fns[] = {
         { "clear", l_clear }, { "pixel", l_pixel }, { "line", l_line }, { "rect", l_rect },
-        { "fill_rect", l_fill_rect }, { "text", l_text }, { "text_width", l_text_width }, { NULL, NULL },
+        { "fill_rect", l_fill_rect }, { "circle", l_circle }, { "fill_circle", l_fill_circle }, { "text", l_text }, { "text_width", l_text_width }, { NULL, NULL },
     };
     static const luaL_Reg knob_fns[] = {
         { "turn", l_turn }, { "pos", l_pos }, { "speed", l_speed }, { "pressed", l_pressed },
@@ -242,6 +258,10 @@ static void open_sandbox(lua_State *L, const char *save_id)
     make_readonly(L, "map");  lua_setglobal(L, "map");
     make_readonly(L, "gfx");  lua_setglobal(L, "gfx");
     luaL_newlib(L, knob_fns); make_readonly(L, "knob"); lua_setglobal(L, "knob");
+    static const luaL_Reg tilt_fns[] = {
+        { "x", l_tilt_x }, { "y", l_tilt_y }, { "shake", l_tilt_shake }, { "zero", l_tilt_zero }, { NULL, NULL },
+    };
+    luaL_newlib(L, tilt_fns); make_readonly(L, "tilt"); lua_setglobal(L, "tilt");
     luaL_newlib(L, sys_fns);  make_readonly(L, "sys");  lua_setglobal(L, "sys");
     save_open(L, save_id, plat_time_us());
     make_readonly(L, "save"); lua_setglobal(L, "save");
@@ -385,6 +405,45 @@ static int cart_fps(lua_State *L, int *fps)
     return LUA_OK;
 }
 
+// ---------- strict globals (checking only) ----------
+// Names from other consoles and languages, with what to use instead.
+static const char *const HINTS[][2] = {
+    { "btn", "use knob.pressed(\"left\"), knob.held(...) or knob.turn(...)" },
+    { "btnp", "use knob.pressed(\"left\") or knob.turn(...)" },
+    { "spr", "use gfx.sprite(name, x, y)" }, { "cls", "use gfx.clear(colour)" },
+    { "pset", "use gfx.pixel(x, y, colour)" }, { "rectfill", "use gfx.fill_rect(x, y, w, h, colour)" },
+    { "rect", "use gfx.rect(x, y, w, h, colour)" }, { "circfill", "use gfx.fill_circle(x, y, r, colour)" },
+    { "circ", "use gfx.circle(x, y, r, colour)" }, { "line", "use gfx.line(x1, y1, x2, y2, colour)" },
+    { "rnd_float", "use rnd(n)" }, { "random", "use rnd(n) or rnd_int(a, b)" }, { "flr", "use math.floor(x)" },
+    { "abs", "use math.abs(x)" }, { "min", "use math.min(a, b)" }, { "max", "use math.max(a, b)" },
+    { "sin", "use math.sin(x) (radians)" }, { "cos", "use math.cos(x) (radians)" }, { "sqrt", "use math.sqrt(x)" },
+    { "love", "TinyGame isn't LOVE2D: see gfx, knob, tilt and save" }, { "os", "use sys.time() for time" },
+    { "io", "use save.set/save.get to keep data" }, { "require", "put everything in one file" },
+    { "screen_width", "use gfx.W" }, { "screen_height", "use gfx.H" }, { "width", "use gfx.W" }, { "height", "use gfx.H" },
+};
+
+static int strict_index(lua_State *L)
+{
+    lua_Debug ar;
+    // Only Lua code is checked; the host and C functions read globals that may legitimately be absent.
+    if (!lua_getstack(L, 1, &ar) || !lua_getinfo(L, "Sl", &ar) || ar.what[0] == 'C') return 0;
+    const char *k = lua_tostring(L, 2);
+    if (!k) return 0;
+    for (size_t i = 0; i < sizeof HINTS / sizeof HINTS[0]; i++)
+        if (!strcmp(k, HINTS[i][0])) return luaL_error(L, "unknown name '%s': %s", k, HINTS[i][1]);
+    return luaL_error(L, "unknown name '%s' (a typo, or a variable used before it's set?)", k);
+}
+
+static void make_strict(lua_State *L)
+{
+    lua_pushglobaltable(L);
+    lua_newtable(L);
+    lua_pushcfunction(L, strict_index);
+    lua_setfield(L, -2, "__index");
+    lua_setmetatable(L, -2);
+    lua_pop(L, 1);
+}
+
 // ---------- lifecycle ----------
 static uint32_t last_update_us, last_draw_us, last_gc_us;
 
@@ -430,6 +489,7 @@ int vm_start(const char *src, size_t len, const char *name, const vm_opts_t *opt
     cart_t0 = plat_time_us();
     frame_no = 0;
     memset(&in, 0, sizeof in);
+    memset(tilt_zero, 0, sizeof tilt_zero);
     memset(notch_acc, 0, sizeof notch_acc);
     memset(notches, 0, sizeof notches);
 
@@ -443,6 +503,7 @@ int vm_start(const char *src, size_t len, const char *name, const vm_opts_t *opt
         if (st == LUA_OK) lua_pop(L, 1); else lua_remove(L, -2);
     }
     if (st == LUA_OK) st = run_chunk(L, opts->prelude, opts->prelude_len, "=prelude");
+    if (st == LUA_OK && opts->strict) make_strict(L);
     if (st == LUA_OK) st = run_chunk(L, src, len, "=game");
     if (st == LUA_OK) st = pcall_c(L, engine_load_assets);
     if (st == LUA_OK) st = cart_fps(L, &fps);
@@ -539,6 +600,7 @@ void vm_stopped_by_user(void)
 }
 
 vm_err_t vm_error(void) { return err_kind; }
+const char *vm_error_message(int *line) { if (line) *line = err_line; return err_msg; }
 int      vm_fps(void) { return cart_fps_v; }
 void     vm_set_measured_fps(float f) { fps_now = f; }
 uint32_t vm_frame_count(void) { return frame_no; }
