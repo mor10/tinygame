@@ -21,8 +21,12 @@ usage() { sed -n '3,14p' "$ROOT/tg" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 build_sim() {
   command -v cmake >/dev/null || { echo "tg: cmake is needed (macOS: brew install cmake)"; exit 2; }
-  cmake -S "$ROOT/sim" -B "$ROOT/sim/build" -DCMAKE_BUILD_TYPE=Release >/dev/null
-  cmake --build "$ROOT/sim/build" -j 4 >/dev/null
+  local log="$ROOT/sim/build-log.txt"
+  if ! { cmake -S "$ROOT/sim" -B "$ROOT/sim/build" -DCMAKE_BUILD_TYPE=Release && cmake --build "$ROOT/sim/build" -j 4; } >"$log" 2>&1; then
+    tail -20 "$log"
+    echo "tg: the simulator didn't build (full log: sim/build-log.txt)"
+    exit 2
+  fi
 }
 
 need_sim() { [ -x "$SIM" ] || { echo "tg: building the simulator first..."; build_sim; }; }
