@@ -3,13 +3,15 @@
 > A pocket game console for kids and parents: a 320x172 screen, two endless clicky knobs, a tilt
 > sensor, and games ("carts") written as single Lua 5.4 files with help from an AI.
 
-To write a game, read the API card and copy patterns from the examples. Check every cart with
-`sim/build/tinygame-sim --check cart.lua --png shot.png` before sending it to the console.
+To write a game, read the API card and copy patterns from the examples. New games go in `games/`.
+Check every cart with `./tg check games/<name>.lua` (screenshot in `out/<name>.png`) before
+sending it to the console with `./tg send games/<name>.lua`.
 
 ## Writing carts
 
 - [API card](docs/api-card.md): everything a cart can use, the limits, and a list of things not to do
-- [How to make a cart, step by step](.claude/skills/make-a-tinygame/SKILL.md): the write, check, look and fix loop
+- [How to make a cart, step by step](AGENTS.md): the write, check, look and fix loop
+- [Template](games/_template.lua): the starting point for a new game
 
 ## Example carts
 

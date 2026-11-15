@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Send a .lua cart to the TinyTwist console over USB serial and print its JSON output.
 
-Usage: send_cart.py PORT CART.lua [--seconds N] [--raw-bytes HEX]
+Usage: send_cart.py PORT CART.lua [--id NAME] [--seconds N] [--raw-bytes HEX]
+The cart is stored on the board as /carts/<id>.lua (default: the file name) and starts playing.
 Opening the port resets the board, so the script waits for the boot line first.
 Needs pyserial (the ESP-IDF Python environment has it).
 """
@@ -14,6 +15,7 @@ ap.add_argument("cart", nargs="?")
 ap.add_argument("--seconds", type=float, default=4.0, help="how long to print output after sending")
 ap.add_argument("--timestamps", action="store_true", help="prefix each line with ms since the cart was sent")
 ap.add_argument("--raw-bytes", help="send these hex bytes as the cart instead of a file (for tests)")
+ap.add_argument("--id", help="name on the board: 1-31 of a-z 0-9 _ - (default: from the file name)")
 a = ap.parse_args()
 
 if a.raw_bytes:
@@ -31,7 +33,9 @@ while b'"t":"boot"' not in buf and time.time() < t_end:
     buf += p.read(4096)
 time.sleep(0.8)              # let the built-in cart start
 p.read(65536)
-p.write(b"cart %d\n" % len(data))
+import os, re
+cart_id = a.id or re.sub(r"[^a-z0-9_-]+", "-", os.path.splitext(os.path.basename(a.cart or "uploaded"))[0].lower()).strip("-")[:31] or "uploaded"
+p.write(b"cart %d %s\n" % (len(data), cart_id.encode()))
 p.write(data)
 t_sent = time.time()
 t_end = t_sent + a.seconds

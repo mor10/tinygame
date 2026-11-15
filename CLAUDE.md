@@ -1,5 +1,7 @@
 # TinyTwist / TinyGame — working notes for Claude Code
 
+**Making or changing a game? Follow `AGENTS.md` (the `make-a-tinygame` skill points there) and use `./tg`.** The rest of this file is about the console, the engine and the tools.
+
 TinyGame is a pocket game console for kids and parents to build, play and share games with AI help.
 Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
 
@@ -38,7 +40,7 @@ Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
 **Phase 8 (audio): not planned.** Audio is a hypothetical future feature, not something to build on the 1.47 or 1.69 boards in their current configuration. There is no `sfx`/`music` API and no Sound setting.
 
 **Phase 9 (WebSerial uploader): done (2026-11-14).** `uploader/` is a static page for Chrome or Edge. It checks a cart for three seconds in the WASM engine with a live preview, shows errors with the code around the line, and copies a ready-made request for an AI helper. It then sends the cart over Web Serial with the console's own commands (`cart <bytes> <id>`, `play`, `rm`, `ls`). Connect, send and play were tested by hand on the board.
-  - Serve the repository root over HTTP and open `/uploader/`. It loads `sim/build-web/tinygame.js`, so build the WASM engine first.
+  - Serve the repository root over HTTP and open `/uploader/`. It loads `web-engine/tinygame.js`, which is committed; `./tg serve` serves it.
 
 **Phase 10 (AI kit): done (2026-11-14).**
   - `docs/api-card.md` is the API card. `llms.txt` indexes it, and `.claude/skills/make-a-tinygame/SKILL.md` is the write, check, look and fix loop.
@@ -72,6 +74,9 @@ ML (MADCTL bit 0x10) may also change the panel's refresh direction, so test it i
 - `components/tinygame/`: the portable engine, plain C11 plus Lua with no ESP-IDF headers. It holds `vm.c` (the Lua host), `gfx.c`, `engine.c` and `prelude.lua`. Each target implements `include/platform.h`.
 - `console/`: the Lua console (the product firmware). It is the board platform plus the cart runner.
 - `sim/`: the simulator. It is the host platform plus a headless CLI.
+- `web-engine/`: the engine compiled to WebAssembly, committed so the browser pages work without Emscripten. `./tg web-build` rebuilds it, and so does building `sim/build-web`.
+- `games/`: user games. `_template.lua` is what `./tg new` copies.
+- `tg`: the helper command (setup, new, check, play, send, serve, web-build, flash). See `README.md`.
 
 ## Console: `console/` (ESP-IDF)
 
@@ -111,7 +116,7 @@ Build it with `cmake -S sim -B sim/build && cmake --build sim/build`.
 - `--storage DIR` keeps carts and saves in `DIR/carts` and `DIR/saves` (without it, saves last one run). `--runs R` plays a cart R times in a row to test saves across runs.
 - `sim/torture.py PORT [--cycles N]` resets the board at random moments while `save_torture` rewrites its save, and checks that every save survives.
 - Runs are deterministic: `math.random` is seeded, `sys.time()` follows the frame count, and input comes only from `--press` and `--turn`.
-- Browser build: Emscripten lives in `~/emsdk` (`source ~/emsdk/emsdk_env.sh`). Build with `emcmake cmake -S sim -B sim/build-web && cmake --build sim/build-web`. Then serve the repository root over HTTP (`python3 -m http.server 8766`) and open `/sim/web/`. The page runs carts live with keyboard (A/D/S and J/L/K), mouse or touch knobs, and takes dropped `.lua` files. WASM can't load from `file://`.
+- Browser build: Emscripten lives in `~/emsdk` (`source ~/emsdk/emsdk_env.sh`). Build with `./tg web-build` (or `emcmake cmake -S sim -B sim/build-web && cmake --build sim/build-web`), which refreshes `web-engine/`. Then `./tg serve` and open `/sim/web/`. The page runs carts live with keyboard (A/D/S and J/L/K), mouse or touch knobs, and takes dropped `.lua` files. WASM can't load from `file://`.
 - `node sim/web/hash_node.cjs CART.lua [frames] [seed]` prints the WASM engine's frame hashes for comparison with `tinygame-sim`.
 - `sim/compare.py PORT CART.lua [--frames N] [--seed S]` runs a cart on the board (`hash` command) and in the simulator, then compares hashes line by line. Run it with the ESP-IDF Python environment.
 - Both builds use `-ffp-contract=off` so float results match; the S3 FPU has a fused multiply-add.

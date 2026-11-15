@@ -3,7 +3,7 @@
 //   node sim/web/hash_node.cjs CART.lua [frames] [seed]
 const fs = require("fs");
 const path = require("path");
-const TinyGame = require(path.join(__dirname, "..", "build-web", "tinygame.js"));
+const TinyGame = require(path.join(__dirname, "..", "..", "web-engine", "tinygame.js"));
 
 (async () => {
   const [cart, framesArg, seedArg] = process.argv.slice(2);

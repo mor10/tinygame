@@ -38,6 +38,9 @@ if(EMSCRIPTEN)
   target_compile_definitions(tinygame-web PRIVATE LUA_32BITS=1)
   target_compile_options(tinygame-web PRIVATE -ffp-contract=off)
   set_target_properties(tinygame-web PROPERTIES OUTPUT_NAME tinygame)
+  # The pages load the committed copy in web-engine/, so a rebuild refreshes it.
+  add_custom_command(TARGET tinygame-web POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE_DIR:tinygame-web>/tinygame.js $<TARGET_FILE_DIR:tinygame-web>/tinygame.wasm ${ROOT}/web-engine/)
   target_link_options(tinygame-web PRIVATE
     -sMODULARIZE=1 -sEXPORT_NAME=TinyGame -sENVIRONMENT=web,node -sALLOW_MEMORY_GROWTH=1
     -sEXPORTED_RUNTIME_METHODS=cwrap,HEAPU8,stringToNewUTF8,lengthBytesUTF8

@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# tg: the TinyGame helper. Run it from anywhere in the repository.
+#
+#   ./tg setup                 build the simulator (needs cmake and a C compiler)
+#   ./tg new NAME              start a new game at games/NAME.lua from a small template
+#   ./tg check FILE            check a game; screenshot in out/NAME.png
+#   ./tg play FILE [options]   run a game with scripted input; screenshot in out/NAME-play.png
+#                              options: --frames N --turn left|right@FRAME:NOTCHES
+#                                       --press left|right@FRAME --tilt X,Y@FRAME
+#   ./tg send FILE             check it, then send it to a TinyGame plugged in over USB
+#   ./tg serve                 serve the browser simulator and the uploader on localhost:8766
+#   ./tg web-build             rebuild the browser engine in web-engine/ (needs Emscripten)
+#   ./tg flash                 build and flash the console firmware (needs ESP-IDF)
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SIM="$ROOT/sim/build/tinygame-sim"
+OUT="$ROOT/out"
+
+usage() { sed -n '3,14p' "$ROOT/tg" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+
+build_sim() {
+  command -v cmake >/dev/null || { echo "tg: cmake is needed (macOS: brew install cmake)"; exit 2; }
+  cmake -S "$ROOT/sim" -B "$ROOT/sim/build" -DCMAKE_BUILD_TYPE=Release >/dev/null
+  cmake --build "$ROOT/sim/build" -j 4 >/dev/null
+}
+
+need_sim() { [ -x "$SIM" ] || { echo "tg: building the simulator first..."; build_sim; }; }
+
+game_name() { local b; b="$(basename "$1")"; echo "${b%.*}"; }
+
+need_file() { [ -n "${1:-}" ] && [ -f "$1" ] || { echo "tg: no such file: ${1:-(none)}"; exit 2; }; }
+
+# A Python with pyserial: the ESP-IDF one if it's installed, else the system python3.
+serial_python() {
+  for p in "$HOME"/.espressif/python_env/*/bin/python python3; do
+    if command -v "$p" >/dev/null 2>&1 && "$p" -c "import serial" 2>/dev/null; then echo "$p"; return; fi
+  done
+  echo "tg: sending needs pyserial: python3 -m pip install pyserial" >&2
+  exit 2
+}
+
+board_port() {
+  local p
+  p="$(ls /dev/cu.usbmodem* /dev/ttyACM* 2>/dev/null | head -1 || true)"
+  [ -n "$p" ] || { echo "tg: no TinyGame found on USB. Plug it in (and close the uploader page if it's connected)." >&2; exit 2; }
+  echo "$p"
+}
+
+# Human summary of the checker's JSON lines on stdin.
+summarize() {
+  python3 -c '
+import json, sys
+ok = True
+for line in sys.stdin:
+    if not line.startswith("{"): continue
+    j = json.loads(line)
+    if j["t"] == "check":
+        where = "" if j["line"] < 0 else " line %d:" % j["line"]
+        print("  %s%s %s" % ("ERROR  " if j["level"] == "error" else "warning", where, j["msg"]))
+    elif j["t"] == "check_done":
+        ok = bool(j["ok"])
+        print("  %s: %d error(s), %d warning(s)" % ("PASS" if ok else "FAIL", j["errors"], j["warnings"]))
+    elif j["t"] == "log":
+        print("  log:", j["msg"])
+sys.exit(0 if ok else 1)'
+}
+
+cmd="${1:-help}"
+shift || true
+case "$cmd" in
+  setup)
+    build_sim
+    echo "Simulator built: sim/build/tinygame-sim"
+    "$SIM" --check "$ROOT/console/carts/examples/rocks.lua" | summarize >/dev/null && echo "Example game checks out. Ready."
+    ;;
+  new)
+    name="${1:-}"
+    [[ "$name" =~ ^[a-z0-9_-]{1,31}$ ]] || { echo "tg: name the game with 1-31 of a-z 0-9 _ - (e.g. ./tg new space-cats)"; exit 2; }
+    f="$ROOT/games/$name.lua"
+    [ -e "$f" ] && { echo "tg: games/$name.lua already exists"; exit 2; }
+    cp "$ROOT/games/_template.lua" "$f"
+    echo "Created games/$name.lua. Edit it, then: ./tg check games/$name.lua"
+    ;;
+  check)
+    need_file "${1:-}"; need_sim; mkdir -p "$OUT"
+    png="$OUT/$(game_name "$1").png"
+    echo "Checking $1"
+    "$SIM" --check "$1" --png "$png" | summarize && rc=0 || rc=$?
+    echo "  screenshot: ${png#$ROOT/}"
+    exit $rc
+    ;;
+  play)
+    need_file "${1:-}"; need_sim; mkdir -p "$OUT"
+    f="$1"; shift
+    png="$OUT/$(game_name "$f")-play.png"
+    args=("$@")
+    [[ " ${args[*]-} " == *" --frames "* ]] || args+=(--frames 150)
+    "$SIM" "$f" "${args[@]}" --png "$png" | python3 -c '
+import json, sys
+for line in sys.stdin:
+    if not line.startswith("{"): continue
+    j = json.loads(line)
+    if j["t"] == "log": print("  log:", j["msg"])
+    if j["t"] == "error": print("  ERROR line %s: %s" % (j.get("line"), j.get("msg")))
+    if j["t"] == "done": print("  ran %d frames%s" % (j["frames"], "" if j["ok"] else " (stopped on an error)"))'
+    echo "  screenshot: ${png#$ROOT/}"
+    ;;
+  send)
+    need_file "${1:-}"
+    "$0" check "$1" || { echo "tg: fix the errors before sending (the TinyGame would show the same error)"; exit 1; }
+    port="$(board_port)"
+    py="$(serial_python)"
+    echo "Sending to the TinyGame on $port"
+    "$py" "$ROOT/console/tools/send_cart.py" "$port" "$1" --seconds 3 | python3 -c '
+import json, sys
+for line in sys.stdin:
+    if not line.startswith("{"): continue
+    j = json.loads(line)
+    if j["t"] == "stored": print("  stored as %s and playing now" % j["id"])
+    if j["t"] == "log": print("  log:", j["msg"])
+    if j["t"] == "error" and j.get("kind") != "save": print("  ERROR:", j.get("msg"), "(line %s)" % j.get("line", "?"))'
+    ;;
+  serve)
+    echo "Browser simulator: http://localhost:8766/sim/web/"
+    echo "Uploader (Chrome or Edge): http://localhost:8766/uploader/"
+    echo "Ctrl-C to stop."
+    cd "$ROOT" && exec python3 -m http.server 8766 --bind 127.0.0.1
+    ;;
+  web-build)
+    command -v emcmake >/dev/null || { [ -f "$HOME/emsdk/emsdk_env.sh" ] && source "$HOME/emsdk/emsdk_env.sh" >/dev/null 2>&1; }
+    command -v emcmake >/dev/null || { echo "tg: Emscripten is needed (https://emscripten.org/docs/getting_started/)"; exit 2; }
+    emcmake cmake -S "$ROOT/sim" -B "$ROOT/sim/build-web" >/dev/null
+    cmake --build "$ROOT/sim/build-web" -j 4 >/dev/null
+    echo "Browser engine rebuilt in web-engine/"
+    ;;
+  flash)
+    [ -f "$HOME/esp/esp-idf/export.sh" ] || { echo "tg: ESP-IDF v5.5 is needed in ~/esp/esp-idf (see README.md)"; exit 2; }
+    port="$(board_port)"
+    # shellcheck disable=SC1091
+    source "$HOME/esp/esp-idf/export.sh" >/dev/null 2>&1
+    idf.py -C "$ROOT/console" -p "$port" build flash
+    ;;
+  help|-h|--help) usage ;;
+  *) echo "tg: unknown command '$cmd'"; usage 2 ;;
+esac
