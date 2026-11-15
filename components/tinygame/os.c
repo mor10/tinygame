@@ -15,6 +15,7 @@ typedef struct {
     char id[32];            // save id, and the file name for stored carts
     char *src;              // owned copy for an upload that couldn't be stored, else NULL
     const char *csrc;       // built-in source compiled into the firmware, else NULL
+    int diag;               // a diagnostic or test, listed under Settings > Diagnostics instead of Games
     int stored;             // source lives on the carts volume and is read at launch
     size_t len;
     char title[24], tagline[48];
@@ -32,6 +33,8 @@ static int safe;
 static os_mode_t mode = OS_WELCOME;
 static int focus = 1;                 // focused item on the current screen
 static int pick;                      // gallery selection; -1 is the "<" back item
+static int clampi(int v, int lo, int hi);
+static int diag_sel;                  // Diagnostics selection; -1 is the back item
 static int last_game = -1;            // index of the game playing or last played
 static int settings_row = 1;
 static os_mode_t settings_from = OS_WELCOME;
@@ -40,8 +43,11 @@ static uint8_t *frozen;               // the game frame behind the pause menu
 static int hash_left;
 
 // No SOUND row: this hardware has no audio, and a control that does nothing would confuse kids.
-static const char *SETTINGS_ROWS[] = { "Light", "Hands", "Back" };
-enum { ROW_LIGHT = 1, ROW_HANDS, ROW_BACK, NSETTINGS = ROW_BACK };
+static const char *SETTINGS_ROWS[] = { "Light", "Hands", "Diagnostics", "Back" };
+enum { ROW_LIGHT = 1, ROW_HANDS, ROW_DIAG, ROW_BACK };
+// Diagnostics is only offered from the Welcome screen, not from a game's pause menu.
+static int srows(void) { return settings_from == OS_PAUSED ? 3 : 4; }
+static int srow(int i) { return settings_from == OS_PAUSED && i == 3 ? ROW_BACK : i; }
 
 // ---------- carts ----------
 static int hexval(char c)
@@ -86,12 +92,32 @@ static void scan(entry_t *e, const char *src, size_t len, const char *fallback)
         snprintf(e->title, sizeof e->title, "%s", m->title);
         snprintf(e->tagline, sizeof e->tagline, "%s", m->tagline);
         decode_icon(e, m->icon);
+        e->diag = m->diagnostic;
     } else {
         snprintf(e->title, sizeof e->title, "%s", fallback);
         e->tagline[0] = 0;
         e->icon_w = e->icon_h = 0;
     }
+    if (!strcmp(e->id, "colorcard")) e->diag = 1;   // the OS's own colour card
     plat_asset_free(m);
+}
+
+// Games and diagnostics are listed apart: gl[] and dl[] hold indexes into carts[].
+static int gl[MAX_CARTS], ngl, dl[MAX_CARTS], ndl;
+
+static void rebuild(void)
+{
+    ngl = ndl = 0;
+    for (int i = 0; i < ncarts; i++) {
+        if (carts[i].diag) dl[ndl++] = i;
+        else gl[ngl++] = i;
+    }
+}
+
+static int gpos(int i)   // where cart i sits on the games shelf (0 if it isn't a game)
+{
+    for (int k = 0; k < ngl; k++) if (gl[k] == i) return k;
+    return 0;
 }
 
 static void announce(int i)
@@ -110,7 +136,9 @@ int os_add_cart(const char *src, size_t len, const char *id)
     e->len = len;
     scan(e, src, len, id);
     announce(ncarts);
-    return ncarts++;
+    ncarts++;
+    rebuild();
+    return ncarts - 1;
 }
 
 static int find_id(const char *id)
@@ -138,6 +166,7 @@ static int add_stored(const char *id)
     scan(e, src, len, id);
     plat_asset_free(src);
     announce(i);
+    rebuild();
     return i;
 }
 
@@ -442,26 +471,26 @@ static void draw_gallery(void)
     sky();
     back_arrow(pick < 0);
     text_l("Games", 44, 12, OS_WHITE, FONT_L);
-    if (ncarts == 0) { text_c("No games yet", SCREEN_W / 2, 76, OS_WHITE, FONT_L); footer("Browse", "Select", OS_WHITE); return; }
+    if (ngl == 0) { text_c("No games yet", SCREEN_W / 2, 76, OS_WHITE, FONT_L); footer("Browse", "Select", OS_WHITE); return; }
     char n[16];
-    snprintf(n, sizeof n, "%d / %d", (pick < 0 ? 0 : pick) + 1, ncarts);
+    snprintf(n, sizeof n, "%d / %d", (pick < 0 ? 0 : pick) + 1, ngl);
     text_r(n, SCREEN_W - 12, 15, OS_WHITE, FONT_S);
     int p = pick < 0 ? 0 : pick;
     int base = 118;   // bottom edge shared by all cartridges
     int sel_x = (SCREEN_W - SHELF_SEL_W) / 2;
-    for (int i = 0; i < ncarts; i++) {
+    for (int i = 0; i < ngl; i++) {
         int sel = i == pick, w = sel ? SHELF_SEL_W : SHELF_W, h = sel ? SHELF_SEL_H : SHELF_H, x;
         if (i < p) x = sel_x - (p - i) * (SHELF_W + SHELF_GAP);
         else if (i == p) x = sel_x + (sel ? 0 : (SHELF_SEL_W - SHELF_W) / 2);
         else x = sel_x + SHELF_SEL_W + SHELF_GAP + (i - p - 1) * (SHELF_W + SHELF_GAP);
         if (x + w + SHADOW <= 0 || x >= SCREEN_W) continue;
-        cartridge(x, base - h, w, h, i);
-        draw_icon(&carts[i], x + w / 2, base - h + 11 + (h - 16) / 2, sel ? 4 : 3, 0);
+        cartridge(x, base - h, w, h, gl[i]);
+        draw_icon(&carts[gl[i]], x + w / 2, base - h + 11 + (h - 16) / 2, sel ? 4 : 3, 0);
     }
     if (pick < 0) {
         text_c("Back", SCREEN_W / 2, 132, OS_WHITE, FONT_L);
     } else {
-        const char *name = carts[pick].title;
+        const char *name = carts[gl[pick]].title;
         text_c(name, SCREEN_W / 2, 132, OS_WHITE, gfx_aa_width(name, FONT_L) <= SCREEN_W - 16 ? FONT_L : FONT_M);
     }
     footer("Browse", "Select", OS_WHITE);
@@ -469,13 +498,13 @@ static void draw_gallery(void)
 
 static void draw_card(void)
 {
-    const entry_t *e = &carts[pick];
+    const entry_t *e = &carts[gl[pick]];
     sky();
     back_arrow(focus == 0);
     char n[16];
-    snprintf(n, sizeof n, "%d / %d", pick + 1, ncarts);
+    snprintf(n, sizeof n, "%d / %d", pick + 1, ngl);
     text_r(n, SCREEN_W - 12, 15, OS_WHITE, FONT_S);
-    cartridge(12, 40, 126, 104, pick);
+    cartridge(12, 40, 126, 104, gl[pick]);
     draw_icon(e, 75, 40 + 11 + 44, 4, 0);
     text_l(e->title, 152, 40, OS_WHITE, gfx_aa_width(e->title, FONT_L) <= 160 ? FONT_L : FONT_M);
     wrap_text(e->tagline, 152, 70, 160, OS_WHITE, 3);
@@ -490,18 +519,40 @@ static void draw_settings(void)
     back_arrow(0);
     text_l("Settings", 44, 12, OS_WHITE, FONT_L);
     battery(SCREEN_W - 34, 10);
-    for (int i = 1; i <= NSETTINGS; i++) {
-        int y = 50 + (i - 1) * 34, on = settings_row == i;
-        const char *t = SETTINGS_ROWS[i - 1];
+    for (int i = 1; i <= srows(); i++) {
+        int y = 44 + (i - 1) * 30, on = settings_row == i;
+        const char *t = SETTINGS_ROWS[srow(i) - 1];
         text_l(t, 50, y, OS_WHITE, FONT_L);
         if (on) { pointer(30, y + 3, OS_WHITE); underline(50, y + 22, gfx_aa_width(t, FONT_L), OS_YELLOW); }
-        if (i == ROW_LIGHT)
+        if (srow(i) == ROW_LIGHT)
             for (int k = 0; k < 5; k++)
                 gfx_fill_rect(176 + k * 26, y + 3, 20, 12, k < (set.light + 1) / 2 ? OS_YELLOW : OS_INK);
-        else if (i == ROW_HANDS) text_r(set.left_handed ? "<  Left  >" : "<  Right  >", 300, y + 2, OS_WHITE, FONT_M);
+        else if (srow(i) == ROW_HANDS) text_r(set.left_handed ? "<  Left  >" : "<  Right  >", 300, y + 2, OS_WHITE, FONT_M);
     }
-    if (settings_row == ROW_BACK) back_arrow(1);
-    footer("Browse", settings_row == ROW_HANDS ? "Switch" : "Edit", OS_WHITE);
+    if (srow(settings_row) == ROW_BACK) back_arrow(1);
+    footer("Browse", srow(settings_row) == ROW_HANDS ? "Switch" : "Edit", OS_WHITE);
+}
+
+// Settings > Diagnostics: the colour card and test carts, kept off the Games shelf so nobody takes
+// them for games. A plain list that scrolls, with a back item at the top.
+#define DIAG_ROWS 4
+static void draw_diag(void)
+{
+    sky();
+    back_arrow(diag_sel < 0);
+    text_l("Diagnostics", 44, 12, OS_WHITE, FONT_L);
+    text_l("Tests for the console, not games", 44, 40, OS_MUTED, FONT_S);
+    if (ndl == 0) { text_c("Nothing here", SCREEN_W / 2, 86, OS_WHITE, FONT_M); footer("Browse", "Select", OS_WHITE); return; }
+    int top = clampi(diag_sel - DIAG_ROWS / 2, 0, ndl > DIAG_ROWS ? ndl - DIAG_ROWS : 0);
+    for (int r = 0; r < DIAG_ROWS && top + r < ndl; r++) {
+        int k = top + r, y = 62 + r * 24;
+        const char *t = carts[dl[k]].title;
+        text_l(t, 50, y, OS_WHITE, FONT_M);
+        if (k == diag_sel) { pointer(30, y, OS_WHITE); underline(50, y + 17, gfx_aa_width(t, FONT_M), OS_YELLOW); }
+    }
+    if (top > 0) text_r("^", SCREEN_W - 16, 62, OS_MUTED, FONT_S);
+    if (top + DIAG_ROWS < ndl) text_r("v", SCREEN_W - 16, 62 + (DIAG_ROWS - 1) * 24, OS_MUTED, FONT_S);
+    footer("Browse", "Select", OS_WHITE);
 }
 
 static void draw_level(void)
@@ -666,6 +717,9 @@ static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v;
 
 static void stop_game(void);
 
+// where leaving a game goes: back to the Games shelf, or to Diagnostics for a test cart
+static os_mode_t home_mode(void) { return last_game >= 0 && carts[last_game].diag ? OS_DIAG : OS_GALLERY; }
+
 static void launch(int i)
 {
     entry_t *e = &carts[i];
@@ -674,12 +728,11 @@ static void launch(int i)
         plat_get_gamma(&r, &g, &b);
         gam[0] = (int)(r * 100 + 0.5f); gam[1] = (int)(g * 100 + 0.5f); gam[2] = (int)(b * 100 + 0.5f);
         cc_page = 0; cc_chan = 0;
-        pick = i;
         go(OS_COLOURCARD, 1);
         return;
     }
     last_game = i;
-    pick = i;
+    if (!e->diag) pick = gpos(i);
     vm_opts_t o = base;
     o.deterministic = hash_left > 0;
     o.save_id = e->id;
@@ -733,7 +786,7 @@ static int valid_id(const char *id)
 static void stop_game(void)
 {
     if (mode == OS_GAME || mode == OS_PAUSED || mode == OS_ERROR) vm_stop();
-    mode = OS_GALLERY;
+    mode = home_mode();
 }
 
 int os_run_source(const char *src, size_t len, const char *id)
@@ -762,6 +815,7 @@ int os_run_source(const char *src, size_t len, const char *id)
         e->len = len;
         scan(e, e->src, len, id);
         announce(i);
+        rebuild();
     }
     if (i < 0) return -1;
     launch(i);
@@ -791,8 +845,10 @@ int os_delete(const char *id)
     plat_asset_free(carts[i].src);
     memmove(&carts[i], &carts[i + 1], sizeof carts[0] * (ncarts - i - 1));
     ncarts--;
+    rebuild();
     if (last_game > i) last_game--;
-    if (pick >= ncarts) pick = ncarts - 1;
+    if (pick >= ngl) pick = ngl - 1;
+    if (diag_sel >= ndl) diag_sel = ndl - 1;
     return 0;
 }
 
@@ -815,25 +871,33 @@ void os_frame(const os_input_t *oi)
         focus = clampi(focus + notches, 1, 3);
         if (focus == 2 && last_game < 0 && notches) focus = notches > 0 ? 3 : 1;   // Resume is greyed out
         if (select) {
-            if (focus == 1) { pick = last_game >= 0 ? last_game : 0; go(OS_GALLERY, 1); }
+            if (focus == 1) { pick = last_game >= 0 && !carts[last_game].diag ? gpos(last_game) : 0; go(OS_GALLERY, 1); }
             else if (focus == 2 && last_game >= 0) launch(last_game);
             else if (focus == 3) { settings_from = OS_WELCOME; settings_row = 1; go(OS_SETTINGS, 1); }
         }
         break;
     case OS_GALLERY:
-        pick = clampi(pick + notches, -1, ncarts - 1);
+        pick = clampi(pick + notches, -1, ngl - 1);
         if (select) { if (pick < 0) { pick = 0; go(OS_WELCOME, 1); } else go(OS_CARD, 1); }
         break;
     case OS_CARD:
         focus = clampi(focus + notches, 0, 1);
-        if (select) { if (focus == 0) go(OS_GALLERY, 1); else launch(pick); }
+        if (select) { if (focus == 0) go(OS_GALLERY, 1); else launch(gl[pick]); }
         break;
     case OS_SETTINGS:
-        settings_row = clampi(settings_row + notches, 1, NSETTINGS);
+        settings_row = clampi(settings_row + notches, 1, srows());
         if (select) {
-            if (settings_row == ROW_LIGHT) go(OS_LEVEL, 1);
-            else if (settings_row == ROW_HANDS) { set.left_handed = !set.left_handed; notch_acc = 0; save_settings(); }
+            if (srow(settings_row) == ROW_LIGHT) go(OS_LEVEL, 1);
+            else if (srow(settings_row) == ROW_DIAG) { diag_sel = ndl > 0 ? 0 : -1; go(OS_DIAG, 1); }
+            else if (srow(settings_row) == ROW_HANDS) { set.left_handed = !set.left_handed; notch_acc = 0; save_settings(); }
             else { save_settings(); go(settings_from, settings_from == OS_PAUSED ? 2 : 3); }
+        }
+        break;
+    case OS_DIAG:
+        diag_sel = clampi(diag_sel + notches, -1, ndl - 1);
+        if (select) {
+            if (diag_sel < 0) { diag_sel = 0; settings_row = ROW_DIAG; go(OS_SETTINGS, ROW_DIAG); }
+            else launch(dl[diag_sel]);
         }
         break;
     case OS_LEVEL:
@@ -850,7 +914,7 @@ void os_frame(const os_input_t *oi)
             hash_left--;
             return;            // the game drew this frame
         }
-        if (oi->chord_exit) { vm_stop(); go(OS_GALLERY, 1); break; }
+        if (oi->chord_exit) { vm_stop(); go(home_mode(), 1); break; }
         if (oi->chord_pause) {
             memcpy(frozen, plat_framebuffer(), SCREEN_W * SCREEN_H);
             pause_stat_n = vm_pause_stats(pause_stats, PAUSE_STATS_MAX);
@@ -863,7 +927,7 @@ void os_frame(const os_input_t *oi)
         return;                // the game drew this frame
     case OS_PAUSED:
         focus = clampi(focus + notches, 1, 3);
-        if (oi->chord_exit) { vm_stop(); go(OS_GALLERY, 1); break; }
+        if (oi->chord_exit) { vm_stop(); go(home_mode(), 1); break; }
         if (select) {
             if (focus == 1) {
                 memcpy(plat_framebuffer(), frozen, SCREEN_W * SCREEN_H);   // the game's last frame
@@ -871,11 +935,11 @@ void os_frame(const os_input_t *oi)
                 return;
             }
             if (focus == 2) { settings_from = OS_PAUSED; settings_row = 1; go(OS_SETTINGS, 1); }
-            else { vm_stop(); go(OS_GALLERY, 1); }
+            else { vm_stop(); go(home_mode(), 1); }
         }
         break;
     case OS_COLOURCARD:
-        if (oi->chord_pause || oi->chord_exit) { go(OS_GALLERY, 1); break; }
+        if (oi->chord_pause || oi->chord_exit) { go(OS_DIAG, 1); break; }
         if (cc_page == CC_TUNE && notches) {
             gam[cc_chan] = clampi(gam[cc_chan] + notches * 5, 30, 150);
             plat_set_gamma(gam[0] / 100.0f, gam[1] / 100.0f, gam[2] / 100.0f);
@@ -886,7 +950,7 @@ void os_frame(const os_input_t *oi)
         }
         break;
     case OS_ERROR:
-        if (select || oi->chord_exit) { vm_stop(); go(OS_GALLERY, 1); }
+        if (select || oi->chord_exit) { vm_stop(); go(home_mode(), 1); }
         break;
     }
 
@@ -895,6 +959,7 @@ void os_frame(const os_input_t *oi)
     case OS_GALLERY:  draw_gallery(); break;
     case OS_CARD:     draw_card(); break;
     case OS_SETTINGS: draw_settings(); break;
+    case OS_DIAG:     draw_diag(); break;
     case OS_LEVEL:    draw_level(); break;
     case OS_PAUSED:   draw_paused(); break;
     case OS_ERROR:    vm_draw_error_screen(); break;

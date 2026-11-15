@@ -623,6 +623,9 @@ int vm_scan(const char *src, size_t len, const vm_opts_t *opts, vm_meta_t *m)
             copy_field(L, "title", m->title, sizeof m->title);
             copy_field(L, "tagline", m->tagline, sizeof m->tagline);
             copy_field(L, "icon", m->icon, sizeof m->icon);
+            lua_getfield(L, -1, "diagnostic");
+            m->diagnostic = lua_toboolean(L, -1);
+            lua_pop(L, 1);
             ok = 1;
         }
         lua_pop(L, 1);

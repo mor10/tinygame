@@ -55,5 +55,5 @@ typedef struct { char label[20]; char value[24]; } vm_stat_t;
 int      vm_pause_stats(vm_stat_t *out, int max);
 
 // Reads a cart's title, tagline and icon art without running init(). Only while no cart runs.
-typedef struct { char title[24]; char tagline[48]; char icon[1024]; } vm_meta_t;
+typedef struct { char title[24]; char tagline[48]; char icon[1024]; int diagnostic; } vm_meta_t;   // diagnostic: cart.diagnostic = true (a test, not a game)
 int      vm_scan(const char *src, size_t len, const vm_opts_t *opts, vm_meta_t *m);   // 0 = has a cart table

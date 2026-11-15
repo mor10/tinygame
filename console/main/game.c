@@ -179,7 +179,7 @@ static void game_task(void *arg)
             display_take_stats(&ds);
             float fps = frames / ((now - window) / 1e6f);
             vm_set_measured_fps(fps);
-            static const char *modes[] = { "welcome", "gallery", "card", "settings", "level", "game", "paused", "error", "colourcard" };
+            static const char *modes[] = { "welcome", "gallery", "card", "settings", "level", "game", "paused", "error", "colourcard", "diagnostics" };
             printf("{\"t\":\"stats\",\"mode\":\"%s\",\"cart\":\"%s\",\"fps\":%.1f,\"late\":%d,\"update_us_max\":%u,"
                    "\"draw_us_max\":%u,\"gc_us_max\":%u,\"flush_us_avg\":%u,\"flush_us_max\":%u,\"kb_per_frame\":%.1f,"
                    "\"lua_kb\":%u,\"lua_int_kb\":%u,\"lua_peak_kb\":%u,\"assets_kb\":%u,\"frame_ms_p99\":%d,\"heap_int\":%u}\n",

@@ -23,7 +23,7 @@ typedef struct {
     uint8_t chord_pause, chord_exit;
 } os_input_t;
 
-typedef enum { OS_WELCOME, OS_GALLERY, OS_CARD, OS_SETTINGS, OS_LEVEL, OS_GAME, OS_PAUSED, OS_ERROR, OS_COLOURCARD } os_mode_t;
+typedef enum { OS_WELCOME, OS_GALLERY, OS_CARD, OS_SETTINGS, OS_LEVEL, OS_GAME, OS_PAUSED, OS_ERROR, OS_COLOURCARD, OS_DIAG } os_mode_t;
 
 void os_init(const vm_opts_t *opts, int safe_mode);
 int  os_add_cart(const char *src, size_t len, const char *id);   // a built-in cart; returns its index
