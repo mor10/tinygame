@@ -104,7 +104,7 @@ static int arg_int(lua_State *L, int i) { return (int)floorf((float)luaL_checknu
 static int arg_color(lua_State *L, int i)
 {
     lua_Integer c = luaL_checkinteger(L, i);
-    if (c < 0 || c > 15) luaL_error(L, "colour must be 0-15, got %d", (int)c);
+    if (c < 0 || c > 31) luaL_error(L, "colour must be 0-31, got %d", (int)c);
     return (int)c;
 }
 
@@ -327,22 +327,22 @@ static void wrap_text(const char *s, int x, int y, int max_chars, int c)
 
 void vm_draw_error_screen(void)
 {
-    gfx_clear(OS_WHITE);
+    gfx_clear(OS_BLUE);
     const char *title = err_kind == VM_ERR_STUCK ? "Your game got stuck"
                       : err_kind == VM_ERR_MEMORY ? "Out of memory"
                       : err_kind == VM_ERR_STOPPED ? "Game stopped"
                       : "Oops! Your game hit a bug.";
-    gfx_fill_rect(0, 0, SCREEN_W, 26, err_kind == VM_ERR_STOPPED ? OS_TEAL : OS_PINK);
+    gfx_fill_rect(0, 0, SCREEN_W, 26, err_kind == VM_ERR_STOPPED ? OS_GREEN : OS_RED);
     gfx_aa_text(title, 8, 7, OS_WHITE, FONT_M);
-    if (err_kind == VM_ERR_STUCK) wrap_text("Maybe a loop that never ends?", 10, 40, 50, OS_INK);
-    else if (err_kind == VM_ERR_STOPPED) wrap_text("Both knobs were held for 3 seconds.", 10, 40, 50, OS_INK);
-    else wrap_text(err_msg, 10, 40, 50, OS_INK);
+    if (err_kind == VM_ERR_STUCK) wrap_text("Maybe a loop that never ends?", 10, 40, 50, OS_WHITE);
+    else if (err_kind == VM_ERR_STOPPED) wrap_text("Both knobs were held for 3 seconds.", 10, 40, 50, OS_WHITE);
+    else wrap_text(err_msg, 10, 40, 50, OS_WHITE);
     if (err_line > 0) {
         char b[24];
         snprintf(b, sizeof b, "Line %d", err_line);
-        gfx_aa_text(b, 10, 100, OS_PINK, FONT_L);
+        gfx_aa_text(b, 10, 100, OS_YELLOW, FONT_L);
     }
-    gfx_aa_text("Click a knob to go back", 10, SCREEN_H - 22, OS_INK, FONT_M);
+    gfx_aa_text("Click a knob to go back", 10, SCREEN_H - 22, OS_WHITE, FONT_M);
 }
 
 // ---------- running a cart ----------

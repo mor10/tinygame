@@ -22,9 +22,9 @@ static uint8_t buf_a[LW * LH], buf_b[LW * LH], sent[LW * LH];
 static uint8_t *back = buf_a, *front = buf_b;
 static uint16_t pal_be[256];
 static uint32_t pal_src[256];   // colours as asked for, before the panel correction
-// This panel crushes green (and a little blue) in the mid-tones, so yellows turn orange. Each channel is
-// lifted with out = in^exponent; measured from a photo of the home screen, tune with the `gamma` command.
-static float gamma_exp[3] = { 0.90f, 0.65f, 0.80f };
+// This panel crushes the mid-tones, red most of all, so yellows turn orange. Each channel is lifted with
+// out = in^exponent. Tuned by eye against the Colour Card (SMPTE bars and ramps): 0.40 / 0.60 / 0.60.
+static float gamma_exp[3] = { 0.40f, 0.60f, 0.60f };
 static uint8_t lut[3][256];
 static SemaphoreHandle_t frame_ready, flush_done;
 static display_stats_t stats;
@@ -97,6 +97,8 @@ void display_set_color(int index, uint32_t rgb)
     pal_src[index] = rgb;
     store_color(index);
 }
+
+void display_get_gamma(float *r, float *g, float *b) { *r = gamma_exp[0]; *g = gamma_exp[1]; *b = gamma_exp[2]; }
 
 void display_set_gamma(float r, float g, float b)
 {

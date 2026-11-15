@@ -4,7 +4,9 @@
 (async () => {
   const $ = (id) => document.getElementById(id);
   const PALETTE = [0x000000, 0x1e2340, 0x3a3f4b, 0x8a8f99, 0xffffff, 0xf7f0dc, 0xe8604c, 0xc0392b,
-                   0xf2b632, 0xf08a3c, 0x5fb04b, 0x3fa89a, 0x9fd8cb, 0x3b6fd1, 0xf29bb0, 0x8a5a3c];
+                   0xf2b632, 0xf08a3c, 0x5fb04b, 0x3fa89a, 0x9fd8cb, 0x3b6fd1, 0xf29bb0, 0x8a5a3c,
+                   0xff2338, 0xff9500, 0xffe600, 0xa8f020, 0x00de5a, 0x00d9d0, 0x3db8ff, 0x2f5bff,
+                   0x0a2eb8, 0x9e3dff, 0xe73cff, 0xff2e93, 0xff86c0, 0xffd1e8, 0xffc29b, 0x4a0f5c];
   const CART_MAX = 128 * 1024;
   const CHECK_FRAMES = 90;   // three seconds at 30 fps
 
@@ -53,7 +55,7 @@
     const rows = m[1].split("\n").map((r) => r.trim()).filter(Boolean);
     const img = c.createImageData(16, 16);
     rows.slice(0, 16).forEach((row, y) => [...row.slice(0, 16)].forEach((ch, x) => {
-      const v = parseInt(ch, 16);
+      const v = parseInt(ch, 32);   // 0-9 and a-v are colours 0-31
       if (Number.isNaN(v)) return;
       const o = (y * 16 + x) * 4, rgb = PALETTE[v];
       img.data[o] = rgb >> 16; img.data[o + 1] = (rgb >> 8) & 255; img.data[o + 2] = rgb & 255; img.data[o + 3] = 255;

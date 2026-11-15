@@ -6,49 +6,60 @@
 #include "font.h"
 #include "font_aa.h"
 
-// Game palette (0-15), flat colours from the reference designs, then the OS "Sun Yellow" colours (16-25).
-static const uint32_t PALETTE[] = {
+// Game palette: 0-15 the original flat colours, 16-31 brighter and purer ones (with pinks for animals).
+static const uint32_t GAME[32] = {
     0x000000, 0x1E2340, 0x3A3F4B, 0x8A8F99, 0xFFFFFF, 0xF7F0DC, 0xE8604C, 0xC0392B,
     0xF2B632, 0xF08A3C, 0x5FB04B, 0x3FA89A, 0x9FD8CB, 0x3B6FD1, 0xF29BB0, 0x8A5A3C,
-    0x3A0B4D, 0xFFFFFF, 0xE8225F, 0x7A3CFF, 0xFFD23F, 0x00B8A9, 0x2D7BFF, 0xFF8A00, 0xA6516B, 0xFFEDE0,
+    0xFF2338, 0xFF9500, 0xFFE600, 0xA8F020, 0x00DE5A, 0x00D9D0, 0x3DB8FF, 0x2F5BFF,
+    0x0A2EB8, 0x9E3DFF, 0xE73CFF, 0xFF2E93, 0xFF86C0, 0xFFD1E8, 0xFFC29B, 0x4A0F5C,
+};
+// OS colours, in the order of the OS_INK enum.
+static const uint32_t OSPAL[11] = {
+    0x0A1450, 0xFFFFFF, 0xFF2338, 0x9E3DFF, 0xFFE600, 0x00DE5A, 0x0A2EB8, 0xFF9500, 0xB4C6FF, 0xD0DCFF, 0x2F5BFF,
 };
 static void set_color(int i, uint32_t rgb);
 static uint32_t pal_rgb_of(int i);
-static const uint32_t CUBES[3] = { 0xE8225F, 0x2D7BFF, 0x00B8A9 };   // top, left, right block
-static const uint32_t CARTS[5] = { 0x7A3CFF, 0x00B8A9, 0x2D7BFF, 0xE8225F, 0x3A0B4D };   // cartridge bodies
+static const uint32_t CUBES[3] = { 0xFFE600, 0xFF2338, 0x00DE5A };   // top, left, right block
+#define PALE_BLUE 0xD0DCFF
+#define OS_NAVY 0x0A1450
+static const uint32_t CARTS[5] = { 0xFF2338, 0xFFE600, 0x00DE5A, 0x9E3DFF, 0xFF9500 };   // cartridge bodies
 
-uint32_t gfx_palette_rgb(int index)
-{
-    if (index >= OS_CUBE) return index < 256 ? pal_rgb_of(index) : 0;
-    return index >= 0 && index < (int)(sizeof PALETTE / sizeof PALETTE[0]) ? PALETTE[index] : 0;
-}
+uint32_t gfx_palette_rgb(int index) { return index >= 0 && index < 256 ? pal_rgb_of(index) : 0; }
 
 void gfx_init_palette(void)
 {
-    for (int i = 0; i < (int)(sizeof PALETTE / sizeof PALETTE[0]); i++) set_color(i, PALETTE[i]);
-    for (int b = 0; b < 5; b++) {   // cartridge windows: the body colour, 25% brighter
-        uint32_t c = CARTS[b], out = 0;
-        for (int sh = 0; sh <= 16; sh += 8) {
+    for (int i = 0; i < 32; i++) set_color(i, GAME[i]);
+    for (int i = 0; i < 11; i++) set_color(OS_INK + i, OSPAL[i]);
+    for (int b = 0; b < 5; b++) {
+        uint32_t c = CARTS[b], tint = 0, tint2 = 0;
+        for (int sh = 0; sh <= 16; sh += 8) {   // icon windows: the body colour, 25% and 55% brighter
             uint32_t v = (c >> sh) & 0xFF;
-            out |= (v + (255 - v) / 4) << sh;
+            tint |= (v + (255 - v) / 4) << sh;
+            tint2 |= (v + (255 - v) * 55 / 100) << sh;
         }
-        set_color(OS_TINT + b, out);
+        set_color(OS_TINT + b, tint);
+        set_color(OS_TINT2 + b, tint2);
     }
-    for (int b = 0; b < 3; b++) {   // faces: lit top (30% white), the colour, shaded right (28% plum)
+    for (int b = 0; b < 6; b++) {   // drop-shadows: the box colour, 20% darker
+        uint32_t c = b < 5 ? CARTS[b] : PALE_BLUE, out = 0;
+        for (int sh = 0; sh <= 16; sh += 8) out |= (((c >> sh) & 0xFF) * 8 / 10) << sh;
+        set_color(OS_SHADE + b, out);
+    }
+    for (int b = 0; b < 3; b++) {   // hero block faces: lit top (30% white), the colour, shaded right (18% navy)
         uint32_t c = CUBES[b], top = 0, side = 0;
         for (int sh = 0; sh <= 16; sh += 8) {
-            uint32_t v = (c >> sh) & 0xFF, p = (0x3A0B4Du >> sh) & 0xFF;
+            uint32_t v = (c >> sh) & 0xFF, p = (OS_NAVY >> sh) & 0xFF;
             top |= (v * 7 / 10 + 255 * 3 / 10) << sh;
-            side |= (v * 72 / 100 + p * 28 / 100) << sh;
+            side |= (v * 82 / 100 + p * 18 / 100) << sh;
         }
         set_color(OS_CUBE + b * 3, top);
         set_color(OS_CUBE + b * 3 + 1, c);
         set_color(OS_CUBE + b * 3 + 2, side);
     }
-    for (int i = 0; i < 16; i++) {   // dimmed copies: 30% of the colour over the OS plum
-        uint32_t c = PALETTE[i], n = 0x3A0B4D, out = 0;
+    for (int i = 0; i < 32; i++) {   // dimmed copies of the game colours: 30% of the colour over the OS navy
+        uint32_t c = GAME[i], out = 0;
         for (int sh = 0; sh <= 16; sh += 8) {
-            uint32_t a = (c >> sh) & 0xFF, b = (n >> sh) & 0xFF;
+            uint32_t a = (c >> sh) & 0xFF, b = (OS_NAVY >> sh) & 0xFF;
             out |= ((a * 3 + b * 7) / 10) << sh;
         }
         set_color(OS_DIM + i, out);
@@ -58,7 +69,7 @@ void gfx_init_palette(void)
 // ---------- palette mirror and blended slots (for anti-aliased text) ----------
 static uint32_t pal_rgb[256];
 static uint32_t pal_rgb_of(int i) { return pal_rgb[i]; }
-#define BLEND_FIRST 72
+#define BLEND_FIRST 112
 static int blend_next = BLEND_FIRST;
 
 static void set_color(int i, uint32_t rgb) { pal_rgb[i] = rgb; plat_set_color(i, rgb); }
@@ -69,6 +80,12 @@ static int blend_slot(uint32_t rgb)
     if (blend_next >= 256) return -1;
     set_color(blend_next, rgb);
     return blend_next++;
+}
+
+int gfx_color(uint32_t rgb)
+{
+    int i = blend_slot(rgb & 0xFFFFFF);
+    return i < 0 ? 0 : i;
 }
 
 static inline uint8_t *fb(void) { return plat_framebuffer(); }

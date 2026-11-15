@@ -29,6 +29,8 @@ void *plat_asset_alloc(size_t n) { return heap_caps_malloc(n, MALLOC_CAP_SPIRAM 
 void  plat_asset_free(void *ptr) { heap_caps_free(ptr); }
 
 void plat_backlight(int percent) { display_backlight(percent); }
+void plat_set_gamma(float r, float g, float b) { display_set_gamma(r, g, b); }
+void plat_get_gamma(float *r, float *g, float *b) { display_get_gamma(r, g, b); }
 
 static int nvs_ready(void)
 {

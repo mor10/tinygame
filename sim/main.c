@@ -219,7 +219,7 @@ static int run_shell(const char **paths, int n, int frames, const char *png, int
         os_add_cart(src, len, id);
     }
     os_scan_storage();
-    static const char *modes[] = { "welcome", "gallery", "card", "settings", "level", "game", "paused", "error" };
+    static const char *modes[] = { "welcome", "gallery", "card", "settings", "level", "game", "paused", "error", "colourcard" };
     os_mode_t last = os_mode();
     for (int f = 1; f <= frames; f++) {
         os_input_t in;

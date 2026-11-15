@@ -91,8 +91,8 @@ static int pixel_value(char c)
 {
     if (c == '.') return GFX_CLEAR;
     if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'v') return c - 'a' + 10;   // a-v are colours 10-31
+    if (c >= 'A' && c <= 'V') return c - 'A' + 10;
     return -1;
 }
 
@@ -108,7 +108,7 @@ static void decode_sprite(lua_State *L, const char *name, const char *art)
     for (int y = 0; y < h; y++)
         for (int x = 0; x < w; x++) {
             int v = pixel_value(row[y][x]);
-            if (v < 0) luaL_error(L, "sprite '%s' row %d has '%c'; use . for see-through or 0-9 and a-f for colours",
+            if (v < 0) luaL_error(L, "sprite '%s' row %d has '%c'; use . for see-through or 0-9 and a-v for colours",
                                   name, y + 1, row[y][x]);
             px[y * w + x] = (uint8_t)v;
         }

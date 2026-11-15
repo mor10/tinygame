@@ -15,6 +15,9 @@ int64_t plat_time_us(void)
 }
 
 uint8_t *plat_framebuffer(void) { return sim_fb; }
+static float host_gamma[3] = { 1.0f, 1.0f, 1.0f };   // the simulator shows exact colours; kept so the colour card can show values
+void     plat_set_gamma(float r, float g, float b) { host_gamma[0] = r; host_gamma[1] = g; host_gamma[2] = b; }
+void     plat_get_gamma(float *r, float *g, float *b) { *r = host_gamma[0]; *g = host_gamma[1]; *b = host_gamma[2]; }
 void     plat_set_color(int index, uint32_t rgb) { if (index >= 0 && index < 256) sim_palette[index] = rgb; }
 
 void *plat_lua_realloc(void *ptr, size_t nsize, int prefer_fast) { (void)prefer_fast; return realloc(ptr, nsize); }

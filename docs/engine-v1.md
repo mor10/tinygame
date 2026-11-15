@@ -16,7 +16,7 @@ sprites = {
 }
 ```
 
-- One character per pixel. `.` is see-through; `0`-`9` and `a`-`f` are palette colours 0-15.
+- One character per pixel. `.` is see-through; `0`-`9` and `a`-`v` are palette colours 0-31.
 - The size comes from the art: every row must be the same length, up to 64x64. Leading
   indentation is ignored.
 - Sprites and maps are decoded once, on first use or right after the cart file runs, so they can be used at the top of a cart. A bad character or a ragged row is a load error
@@ -63,7 +63,7 @@ maps = {
 
 ## Decisions (approved in review)
 
-1. Pixels are hex digits for colours 0-15, with `.` as see-through; there is no per-sprite legend.
+1. Pixels are the characters `0`-`9` and `a`-`v` for colours 0-31, with `.` as see-through; there is no per-sprite legend.
 2. Map tiles are single characters, so `map_get` returns `"r"`.
 3. `map.load(name)` is the one way to pick and reset a level.
 4. Tiles can be rectangular (`tile_w`/`tile_h`).

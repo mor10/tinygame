@@ -49,7 +49,7 @@ to make a game work: if the API can't do something, say so.
   `fps = 30`, and a 16x16 `icon` that shows what the game is about.
 - One clear control scheme, shown on screen in a few words ("Turn right knob to steer").
   Clicking both knobs together is the console's pause, so don't use it in a game.
-- Readable colours: light text (4, 5, 8, 12) on dark backgrounds (0, 1, 2), or navy on cream.
+- Readable colours: light text (4, 5, 8, 12, 18) on dark backgrounds (0, 1, 2, 24, 31), or navy on cream. Colours 16-31 are brighter and purer: use them for sprites and highlights, and 27-29 for pink animals.
 - A way to lose and start again, and a reason to replay (score, time or a saved best).
 - Short: under about 150 lines plus art. Kids read these and change them.
 - Tilt games always have a knob way to play and show which way is down.

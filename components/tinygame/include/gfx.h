@@ -1,17 +1,23 @@
 #pragma once
-// 8-bit indexed rasterizer for the back buffer. Colours 0-15 are the game palette; 16-31 are
-// reserved for the OS screens so a cart can never make an error screen unreadable.
+// 8-bit indexed rasterizer for the back buffer. Colours 0-31 are the game palette (0-15 the original
+// set, 16-31 brighter and purer ones). Everything from 32 up belongs to the OS screens, so a cart can
+// never make an error screen unreadable.
 #include <stdint.h>
 
 enum {
     C_BLACK, C_NAVY, C_DGREY, C_GREY, C_WHITE, C_CREAM, C_CORAL, C_RED,
     C_YELLOW, C_ORANGE, C_GREEN, C_TEAL, C_MINT, C_BLUE, C_PINK, C_BROWN,
-    // OS "Sun Yellow" colours, only ever used by the OS screens: plum ink, white, hot pink, purple,
-    // sun yellow, teal, blue, orange, a muted rose for disabled items, and a warm blush.
-    OS_INK = 16, OS_WHITE, OS_PINK, OS_PURPLE, OS_YELLOW, OS_TEAL, OS_BLUE, OS_ORANGE, OS_ROSE, OS_BLUSH,
-    OS_DIM = 32,   // 32-47: game colours 0-15 darkened, for the pause screen
-    OS_CUBE = 56,  // 56-64: three tones (top, left, right) for each of the three hero blocks
-    OS_TINT = 65,  // 65-69: each cartridge colour 25% brighter, for the icon window
+    C_BRIGHT_RED, C_BRIGHT_ORANGE, C_LEMON, C_LIME, C_BRIGHT_GREEN, C_TURQUOISE, C_SKY, C_BRIGHT_BLUE,
+    C_DEEP_BLUE, C_VIOLET, C_MAGENTA, C_HOT_PINK, C_BUBBLEGUM, C_PALE_PINK, C_PEACH, C_PLUM,
+    OS_DIM = 32,   // 32-63: game colours 0-31 darkened, for the pause screen
+    // OS "Deep Toy Blue" colours, only ever used by the OS screens: navy ink and drop-edge, white, red,
+    // purple, toy yellow, green, the electric blue field, orange, a muted blue for disabled text, a pale
+    // blue, and a bright royal blue for dark stickers.
+    OS_INK = 64, OS_WHITE, OS_RED, OS_PURPLE, OS_YELLOW, OS_GREEN, OS_BLUE, OS_ORANGE, OS_MUTED, OS_PALE, OS_ROYAL,
+    OS_CUBE = 80,   // 80-88: three tones (top, left, right) for each of the three hero blocks
+    OS_TINT = 90,   // 90-94: each cartridge colour 25% brighter, for the icon window
+    OS_TINT2 = 95,  // 95-99: each cartridge colour 55% brighter, a lighter window for dark icons
+    OS_SHADE = 100, // 100-105: drop-shadow tones, 20% darker than the red, yellow, green, purple and orange bodies, then the pale blue
 };
 
 void gfx_init_palette(void);
@@ -32,3 +38,5 @@ void gfx_blit(const uint8_t *px, int w, int h, int x, int y, int flip_x, int fli
 int  gfx_aa_text(const char *s, int x, int y, int c, int font);   // returns the width drawn
 int  gfx_aa_width(const char *s, int font);
 int  gfx_aa_cap(int font);   // height of a capital letter
+
+int  gfx_color(uint32_t rgb888);   // a palette slot showing exactly this colour (allocated on demand; 0 if the palette is full)

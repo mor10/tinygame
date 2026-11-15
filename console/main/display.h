@@ -13,6 +13,7 @@ uint8_t *display_backbuffer(void);              // valid until the next display_
 void     display_present(void);                 // waits for the previous flush, then swaps buffers
 void     display_set_color(int index, uint32_t rgb888);
 void     display_backlight(int percent);
+void     display_get_gamma(float *r, float *g, float *b);
 void     display_set_gamma(float r, float g, float b);   // per-channel panel correction, 1.0 = none; lower lifts mid-tones
 
 typedef struct {

@@ -30,13 +30,16 @@ function draw() end     -- every frame: draw everything (required)
 
 ## Colours
 
-Use the numbers 0-15:
+Use the numbers 0-31. 0-15 are the original soft colours; 16-31 are brighter and purer.
 
 | 0 black | 1 navy | 2 dark grey | 3 grey | 4 white | 5 cream | 6 coral | 7 red |
 |---|---|---|---|---|---|---|---|
 | **8 yellow** | **9 orange** | **10 green** | **11 teal** | **12 mint** | **13 blue** | **14 pink** | **15 brown** |
+| **16 bright red** | **17 bright orange** | **18 lemon** | **19 lime** | **20 bright green** | **21 turquoise** | **22 sky** | **23 bright blue** |
+| **24 deep blue** | **25 violet** | **26 magenta** | **27 hot pink** | **28 bubblegum** | **29 pale pink** | **30 peach** | **31 plum** |
 
-In text art, `0`-`9` and `a`-`f` are these colours (`a` = 10 ... `f` = 15).
+Pinks for animals: 28 bubblegum for the body, 29 pale pink for light parts, 27 hot pink for snouts and ears.
+In text art, `0`-`9` and `a`-`v` are these colours (`a` = 10 ... `f` = 15, `g` = 16 ... `v` = 31).
 
 ## Drawing: `gfx`
 

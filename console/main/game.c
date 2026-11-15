@@ -24,7 +24,7 @@ extern const char hello_lua_start[] asm("_binary_hello_lua_start");
 extern const char hello_lua_end[] asm("_binary_hello_lua_end");
 #define BUILTIN(n) extern const char n##_lua_start[] asm("_binary_" #n "_lua_start"); \
                    extern const char n##_lua_end[] asm("_binary_" #n "_lua_end");
-BUILTIN(rocks) BUILTIN(tilt) BUILTIN(walkwalk) BUILTIN(snake) BUILTIN(paint)
+BUILTIN(rocks) BUILTIN(tilt) BUILTIN(walkwalk) BUILTIN(snake) BUILTIN(paint) BUILTIN(colorcard)
 #define ADD(n) os_add_cart(n##_lua_start, (size_t)(n##_lua_end - n##_lua_start) - 1, #n)
 
 // ---------- requests from the console task ----------
@@ -142,7 +142,7 @@ static void game_task(void *arg)
     // -1: embedded text carries a trailing NUL
     os_add_cart(brick_lua_start, (size_t)(brick_lua_end - brick_lua_start) - 1, "brick");
     os_add_cart(hello_lua_start, (size_t)(hello_lua_end - hello_lua_start) - 1, "hello");
-    ADD(rocks); ADD(tilt); ADD(walkwalk); ADD(snake); ADD(paint);   // the golden example carts
+    ADD(rocks); ADD(tilt); ADD(walkwalk); ADD(snake); ADD(paint); ADD(colorcard);   // the golden example carts
     if (!safe_boot) os_scan_storage();   // safe mode shows only the built-in carts
 
     static uint32_t hist[HIST_MS];
@@ -185,7 +185,7 @@ static void game_task(void *arg)
             display_take_stats(&ds);
             float fps = frames / ((now - window) / 1e6f);
             vm_set_measured_fps(fps);
-            static const char *modes[] = { "welcome", "gallery", "card", "settings", "level", "game", "paused", "error" };
+            static const char *modes[] = { "welcome", "gallery", "card", "settings", "level", "game", "paused", "error", "colourcard" };
             printf("{\"t\":\"stats\",\"mode\":\"%s\",\"cart\":\"%s\",\"fps\":%.1f,\"late\":%d,\"update_us_max\":%u,"
                    "\"draw_us_max\":%u,\"gc_us_max\":%u,\"flush_us_avg\":%u,\"flush_us_max\":%u,\"kb_per_frame\":%.1f,"
                    "\"lua_kb\":%u,\"lua_int_kb\":%u,\"lua_peak_kb\":%u,\"assets_kb\":%u,\"frame_ms_p99\":%d,\"heap_int\":%u}\n",
