@@ -6,7 +6,7 @@
 #include "font.h"
 #include "font_aa.h"
 
-// Game palette (0-15), flat colours from the reference designs, then the OS "Sunrise" colours (16-25).
+// Game palette (0-15), flat colours from the reference designs, then the OS "Sun Yellow" colours (16-25).
 static const uint32_t PALETTE[] = {
     0x000000, 0x1E2340, 0x3A3F4B, 0x8A8F99, 0xFFFFFF, 0xF7F0DC, 0xE8604C, 0xC0392B,
     0xF2B632, 0xF08A3C, 0x5FB04B, 0x3FA89A, 0x9FD8CB, 0x3B6FD1, 0xF29BB0, 0x8A5A3C,
@@ -14,20 +14,26 @@ static const uint32_t PALETTE[] = {
 };
 static void set_color(int i, uint32_t rgb);
 static uint32_t pal_rgb_of(int i);
-#define NSKY 7
-static const uint32_t SKY[NSKY] = { 0xFF2E7E, 0xFF4A62, 0xFF6552, 0xFF8140, 0xFF9E34, 0xFFB835, 0xFFD23F };
 static const uint32_t CUBES[3] = { 0xE8225F, 0x2D7BFF, 0x00B8A9 };   // top, left, right block
+static const uint32_t CARTS[5] = { 0x7A3CFF, 0x00B8A9, 0x2D7BFF, 0xE8225F, 0x3A0B4D };   // cartridge bodies
 
 uint32_t gfx_palette_rgb(int index)
 {
-    if (index >= OS_SKY) return index < 256 ? pal_rgb_of(index) : 0;
+    if (index >= OS_CUBE) return index < 256 ? pal_rgb_of(index) : 0;
     return index >= 0 && index < (int)(sizeof PALETTE / sizeof PALETTE[0]) ? PALETTE[index] : 0;
 }
 
 void gfx_init_palette(void)
 {
     for (int i = 0; i < (int)(sizeof PALETTE / sizeof PALETTE[0]); i++) set_color(i, PALETTE[i]);
-    for (int i = 0; i < NSKY; i++) set_color(OS_SKY + i, SKY[i]);
+    for (int b = 0; b < 5; b++) {   // cartridge windows: the body colour, 25% brighter
+        uint32_t c = CARTS[b], out = 0;
+        for (int sh = 0; sh <= 16; sh += 8) {
+            uint32_t v = (c >> sh) & 0xFF;
+            out |= (v + (255 - v) / 4) << sh;
+        }
+        set_color(OS_TINT + b, out);
+    }
     for (int b = 0; b < 3; b++) {   // faces: lit top (30% white), the colour, shaded right (28% plum)
         uint32_t c = CUBES[b], top = 0, side = 0;
         for (int sh = 0; sh <= 16; sh += 8) {

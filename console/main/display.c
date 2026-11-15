@@ -1,5 +1,7 @@
 // Display pipeline: triple 8-bit buffers (back, front, last-sent), flush task on core 0.
 #include <string.h>
+#include <math.h>
+#include <stdio.h>
 #include "display.h"
 #include "board.h"
 #include "lcd.h"
@@ -19,6 +21,11 @@
 static uint8_t buf_a[LW * LH], buf_b[LW * LH], sent[LW * LH];
 static uint8_t *back = buf_a, *front = buf_b;
 static uint16_t pal_be[256];
+static uint32_t pal_src[256];   // colours as asked for, before the panel correction
+// This panel crushes green (and a little blue) in the mid-tones, so yellows turn orange. Each channel is
+// lifted with out = in^exponent; measured from a photo of the home screen, tune with the `gamma` command.
+static float gamma_exp[3] = { 0.90f, 0.65f, 0.80f };
+static uint8_t lut[3][256];
 static SemaphoreHandle_t frame_ready, flush_done;
 static display_stats_t stats;
 static portMUX_TYPE stats_lock = portMUX_INITIALIZER_UNLOCKED;
@@ -70,15 +77,38 @@ static void flush_task(void *arg)
     }
 }
 
+static void build_lut(void)
+{
+    for (int c = 0; c < 3; c++)
+        for (int i = 0; i < 256; i++) lut[c][i] = (uint8_t)(255.0f * powf(i / 255.0f, gamma_exp[c]) + 0.5f);
+}
+
+static void store_color(int index)
+{
+    uint32_t rgb = pal_src[index];
+    uint32_t r = lut[0][(rgb >> 16) & 0xFF], g = lut[1][(rgb >> 8) & 0xFF], b = lut[2][rgb & 0xFF];
+    uint16_t c = (uint16_t)(((r << 8) & 0xF800) | ((g << 3) & 0x07E0) | (b >> 3));
+    pal_be[index] = (uint16_t)((c >> 8) | (c << 8));
+}
+
 void display_set_color(int index, uint32_t rgb)
 {
     if (index < 0 || index > 255) return;
-    uint16_t c = ((rgb >> 8) & 0xF800) | ((rgb >> 5) & 0x07E0) | ((rgb >> 3) & 0x001F);
-    pal_be[index] = (uint16_t)((c >> 8) | (c << 8));
+    pal_src[index] = rgb;
+    store_color(index);
+}
+
+void display_set_gamma(float r, float g, float b)
+{
+    gamma_exp[0] = r; gamma_exp[1] = g; gamma_exp[2] = b;
+    build_lut();
+    for (int i = 0; i < 256; i++) store_color(i);
+    printf("{\"t\":\"gamma\",\"r\":%.2f,\"g\":%.2f,\"b\":%.2f}\n", r, g, b);
 }
 
 void display_init(void)
 {
+    build_lut();
     lcd_init(80 * 1000000, BOARD_SW_MADCTL, BOARD_LCD_INVERT);   // includes the vendor tuning
     lcd_cmd(0xC6, (uint8_t[]){ 0x00 }, 1);                       // FRCTRL2: fastest refresh (lab winner)
     lcd_cmd(0xB2, (uint8_t[]){ 0x01, 0x01, 0x00, 0x33, 0x33 }, 5); // porch 1 line each side

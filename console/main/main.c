@@ -5,6 +5,7 @@
 //   play <id>      launch a stored or built-in cart
 //   rm <id>        delete a stored cart
 //   ls             list the gallery
+//   gamma <r> <g> <b> per-channel colour correction exponents (1.0 = none, lower is brighter)
 //   saveflush <ms> write saves at most this often (default 1000; 0 = every frame, for tests)
 //   restart        relaunch the last game
 //   hash <n> [seed] rerun the current cart deterministically for n frames, printing frame hashes
@@ -80,6 +81,11 @@ static void console_task(void *arg)
         else if (!strncmp(line, "rm ", 3)) game_delete(line + 3);
         else if (!strcmp(line, "ls")) game_list();
         else if (!strncmp(line, "saveflush ", 10)) save_set_flush_interval(atol(line + 10) * 1000LL);
+        else if (!strncmp(line, "gamma ", 6)) {
+            float r, g, b;
+            if (sscanf(line + 6, "%f %f %f", &r, &g, &b) == 3 && r > 0.2f && g > 0.2f && b > 0.2f && r < 3 && g < 3 && b < 3)
+                display_set_gamma(r, g, b);
+        }
         else if (!strcmp(line, "restart")) game_restart();
         else if (!strncmp(line, "hash ", 5)) {
             char *end;

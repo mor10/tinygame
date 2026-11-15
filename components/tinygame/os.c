@@ -164,16 +164,11 @@ void os_init(const vm_opts_t *opts, int safe_mode)
 }
 
 // ---------- drawing helpers ----------
-// "Sunrise": a sky that runs from hot pink to sun yellow, blocks with a plum drop-edge, plain text
+// "Sun Yellow": a flat sun-yellow field, blocks with a plum drop-edge, plain text
 // lists with a pointer, and Space Grotesk type. y is the top of the capital letters.
 static int tick;   // counts frames, for the bobbing blocks
 
-static void sky(void)
-{
-    static const int h[7] = { 25, 25, 25, 24, 25, 24, 24 };
-    int y = 0;
-    for (int i = 0; i < 7; i++) { gfx_fill_rect(0, y, SCREEN_W, h[i], OS_SKY + i); y += h[i]; }
-}
+static void sky(void) { gfx_clear(OS_YELLOW); }
 
 static void text_l(const char *s, int x, int y, int c, int font) { gfx_aa_text(s, x, y, c, font); }
 static void text_c(const char *s, int cx, int y, int c, int font) { gfx_aa_text(s, cx - gfx_aa_width(s, font) / 2, y, c, font); }
@@ -259,27 +254,28 @@ static void cart_shape(int x, int y, int w, int h, int c)
     for (int r = 0; r < 7; r++) gfx_fill_rect(x + 7 - r, y + r, w - 2 * (7 - r), 1, c);
 }
 
-static void cartridge(int x, int y, int w, int h, int body)
+static int cart_colour(int i) { static const int c[] = { OS_PURPLE, OS_TEAL, OS_BLUE, OS_PINK, OS_INK }; return c[i % 5]; }
+
+// The window is the body colour 25% brighter, so any icon colours stay readable without a stark white.
+static void cartridge(int x, int y, int w, int h, int i)
 {
     cart_shape(x, y + 3, w, h, OS_INK);
-    cart_shape(x, y, w, h, body);
-    gfx_fill_rect(x + 5, y + 11, w - 10, h - 16, OS_BLUSH);
+    cart_shape(x, y, w, h, cart_colour(i));
+    gfx_fill_rect(x + 5, y + 11, w - 10, h - 16, OS_TINT + i % 5);
 }
-
-static int cart_colour(int i) { static const int c[] = { OS_PURPLE, OS_TEAL, OS_BLUE, OS_PINK, OS_INK }; return c[i % 5]; }
 
 static void logo(int x, int y)   // three small blocks in a row
 {
-    gfx_fill_rect(x, y, 7, 7, OS_YELLOW);
-    gfx_fill_rect(x + 9, y, 7, 7, OS_TEAL);
-    gfx_fill_rect(x + 18, y, 7, 7, OS_PURPLE);
+    gfx_fill_rect(x, y, 7, 7, OS_PINK);
+    gfx_fill_rect(x + 9, y, 7, 7, OS_BLUE);
+    gfx_fill_rect(x + 18, y, 7, 7, OS_TEAL);
 }
 
 static void battery(int x, int y)
 {
-    gfx_rect(x, y, 22, 11, OS_WHITE);
-    gfx_fill_rect(x + 22, y + 3, 2, 5, OS_WHITE);
-    for (int i = 0; i < 3; i++) gfx_fill_rect(x + 2 + i * 6, y + 2, 5, 7, OS_WHITE);
+    gfx_rect(x, y, 22, 11, OS_INK);
+    gfx_fill_rect(x + 22, y + 3, 2, 5, OS_INK);
+    for (int i = 0; i < 3; i++) gfx_fill_rect(x + 2 + i * 6, y + 2, 5, 7, OS_INK);
 }
 
 static void knob_glyph(int x, int y, int c)
@@ -307,7 +303,7 @@ static void back_arrow(int focused)
     if (focused) {
         button(8, 6, 30, 24, 1);
         chevron(17, 11, OS_WHITE);
-    } else chevron(17, 11, OS_WHITE);
+    } else chevron(17, 11, OS_INK);
 }
 
 static void draw_icon(const entry_t *e, int cx, int cy, int scale, int flip)
@@ -351,7 +347,7 @@ static void draw_welcome(void)
 {
     sky();
     logo(12, 11);
-    text_l("TinyGame", 44, 9, OS_WHITE, FONT_M);
+    text_l("TinyGame", 44, 9, OS_INK, FONT_M);
     battery(SCREEN_W - 34, 10);
     hero_blocks(86, 96);
     if (focus == 1) pointer(150, 51);
@@ -371,11 +367,11 @@ static void draw_gallery(void)
 {
     sky();
     back_arrow(pick < 0);
-    text_l("Games", 44, 12, OS_WHITE, FONT_L);
+    text_l("Games", 44, 12, OS_INK, FONT_L);
     if (ncarts == 0) { text_c("No games yet", SCREEN_W / 2, 76, OS_INK, FONT_L); footer("Browse", "Select", OS_INK); return; }
     char n[16];
     snprintf(n, sizeof n, "%d / %d", (pick < 0 ? 0 : pick) + 1, ncarts);
-    text_r(n, SCREEN_W - 12, 15, OS_WHITE, FONT_S);
+    text_r(n, SCREEN_W - 12, 15, OS_INK, FONT_S);
     int p = pick < 0 ? 0 : pick;
     int first = p - 2;
     if (first > ncarts - 5) first = ncarts - 5;
@@ -386,7 +382,7 @@ static void draw_gallery(void)
     int x = (SCREEN_W - total) / 2, sel_cx = 0;
     for (int i = first; i < last; i++) {
         int sel = i == pick, w = sel ? 68 : 52, h = sel ? 74 : 58, y = sel ? 44 : 60;
-        cartridge(x, y, w, h, cart_colour(i));
+        cartridge(x, y, w, h, i);
         draw_icon(&carts[i], x + w / 2, y + 11 + (h - 16) / 2, sel ? 3 : 2, 0);
         if (sel) sel_cx = x + w / 2;
         x += w + 6;
@@ -408,10 +404,10 @@ static void draw_card(void)
     back_arrow(focus == 0);
     char n[16];
     snprintf(n, sizeof n, "%d / %d", pick + 1, ncarts);
-    text_r(n, SCREEN_W - 12, 15, OS_WHITE, FONT_S);
-    cartridge(12, 40, 126, 104, cart_colour(pick));
+    text_r(n, SCREEN_W - 12, 15, OS_INK, FONT_S);
+    cartridge(12, 40, 126, 104, pick);
     draw_icon(e, 75, 40 + 11 + 44, 4, 0);
-    text_l(e->title, 152, 40, OS_WHITE, gfx_aa_width(e->title, FONT_L) <= 160 ? FONT_L : FONT_M);
+    text_l(e->title, 152, 40, OS_INK, gfx_aa_width(e->title, FONT_L) <= 160 ? FONT_L : FONT_M);
     wrap_text(e->tagline, 152, 70, 160, OS_INK, 3);
     button(152, 112, 140, 30, focus == 1);
     text_c("PLAY", 222, 118, focus == 1 ? OS_WHITE : OS_INK, FONT_L);
@@ -422,7 +418,7 @@ static void draw_settings(void)
 {
     sky();
     back_arrow(0);
-    text_l("Settings", 44, 12, OS_WHITE, FONT_L);
+    text_l("Settings", 44, 12, OS_INK, FONT_L);
     battery(SCREEN_W - 34, 10);
     for (int i = 1; i <= NSETTINGS; i++) {
         int y = 50 + (i - 1) * 34, on = settings_row == i;
@@ -442,10 +438,10 @@ static void draw_level(void)
 {
     int v = set.light;
     sky();
-    text_l("Light", 14, 12, OS_WHITE, FONT_L);
+    text_l("Light", 14, 12, OS_INK, FONT_L);
     char pct[8];
     snprintf(pct, sizeof pct, "%d%%", v * 10);
-    text_c(pct, SCREEN_W / 2, 38, OS_WHITE, FONT_XL);
+    text_c(pct, SCREEN_W / 2, 38, OS_INK, FONT_XL);
     for (int i = 1; i <= 10; i++) {
         gfx_fill_rect(70 + (i - 1) * 18, 79, 14, 14, OS_INK);
         gfx_fill_rect(70 + (i - 1) * 18, 76, 14, 14, i <= v ? OS_PINK : OS_BLUSH);

@@ -6,12 +6,12 @@
 enum {
     C_BLACK, C_NAVY, C_DGREY, C_GREY, C_WHITE, C_CREAM, C_CORAL, C_RED,
     C_YELLOW, C_ORANGE, C_GREEN, C_TEAL, C_MINT, C_BLUE, C_PINK, C_BROWN,
-    // OS "Sunrise" colours, only ever used by the OS screens: plum ink, white, hot pink, purple,
+    // OS "Sun Yellow" colours, only ever used by the OS screens: plum ink, white, hot pink, purple,
     // sun yellow, teal, blue, orange, a muted rose for disabled items, and a warm blush.
     OS_INK = 16, OS_WHITE, OS_PINK, OS_PURPLE, OS_YELLOW, OS_TEAL, OS_BLUE, OS_ORANGE, OS_ROSE, OS_BLUSH,
     OS_DIM = 32,   // 32-47: game colours 0-15 darkened, for the pause screen
-    OS_SKY = 48,   // 48-54: seven bands of the sky, hot pink at the top to sun yellow at the bottom
     OS_CUBE = 56,  // 56-64: three tones (top, left, right) for each of the three hero blocks
+    OS_TINT = 65,  // 65-69: each cartridge colour 25% brighter, for the icon window
 };
 
 void gfx_init_palette(void);
