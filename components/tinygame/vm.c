@@ -7,6 +7,7 @@
 #include <math.h>
 #include "vm.h"
 #include "gfx.h"
+#include "font_aa.h"
 #include "engine.h"
 #include "save.h"
 #include "platform.h"
@@ -326,22 +327,22 @@ static void wrap_text(const char *s, int x, int y, int max_chars, int c)
 
 void vm_draw_error_screen(void)
 {
-    gfx_clear(OS_CREAM);
-    const char *title = err_kind == VM_ERR_STUCK ? "YOUR GAME GOT STUCK"
-                      : err_kind == VM_ERR_MEMORY ? "OUT OF MEMORY"
-                      : err_kind == VM_ERR_STOPPED ? "GAME STOPPED"
-                      : "OOPS! YOUR GAME HIT A BUG.";
-    gfx_fill_rect(0, 0, SCREEN_W, 26, err_kind == VM_ERR_STOPPED ? OS_TEAL : OS_CORAL);
-    gfx_text(title, 8, 6, OS_WHITE, 2);
-    if (err_kind == VM_ERR_STUCK) wrap_text("Maybe a loop that never ends?", 10, 40, 50, OS_NAVY);
-    else if (err_kind == VM_ERR_STOPPED) wrap_text("Both knobs were held for 3 seconds.", 10, 40, 50, OS_NAVY);
-    else wrap_text(err_msg, 10, 40, 50, OS_NAVY);
+    gfx_clear(OS_WHITE);
+    const char *title = err_kind == VM_ERR_STUCK ? "Your game got stuck"
+                      : err_kind == VM_ERR_MEMORY ? "Out of memory"
+                      : err_kind == VM_ERR_STOPPED ? "Game stopped"
+                      : "Oops! Your game hit a bug.";
+    gfx_fill_rect(0, 0, SCREEN_W, 26, err_kind == VM_ERR_STOPPED ? OS_TEAL : OS_PINK);
+    gfx_aa_text(title, 8, 7, OS_WHITE, FONT_M);
+    if (err_kind == VM_ERR_STUCK) wrap_text("Maybe a loop that never ends?", 10, 40, 50, OS_INK);
+    else if (err_kind == VM_ERR_STOPPED) wrap_text("Both knobs were held for 3 seconds.", 10, 40, 50, OS_INK);
+    else wrap_text(err_msg, 10, 40, 50, OS_INK);
     if (err_line > 0) {
         char b[24];
-        snprintf(b, sizeof b, "LINE %d", err_line);
-        gfx_text(b, 10, 100, OS_CORAL, 2);
+        snprintf(b, sizeof b, "Line %d", err_line);
+        gfx_aa_text(b, 10, 100, OS_PINK, FONT_L);
     }
-    gfx_text("CLICK A KNOB TO GO BACK", 10, SCREEN_H - 16, OS_GREY, 1);
+    gfx_aa_text("Click a knob to go back", 10, SCREEN_H - 22, OS_INK, FONT_M);
 }
 
 // ---------- running a cart ----------

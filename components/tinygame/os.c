@@ -5,6 +5,7 @@
 #include <string.h>
 #include "os.h"
 #include "gfx.h"
+#include "font_aa.h"
 #include "platform.h"
 
 #define MAX_CARTS 32
@@ -38,7 +39,7 @@ static uint8_t *frozen;               // the game frame behind the pause menu
 static int hash_left;
 
 // No SOUND row: this hardware has no audio, and a control that does nothing would confuse kids.
-static const char *SETTINGS_ROWS[] = { "LIGHT", "HANDS", "BACK" };
+static const char *SETTINGS_ROWS[] = { "Light", "Hands", "Back" };
 enum { ROW_LIGHT = 1, ROW_HANDS, ROW_BACK, NSETTINGS = ROW_BACK };
 
 // ---------- carts ----------
@@ -163,35 +164,122 @@ void os_init(const vm_opts_t *opts, int safe_mode)
 }
 
 // ---------- drawing helpers ----------
-static void box(int x, int y, int w, int h, int c)   // corners clipped by one pixel
+// "Sunrise": a sky that runs from hot pink to sun yellow, blocks with a plum drop-edge, plain text
+// lists with a pointer, and Space Grotesk type. y is the top of the capital letters.
+static int tick;   // counts frames, for the bobbing blocks
+
+static void sky(void)
 {
-    gfx_fill_rect(x + 1, y, w - 2, h, c);
-    gfx_fill_rect(x, y + 1, w, h - 2, c);
+    static const int h[7] = { 25, 25, 25, 24, 25, 24, 24 };
+    int y = 0;
+    for (int i = 0; i < 7; i++) { gfx_fill_rect(0, y, SCREEN_W, h[i], OS_SKY + i); y += h[i]; }
 }
 
-static void button(int x, int y, int w, int h, int c, int shadow)
+static void text_l(const char *s, int x, int y, int c, int font) { gfx_aa_text(s, x, y, c, font); }
+static void text_c(const char *s, int cx, int y, int c, int font) { gfx_aa_text(s, cx - gfx_aa_width(s, font) / 2, y, c, font); }
+static void text_r(const char *s, int right, int y, int c, int font) { gfx_aa_text(s, right - gfx_aa_width(s, font), y, c, font); }
+
+// Solid block with a plum drop-edge: hot pink when focused, warm blush otherwise.
+static void button(int x, int y, int w, int h, int on)
 {
-    box(x, y + 3, w, h, shadow);
-    box(x, y, w, h, c);
+    gfx_fill_rect(x, y + 3, w, h, OS_INK);
+    gfx_fill_rect(x, y, w, h, on ? OS_PINK : OS_BLUSH);
 }
 
-static void centre_text(const char *s, int cx, int y, int c, int big)
+static void pointer(int x, int y)   // right-pointing triangle, 9 x 12
 {
-    gfx_text(s, cx - gfx_text_width(s, big ? 2 : 1) / 2, y, c, big ? 2 : 1);
+    for (int r = 0; r < 12; r++) {
+        int d = r * 2 - 11, w = 9 - (d < 0 ? -d : d) * 9 / 11;
+        gfx_fill_rect(x, y + r, w, 1, OS_INK);
+    }
 }
 
-static void logo(int x, int y, int s)
+static void caret(int cx, int y)    // up-pointing triangle, 13 x 8
 {
-    gfx_fill_rect(x + s / 2, y, s, s, OS_YELLOW);
-    gfx_fill_rect(x, y + s, s, s, OS_TEAL);
-    gfx_fill_rect(x + s, y + s, s, s, OS_CORAL);
+    for (int r = 0; r < 8; r++) gfx_fill_rect(cx - 1 - r * 3 / 2, y + r, 3 + r * 3, 1, OS_INK);
+}
+
+static void chevron(int x, int y, int c)   // "<", 7 x 14
+{
+    for (int k = 0; k < 7; k++) { gfx_fill_rect(x + 6 - k, y + k, 2, 1, c); gfx_fill_rect(x + 6 - k, y + 13 - k, 2, 1, c); }
+}
+
+static void underline(int x, int y, int w) { gfx_fill_rect(x, y, w, 3, OS_PINK); }
+
+// A convex quad, filled a row at a time.
+static void quad(const int p[8], int c)
+{
+    int y0 = p[1], y1 = p[1];
+    for (int i = 1; i < 4; i++) { if (p[i * 2 + 1] < y0) y0 = p[i * 2 + 1]; if (p[i * 2 + 1] > y1) y1 = p[i * 2 + 1]; }
+    for (int y = y0; y <= y1; y++) {
+        int lo = 9999, hi = -9999;
+        for (int i = 0; i < 4; i++) {
+            int ax = p[i * 2], ay = p[i * 2 + 1], bx = p[((i + 1) % 4) * 2], by = p[((i + 1) % 4) * 2 + 1];
+            if ((y < ay && y < by) || (y > ay && y > by)) continue;
+            if (ay == by) {
+                if (ax < lo) lo = ax;
+                if (ax > hi) hi = ax;
+                if (bx < lo) lo = bx;
+                if (bx > hi) hi = bx;
+                continue;
+            }
+            int x = ax + (bx - ax) * (y - ay) / (by - ay);
+            if (x < lo) lo = x;
+            if (x > hi) hi = x;
+        }
+        if (hi >= lo) gfx_fill_rect(lo, y, hi - lo + 1, 1, c);
+    }
+}
+
+// One block seen from a corner. (cx, cy) is the bottom point of its top face; e is the edge length.
+static void iso_cube(int cx, int cy, int e, int first)
+{
+    int k = e * 866 / 1000, h = e / 2;
+    const int left[8]  = { cx - k, cy - h, cx, cy, cx, cy + e, cx - k, cy + h };
+    const int right[8] = { cx, cy, cx + k, cy - h, cx + k, cy + h, cx, cy + e };
+    const int top[8]   = { cx, cy - e, cx + k, cy - h, cx, cy, cx - k, cy - h };
+    quad(left, first + 1);
+    quad(right, first + 2);
+    quad(top, first);
+}
+
+static void hero_blocks(int cx, int cy)
+{
+    static const int bob[8] = { 0, -1, -2, -3, -3, -2, -1, 0 };
+    int dy = bob[(tick / 4) & 7], e = 31, k = e * 866 / 1000;
+    iso_cube(cx - k, cy + 3, e, OS_CUBE + 3);       // left
+    iso_cube(cx + k, cy + 3, e, OS_CUBE + 6);       // right
+    iso_cube(cx, cy - 12 + dy, e, OS_CUBE);          // top, bobbing
+}
+
+// A cartridge: chamfered top corners, a colour body, a blush window for the icon, a plum drop-edge.
+static void cart_shape(int x, int y, int w, int h, int c)
+{
+    gfx_fill_rect(x, y + 7, w, h - 7, c);
+    for (int r = 0; r < 7; r++) gfx_fill_rect(x + 7 - r, y + r, w - 2 * (7 - r), 1, c);
+}
+
+static void cartridge(int x, int y, int w, int h, int body)
+{
+    cart_shape(x, y + 3, w, h, OS_INK);
+    cart_shape(x, y, w, h, body);
+    gfx_fill_rect(x + 5, y + 11, w - 10, h - 16, OS_BLUSH);
+}
+
+static int cart_colour(int i) { static const int c[] = { OS_PURPLE, OS_TEAL, OS_BLUE, OS_PINK, OS_INK }; return c[i % 5]; }
+
+static void logo(int x, int y)   // three small blocks in a row
+{
+    gfx_fill_rect(x, y, 7, 7, OS_YELLOW);
+    gfx_fill_rect(x + 9, y, 7, 7, OS_TEAL);
+    gfx_fill_rect(x + 18, y, 7, 7, OS_PURPLE);
 }
 
 static void battery(int x, int y)
 {
-    gfx_rect(x, y, 18, 9, OS_NAVY);
-    gfx_fill_rect(x + 18, y + 3, 2, 3, OS_NAVY);
-    for (int i = 0; i < 3; i++) gfx_fill_rect(x + 2 + i * 5, y + 2, 4, 5, OS_NAVY);
+    gfx_rect(x, y, 22, 11, OS_WHITE);
+    gfx_fill_rect(x + 22, y + 3, 2, 5, OS_WHITE);
+    for (int i = 0; i < 3; i++) gfx_fill_rect(x + 2 + i * 6, y + 2, 5, 7, OS_WHITE);
 }
 
 static void knob_glyph(int x, int y, int c)
@@ -202,21 +290,24 @@ static void knob_glyph(int x, int y, int c)
             if (g[r][k] == '#') gfx_pixel(x + k, y + r, c);
 }
 
-static void footer(const char *scroll_label, const char *select_label, int dark)
+// Hints sit in the two bottom corners.
+static void footer(const char *scroll_label, const char *select_label, int ink)
 {
-    int y = SCREEN_H - 16, ink = dark ? OS_CREAM : OS_NAVY;
     const char *l = set.left_handed ? scroll_label : select_label;
     const char *r = set.left_handed ? select_label : scroll_label;
-    knob_glyph(92, y, ink);
-    gfx_text(l, 103, y, ink, 1);
-    knob_glyph(182, y, ink);
-    gfx_text(r, 193, y, ink, 1);
+    int y = SCREEN_H - 17;
+    knob_glyph(12, y + 1, ink);
+    text_l(l, 24, y, ink, FONT_S);
+    knob_glyph(SCREEN_W - 12 - 7 - 5 - gfx_aa_width(r, FONT_S), y + 1, ink);
+    text_r(r, SCREEN_W - 12, y, ink, FONT_S);
 }
 
 static void back_arrow(int focused)
 {
-    if (focused) button(6, 4, 22, 20, OS_CORAL, OS_RED);
-    gfx_text("<", 12, 8, focused ? OS_WHITE : OS_NAVY, 2);
+    if (focused) {
+        button(8, 6, 30, 24, 1);
+        chevron(17, 11, OS_WHITE);
+    } else chevron(17, 11, OS_WHITE);
 }
 
 static void draw_icon(const entry_t *e, int cx, int cy, int scale, int flip)
@@ -225,155 +316,160 @@ static void draw_icon(const entry_t *e, int cx, int cy, int scale, int flip)
         gfx_blit(e->icon, e->icon_w, e->icon_h, cx - e->icon_w * scale / 2, cy - e->icon_h * scale / 2, flip, 0, scale);
     else {   // no icon: the title's first letter
         char s[2] = { e->title[0] ? e->title[0] : '?', 0 };
-        centre_text(s, cx, cy - 7, OS_NAVY, 1);
+        if (s[0] >= 'a' && s[0] <= 'z') s[0] -= 32;
+        text_c(s, cx, cy - gfx_aa_cap(FONT_XL) / 2, OS_INK, FONT_XL);
     }
 }
 
-static void upper(char *out, size_t n, const char *s)
+// Greedy word wrap to maxw pixels, lines 14 px apart.
+static void wrap_text(const char *s, int x, int y, int maxw, int c, int lines)
 {
-    size_t i = 0;
-    for (; s[i] && i + 1 < n; i++) out[i] = (s[i] >= 'a' && s[i] <= 'z') ? s[i] - 32 : s[i];
-    out[i] = 0;
+    char b[64];
+    while (*s && lines-- > 0) {
+        int n = 0, best = 0;
+        for (;;) {
+            if (s[n] == ' ' || s[n] == 0) {
+                snprintf(b, sizeof b, "%.*s", n > 63 ? 63 : n, s);
+                if (n > 0 && gfx_aa_width(b, FONT_S) > maxw && best > 0) break;
+                best = n;
+                if (s[n] == 0) break;
+            }
+            if (n >= 62) { if (!best) best = n; break; }
+            n++;
+        }
+        if (!best) best = n;
+        snprintf(b, sizeof b, "%.*s", best > 63 ? 63 : best, s);
+        text_l(b, x, y, c, FONT_S);
+        y += 14;
+        s += best;
+        while (*s == ' ') s++;
+    }
 }
 
 // ---------- screens ----------
 static void draw_welcome(void)
 {
-    gfx_clear(OS_CREAM);
-    logo(10, 6, 5);
-    gfx_text("TinyGame", 30, 6, OS_NAVY, 2);
-    battery(SCREEN_W - 30, 8);
-    logo(62, 52, 16);
-    button(146, 50, 124, 30, focus == 1 ? OS_CORAL : OS_GREY, focus == 1 ? OS_RED : OS_DGREY);
-    centre_text("START", 208, 58, OS_WHITE, 1);
-    const char *items[] = { NULL, NULL, "Resume", "Settings" };
+    sky();
+    logo(12, 11);
+    text_l("TinyGame", 44, 9, OS_WHITE, FONT_M);
+    battery(SCREEN_W - 34, 10);
+    hero_blocks(86, 96);
+    if (focus == 1) pointer(150, 51);
+    button(166, 38, 134, 38, focus == 1);
+    text_c("START", 233, 46, focus == 1 ? OS_WHITE : OS_INK, FONT_XL);
     for (int i = 2; i <= 3; i++) {
-        int y = 92 + (i - 2) * 14;
-        int c = focus == i ? OS_CORAL : (i == 2 && last_game < 0) ? OS_GREY : OS_NAVY;
-        if (focus == i) gfx_text(">", 172, y, c, 1);
-        gfx_text(items[i], 182, y, c, 1);
+        int y = 92 + (i - 2) * 26, off = i == 2 && last_game < 0;
+        const char *t = i == 2 ? "Resume" : "Settings";
+        text_l(t, 166, y, off ? OS_ROSE : OS_INK, FONT_M);
+        if (focus == i) { pointer(150, y - 1); underline(166, y + 15, gfx_aa_width(t, FONT_M)); }
     }
-    if (safe) gfx_text("SAFE MODE", 10, 132, OS_CORAL, 1);
-    footer("Browse", "Select", 0);
+    if (safe) text_l("Safe mode", 166, 132, OS_ROSE, FONT_S);
+    footer("Browse", "Select", OS_INK);
 }
-
-static int tile_colour(int i) { static const int c[] = { OS_TEAL, OS_YELLOW, OS_CORAL }; return c[i % 3]; }
 
 static void draw_gallery(void)
 {
-    gfx_clear(OS_CREAM);
+    sky();
     back_arrow(pick < 0);
-    gfx_text("GAMES", 34, 8, OS_NAVY, 2);
-    if (ncarts == 0) { centre_text("No games yet", SCREEN_W / 2, 80, OS_NAVY, 1); footer("Browse", "Select", 0); return; }
+    text_l("Games", 44, 12, OS_WHITE, FONT_L);
+    if (ncarts == 0) { text_c("No games yet", SCREEN_W / 2, 76, OS_INK, FONT_L); footer("Browse", "Select", OS_INK); return; }
+    char n[16];
+    snprintf(n, sizeof n, "%d / %d", (pick < 0 ? 0 : pick) + 1, ncarts);
+    text_r(n, SCREEN_W - 12, 15, OS_WHITE, FONT_S);
     int p = pick < 0 ? 0 : pick;
     int first = p - 2;
     if (first > ncarts - 5) first = ncarts - 5;
     if (first < 0) first = 0;
-    for (int i = first; i < ncarts && i < first + 5; i++) {
-        int x = 22 + (i - first) * 58, sel = i == pick;
-        int size = sel ? 48 : 40, y = sel ? 40 : 46;
-        if (sel) x -= 4;
-        button(x, y, size, size, sel ? OS_CORAL : tile_colour(i), OS_NAVY);
-        box(x + 4, y + 4, size - 8, size - 8, OS_CREAM);
-        draw_icon(&carts[i], x + size / 2, y + size / 2, 2, 0);
+    int last = first + 5 < ncarts ? first + 5 : ncarts;
+    int total = (last - first - 1) * 6;
+    for (int i = first; i < last; i++) total += i == pick ? 68 : 52;
+    int x = (SCREEN_W - total) / 2, sel_cx = 0;
+    for (int i = first; i < last; i++) {
+        int sel = i == pick, w = sel ? 68 : 52, h = sel ? 74 : 58, y = sel ? 44 : 60;
+        cartridge(x, y, w, h, cart_colour(i));
+        draw_icon(&carts[i], x + w / 2, y + 11 + (h - 16) / 2, sel ? 3 : 2, 0);
+        if (sel) sel_cx = x + w / 2;
+        x += w + 6;
     }
-    char name[32];
     if (pick < 0) {
-        centre_text("BACK", SCREEN_W / 2, 110, OS_NAVY, 1);
+        text_c("Back", SCREEN_W / 2, 131, OS_INK, FONT_L);
     } else {
-        int sx = 22 + (pick - first) * 58 + 20;
-        for (int k = 0; k < 4; k++) gfx_fill_rect(sx - k, 101 + k, 1 + 2 * k, 1, OS_NAVY);
-        upper(name, sizeof name, carts[pick].title);
-        centre_text(name, SCREEN_W / 2, 110, OS_NAVY, gfx_text_width(name, 2) <= SCREEN_W - 16);
-        char n[16];
-        snprintf(n, sizeof n, "%d / %d", pick + 1, ncarts);
-        centre_text(n, SCREEN_W / 2, 128, OS_NAVY, 0);
+        caret(sel_cx, 124);
+        const char *name = carts[pick].title;
+        text_c(name, SCREEN_W / 2, 133, OS_INK, gfx_aa_width(name, FONT_L) <= SCREEN_W - 16 ? FONT_L : FONT_M);
     }
-    footer("Browse", "Select", 0);
+    footer("Browse", "Select", OS_INK);
 }
 
 static void draw_card(void)
 {
     const entry_t *e = &carts[pick];
-    gfx_clear(OS_CREAM);
+    sky();
     back_arrow(focus == 0);
     char n[16];
     snprintf(n, sizeof n, "%d / %d", pick + 1, ncarts);
-    gfx_text(n, SCREEN_W - 40, 10, OS_NAVY, 1);
-    gfx_fill_rect(30, 112, 100, 2, OS_MINT);
-    draw_icon(e, 64, 62, 2, 0);
-    draw_icon(e, 108, 86, 2, 1);
-    char name[32];
-    upper(name, sizeof name, e->title);
-    int big = gfx_text_width(name, 2) <= 150;
-    centre_text(name, 228, big ? 40 : 44, OS_NAVY, big);
-    // Tagline: one line, or two split at the space nearest the middle.
-    int len = (int)strlen(e->tagline);
-    if (gfx_text_width(e->tagline, 1) <= 150) centre_text(e->tagline, 228, 62, OS_NAVY, 0);
-    else {
-        int cut = len / 2, best = -1;
-        for (int d = 0; d < len / 2 && best < 0; d++) {
-            if (cut + d < len && e->tagline[cut + d] == ' ') best = cut + d;
-            else if (cut - d > 0 && e->tagline[cut - d] == ' ') best = cut - d;
-        }
-        if (best < 0) best = cut;
-        char a[48], b[48];
-        snprintf(a, sizeof a, "%.*s", best, e->tagline);
-        snprintf(b, sizeof b, "%s", e->tagline + best + (e->tagline[best] == ' '));
-        centre_text(a, 228, 56, OS_NAVY, 0);
-        centre_text(b, 228, 66, OS_NAVY, 0);
-    }
-    button(176, 82, 104, 26, focus == 1 ? OS_CORAL : OS_GREY, focus == 1 ? OS_RED : OS_DGREY);
-    centre_text("PLAY", 228, 88, OS_WHITE, 1);
-    footer("Browse", "Select", 0);
-}
-
-static void bars(int x, int y, int level)
-{
-    for (int i = 1; i <= 5; i++) gfx_fill_rect(x + (i - 1) * 9, y, 7, 7, i <= (level + 1) / 2 ? OS_TEAL : OS_MINT);
+    text_r(n, SCREEN_W - 12, 15, OS_WHITE, FONT_S);
+    cartridge(12, 40, 126, 104, cart_colour(pick));
+    draw_icon(e, 75, 40 + 11 + 44, 4, 0);
+    text_l(e->title, 152, 40, OS_WHITE, gfx_aa_width(e->title, FONT_L) <= 160 ? FONT_L : FONT_M);
+    wrap_text(e->tagline, 152, 70, 160, OS_INK, 3);
+    button(152, 112, 140, 30, focus == 1);
+    text_c("PLAY", 222, 118, focus == 1 ? OS_WHITE : OS_INK, FONT_L);
+    footer("Browse", "Select", OS_INK);
 }
 
 static void draw_settings(void)
 {
-    gfx_clear(OS_CREAM);
-    gfx_text("SETTINGS", 12, 10, OS_NAVY, 2);
+    sky();
+    back_arrow(0);
+    text_l("Settings", 44, 12, OS_WHITE, FONT_L);
+    battery(SCREEN_W - 34, 10);
     for (int i = 1; i <= NSETTINGS; i++) {
-        int y = 34 + (i - 1) * 22, on = settings_row == i;
-        if (on) gfx_text(">", 14, y + 3, OS_CORAL, 1);
-        gfx_text(SETTINGS_ROWS[i - 1], 26, y, on ? OS_CORAL : OS_NAVY, 2);
-        if (i == ROW_LIGHT) bars(240, y + 4, set.light);
-        else if (i == ROW_HANDS) gfx_text(set.left_handed ? "LEFT" : "RIGHT", 240, y, OS_NAVY, 2);
+        int y = 50 + (i - 1) * 34, on = settings_row == i;
+        const char *t = SETTINGS_ROWS[i - 1];
+        text_l(t, 50, y, OS_INK, FONT_L);
+        if (on) { pointer(30, y + 3); underline(50, y + 22, gfx_aa_width(t, FONT_L)); }
+        if (i == ROW_LIGHT)
+            for (int k = 0; k < 5; k++)
+                gfx_fill_rect(176 + k * 26, y + 3, 20, 12, k < (set.light + 1) / 2 ? OS_INK : OS_BLUSH);
+        else if (i == ROW_HANDS) text_r(set.left_handed ? "<  Left  >" : "<  Right  >", 300, y + 2, OS_INK, FONT_M);
     }
-    footer("Browse", settings_row == ROW_HANDS ? "Switch" : "Edit", 0);
+    if (settings_row == ROW_BACK) back_arrow(1);
+    footer("Browse", settings_row == ROW_HANDS ? "Switch" : "Edit", OS_INK);
 }
 
 static void draw_level(void)
 {
     int v = set.light;
-    gfx_clear(OS_CREAM);
-    gfx_text("LIGHT", 12, 10, OS_NAVY, 2);
+    sky();
+    text_l("Light", 14, 12, OS_WHITE, FONT_L);
     char pct[8];
     snprintf(pct, sizeof pct, "%d%%", v * 10);
-    centre_text(pct, SCREEN_W / 2, 46, OS_NAVY, 1);
-    for (int i = 1; i <= 10; i++) gfx_fill_rect(70 + (i - 1) * 18, 76, 14, 14, i <= v ? OS_TEAL : OS_MINT);
-    centre_text(set.left_handed ? "TURN THE LEFT KNOB TO ADJUST" : "TURN THE RIGHT KNOB TO ADJUST", SCREEN_W / 2, 104, OS_GREY, 0);
-    footer("Level", "Done", 0);
+    text_c(pct, SCREEN_W / 2, 38, OS_WHITE, FONT_XL);
+    for (int i = 1; i <= 10; i++) {
+        gfx_fill_rect(70 + (i - 1) * 18, 79, 14, 14, OS_INK);
+        gfx_fill_rect(70 + (i - 1) * 18, 76, 14, 14, i <= v ? OS_PINK : OS_BLUSH);
+    }
+    text_c(set.left_handed ? "Turn the left knob" : "Turn the right knob", SCREEN_W / 2, 102, OS_INK, FONT_M);
+    text_c("to adjust", SCREEN_W / 2, 120, OS_INK, FONT_M);
+    footer("Level", "Done", OS_INK);
 }
 
 static void draw_paused(void)
 {
     uint8_t *fb = plat_framebuffer();
     for (int i = 0; i < SCREEN_W * SCREEN_H; i++) fb[i] = (uint8_t)(OS_DIM + (frozen[i] & 15));
-    box(84, 20, 152, 112, OS_CREAM);
-    gfx_text("PAUSED", 98, 30, OS_NAVY, 2);
-    static const char *items[] = { "CONTINUE", "SETTINGS", "EXIT GAME" };
+    gfx_fill_rect(48, 11, 224, 132, OS_INK);
+    gfx_fill_rect(48, 8, 224, 132, OS_BLUSH);
+    text_l("Paused", 70, 18, OS_INK, FONT_L);
+    static const char *items[] = { "Continue", "Settings", "Exit game" };
     for (int i = 1; i <= 3; i++) {
-        int y = 54 + (i - 1) * 24;
-        if (focus == i) { button(106, y - 4, 118, 20, OS_CORAL, OS_RED); gfx_text(">", 96, y + 1, OS_NAVY, 1); }
-        gfx_text(items[i - 1], 112, y, focus == i ? OS_WHITE : OS_NAVY, 2);
+        int y = 52 + (i - 1) * 28;
+        text_l(items[i - 1], 94, y, OS_INK, FONT_M);
+        if (focus == i) { pointer(74, y - 1); underline(94, y + 15, gfx_aa_width(items[i - 1], FONT_M)); }
     }
-    gfx_fill_rect(0, SCREEN_H - 18, SCREEN_W, 18, OS_NAVY);
-    footer("Browse", "Select", 1);
+    gfx_fill_rect(0, SCREEN_H - 22, SCREEN_W, 22, OS_INK);
+    footer("Browse", "Select", OS_WHITE);
 }
 
 // ---------- flow ----------
@@ -509,6 +605,7 @@ const char *os_game_name(void) { return last_game >= 0 ? carts[last_game].title 
 
 void os_frame(const os_input_t *oi)
 {
+    tick++;
     const vm_input_t *in = &oi->in;
     int side = set.left_handed ? VM_LEFT : VM_RIGHT;
     notch_acc += in->delta[side];

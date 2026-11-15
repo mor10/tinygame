@@ -4,31 +4,65 @@
 #include "gfx.h"
 #include "platform.h"
 #include "font.h"
+#include "font_aa.h"
 
-// Game palette (0-15), flat colours from the reference designs, then the OS copies (16-25).
+// Game palette (0-15), flat colours from the reference designs, then the OS "Sunrise" colours (16-25).
 static const uint32_t PALETTE[] = {
     0x000000, 0x1E2340, 0x3A3F4B, 0x8A8F99, 0xFFFFFF, 0xF7F0DC, 0xE8604C, 0xC0392B,
     0xF2B632, 0xF08A3C, 0x5FB04B, 0x3FA89A, 0x9FD8CB, 0x3B6FD1, 0xF29BB0, 0x8A5A3C,
-    0x1E2340, 0xF7F0DC, 0xE8604C, 0xFFFFFF, 0xF2B632, 0x8A8F99, 0x3FA89A,
-    0xC0392B, 0x9FD8CB, 0x3A3F4B,
+    0x3A0B4D, 0xFFFFFF, 0xE8225F, 0x7A3CFF, 0xFFD23F, 0x00B8A9, 0x2D7BFF, 0xFF8A00, 0xA6516B, 0xFFEDE0,
 };
+static void set_color(int i, uint32_t rgb);
+static uint32_t pal_rgb_of(int i);
+#define NSKY 7
+static const uint32_t SKY[NSKY] = { 0xFF2E7E, 0xFF4A62, 0xFF6552, 0xFF8140, 0xFF9E34, 0xFFB835, 0xFFD23F };
+static const uint32_t CUBES[3] = { 0xE8225F, 0x2D7BFF, 0x00B8A9 };   // top, left, right block
 
 uint32_t gfx_palette_rgb(int index)
 {
+    if (index >= OS_SKY) return index < 256 ? pal_rgb_of(index) : 0;
     return index >= 0 && index < (int)(sizeof PALETTE / sizeof PALETTE[0]) ? PALETTE[index] : 0;
 }
 
 void gfx_init_palette(void)
 {
-    for (int i = 0; i < (int)(sizeof PALETTE / sizeof PALETTE[0]); i++) plat_set_color(i, PALETTE[i]);
-    for (int i = 0; i < 16; i++) {   // dimmed copies: 30% of the colour over the OS navy
-        uint32_t c = PALETTE[i], n = 0x1E2340, out = 0;
+    for (int i = 0; i < (int)(sizeof PALETTE / sizeof PALETTE[0]); i++) set_color(i, PALETTE[i]);
+    for (int i = 0; i < NSKY; i++) set_color(OS_SKY + i, SKY[i]);
+    for (int b = 0; b < 3; b++) {   // faces: lit top (30% white), the colour, shaded right (28% plum)
+        uint32_t c = CUBES[b], top = 0, side = 0;
+        for (int sh = 0; sh <= 16; sh += 8) {
+            uint32_t v = (c >> sh) & 0xFF, p = (0x3A0B4Du >> sh) & 0xFF;
+            top |= (v * 7 / 10 + 255 * 3 / 10) << sh;
+            side |= (v * 72 / 100 + p * 28 / 100) << sh;
+        }
+        set_color(OS_CUBE + b * 3, top);
+        set_color(OS_CUBE + b * 3 + 1, c);
+        set_color(OS_CUBE + b * 3 + 2, side);
+    }
+    for (int i = 0; i < 16; i++) {   // dimmed copies: 30% of the colour over the OS plum
+        uint32_t c = PALETTE[i], n = 0x3A0B4D, out = 0;
         for (int sh = 0; sh <= 16; sh += 8) {
             uint32_t a = (c >> sh) & 0xFF, b = (n >> sh) & 0xFF;
             out |= ((a * 3 + b * 7) / 10) << sh;
         }
-        plat_set_color(OS_DIM + i, out);
+        set_color(OS_DIM + i, out);
     }
+}
+
+// ---------- palette mirror and blended slots (for anti-aliased text) ----------
+static uint32_t pal_rgb[256];
+static uint32_t pal_rgb_of(int i) { return pal_rgb[i]; }
+#define BLEND_FIRST 72
+static int blend_next = BLEND_FIRST;
+
+static void set_color(int i, uint32_t rgb) { pal_rgb[i] = rgb; plat_set_color(i, rgb); }
+
+static int blend_slot(uint32_t rgb)
+{
+    for (int i = BLEND_FIRST; i < blend_next; i++) if (pal_rgb[i] == rgb) return i;
+    if (blend_next >= 256) return -1;
+    set_color(blend_next, rgb);
+    return blend_next++;
 }
 
 static inline uint8_t *fb(void) { return plat_framebuffer(); }
@@ -131,4 +165,53 @@ void gfx_blit(const uint8_t *px, int w, int h, int x, int y, int flip_x, int fli
             if (c != GFX_CLEAR) out[dx] = c;
         }
     }
+}
+
+// ---------- anti-aliased text ----------
+int gfx_aa_cap(int font) { return FONT_AA[font].cap; }
+
+static const aa_glyph_t *aa_glyph(const aa_font_t *f, char ch)
+{
+    unsigned c = (unsigned char)ch;
+    return &f->glyphs[c >= 32 && c < 127 ? c - 32 : '?' - 32];
+}
+
+int gfx_aa_width(const char *s, int font)
+{
+    const aa_font_t *f = &FONT_AA[font];
+    int w = 0;
+    for (; *s; s++) w += aa_glyph(f, *s)->adv;
+    return w;
+}
+
+int gfx_aa_text(const char *s, int x, int y, int c, int font)
+{
+    const aa_font_t *f = &FONT_AA[font];
+    int x0 = x;
+    uint32_t fg = pal_rgb[c];
+    for (; *s; s++) {
+        const aa_glyph_t *g = aa_glyph(f, *s);
+        const uint8_t *row = f->bits + g->off;
+        int stride = (g->w + 3) / 4;
+        for (int r = 0; r < g->h; r++, row += stride) {
+            int py = y + g->yoff + r;
+            if ((unsigned)py >= SCREEN_H) continue;
+            for (int k = 0; k < g->w; k++) {
+                int a = (row[k >> 2] >> (6 - 2 * (k & 3))) & 3;
+                int px = x + g->xoff + k;
+                if (!a || (unsigned)px >= SCREEN_W) continue;
+                uint8_t *p = fb() + py * SCREEN_W + px;
+                if (a == 3) { *p = (uint8_t)c; continue; }
+                uint32_t bg = pal_rgb[*p], out = 0;
+                for (int sh = 0; sh <= 16; sh += 8) {
+                    int bv = (bg >> sh) & 0xFF, fv = (fg >> sh) & 0xFF;
+                    out |= (uint32_t)(bv + (fv - bv) * a / 3) << sh;
+                }
+                int slot = out == bg ? *p : out == fg ? c : blend_slot(out);
+                *p = (uint8_t)(slot >= 0 ? slot : a >= 2 ? c : *p);
+            }
+        }
+        x += g->adv;
+    }
+    return x - x0;
 }
