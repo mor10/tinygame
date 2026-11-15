@@ -26,14 +26,18 @@ typedef struct {
 typedef enum { OS_WELCOME, OS_GALLERY, OS_CARD, OS_SETTINGS, OS_LEVEL, OS_GAME, OS_PAUSED, OS_ERROR } os_mode_t;
 
 void os_init(const vm_opts_t *opts, int safe_mode);
-int  os_add_cart(const char *src, size_t len, const char *fallback_name);   // returns its index
+int  os_add_cart(const char *src, size_t len, const char *id);   // a built-in cart; returns its index
+void os_scan_storage(void);   // adds every cart on the carts volume
 void os_frame(const os_input_t *in);
 int  os_fps(void);            // 30 in the shell, the cart's fps in a game
 os_mode_t os_mode(void);
 const char *os_game_name(void);
 
 // Developer hooks for the serial console.
-void os_run_source(const char *src, size_t len);   // replace the "Uploaded" cart and play it
+int  os_run_source(const char *src, size_t len, const char *id);   // store as <id>.lua and play it
+int  os_play(const char *id);      // launch a cart by id
+int  os_delete(const char *id);    // remove a stored cart
+void os_list(void);                // print every gallery entry as a {"t":"shell"} line
 void os_restart_game(void);                        // relaunch the last game
 void os_hash_game(int frames, uint32_t seed);      // relaunch deterministically for a hash run
 int  os_hash_frames_left(void);                    // >0 while a hash run is active

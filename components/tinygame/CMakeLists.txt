@@ -2,7 +2,7 @@
 # Plain C11 plus Lua. Each target supplies the functions in include/platform.h.
 # The same sources build for the simulator through sim/CMakeLists.txt.
 idf_component_register(
-    SRCS "vm.c" "gfx.c" "engine.c" "os.c"
+    SRCS "vm.c" "gfx.c" "engine.c" "os.c" "save.c"
     INCLUDE_DIRS "include"
     REQUIRES lua font
     EMBED_TXTFILES "prelude.lua"

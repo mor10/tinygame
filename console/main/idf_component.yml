@@ -1,0 +1,3 @@
+dependencies:
+  # LittleFS for the carts and saves partitions: power-loss safe, unlike FAT.
+  joltwallet/littlefs: "^1.14.0"

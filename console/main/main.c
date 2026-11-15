@@ -1,6 +1,11 @@
 // TinyTwist console: boots the display and input, runs Lua carts, and takes dev commands over
 // USB-Serial-JTAG. Commands (one per line):
-//   cart <bytes>   then exactly <bytes> of Lua source: it becomes the "Uploaded" cart and plays (max 128 KB)
+//   cart <bytes> [id] then exactly <bytes> of Lua source: stored as /carts/<id>.lua (default
+//                  "uploaded") and played (max 128 KB)
+//   play <id>      launch a stored or built-in cart
+//   rm <id>        delete a stored cart
+//   ls             list the gallery
+//   saveflush <ms> write saves at most this often (default 1000; 0 = every frame, for tests)
 //   restart        relaunch the last game
 //   hash <n> [seed] rerun the current cart deterministically for n frames, printing frame hashes
 //   reboot
@@ -12,6 +17,7 @@
 #include "display.h"
 #include "gfx.h"
 #include "vm.h"
+#include "save.h"
 #include "game.h"
 #include "input.h"
 #include "freertos/FreeRTOS.h"
@@ -31,7 +37,7 @@ static int read_byte(void)
     return ch;
 }
 
-static void receive_cart(long len)
+static void receive_cart(long len, const char *id)
 {
     if (len <= 0 || len > CART_MAX) {
         printf("{\"t\":\"error\",\"kind\":\"upload\",\"msg\":\"cart must be 1-%d bytes\"}\n", CART_MAX);
@@ -49,7 +55,7 @@ static void receive_cart(long len)
         printf("{\"t\":\"error\",\"kind\":\"upload\",\"msg\":\"timed out after %ld of %ld bytes\"}\n", got, len);
     } else {
         printf("{\"t\":\"upload\",\"bytes\":%ld}\n", len);
-        game_load(buf, len, "upload");
+        game_load(buf, len, id);
     }
     free(buf);
 }
@@ -63,7 +69,16 @@ static void console_task(void *arg)
         if (ch != '\n' && ch != '\r') { if (n < (int)sizeof line - 1) line[n++] = (char)ch; continue; }
         if (!n) continue;
         line[n] = 0; n = 0;
-        if (!strncmp(line, "cart ", 5)) receive_cart(atol(line + 5));
+        if (!strncmp(line, "cart ", 5)) {
+            char *end;
+            long len = strtol(line + 5, &end, 10);
+            while (*end == ' ') end++;
+            receive_cart(len, *end ? end : "uploaded");
+        }
+        else if (!strncmp(line, "play ", 5)) game_play(line + 5);
+        else if (!strncmp(line, "rm ", 3)) game_delete(line + 3);
+        else if (!strcmp(line, "ls")) game_list();
+        else if (!strncmp(line, "saveflush ", 10)) save_set_flush_interval(atol(line + 10) * 1000LL);
         else if (!strcmp(line, "restart")) game_restart();
         else if (!strncmp(line, "hash ", 5)) {
             char *end;

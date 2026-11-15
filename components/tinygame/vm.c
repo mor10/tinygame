@@ -8,6 +8,7 @@
 #include "vm.h"
 #include "gfx.h"
 #include "engine.h"
+#include "save.h"
 #include "platform.h"
 #include "lua.h"
 #include "lauxlib.h"
@@ -173,8 +174,11 @@ static void json_str(const char *s)   // prints s as a JSON string body
     }
 }
 
+static int scanning;   // vm_scan runs a cart's top level only to read its cart table: stay quiet
+
 static int l_log(lua_State *L)
 {
+    if (scanning) return 0;
     int n = lua_gettop(L);
     fputs("{\"t\":\"log\",\"msg\":\"", stdout);
     for (int i = 1; i <= n; i++) { if (i > 1) putchar(' '); json_str(luaL_tolstring(L, i, NULL)); lua_pop(L, 1); }
@@ -204,7 +208,7 @@ static void make_readonly(lua_State *L, const char *name)
     lua_remove(L, -2);                     // drop the real table; the proxy keeps it via __index
 }
 
-static void open_sandbox(lua_State *L)
+static void open_sandbox(lua_State *L, const char *save_id)
 {
     static const luaL_Reg libs[] = {
         { LUA_GNAME, luaopen_base }, { LUA_STRLIBNAME, luaopen_string }, { LUA_TABLIBNAME, luaopen_table },
@@ -239,6 +243,8 @@ static void open_sandbox(lua_State *L)
     make_readonly(L, "gfx");  lua_setglobal(L, "gfx");
     luaL_newlib(L, knob_fns); make_readonly(L, "knob"); lua_setglobal(L, "knob");
     luaL_newlib(L, sys_fns);  make_readonly(L, "sys");  lua_setglobal(L, "sys");
+    save_open(L, save_id, plat_time_us());
+    make_readonly(L, "save"); lua_setglobal(L, "save");
 }
 
 // ---------- error screens ----------
@@ -417,7 +423,7 @@ int vm_start(const char *src, size_t len, const char *name, const vm_opts_t *opt
     lua_State *L = L_;
     lua_gc(L, LUA_GCGEN, 0, 0);
     lua_sethook(L, hook, LUA_MASKCOUNT, HOOK_COUNT);
-    open_sandbox(L);
+    open_sandbox(L, opts->save_id);
     printf("{\"t\":\"cart\",\"name\":\"%s\",\"bytes\":%u,\"lua_kb\":%u,\"deterministic\":%d}\n",
            cur_name, (unsigned)len, (unsigned)(mem_used / 1024), det);
 
@@ -463,6 +469,7 @@ int vm_frame(const vm_input_t *input)
     cb_start = t2;
     lua_gc(L, LUA_GCSTEP, 0);   // one young collection per frame, after draw, so pauses stay small
     int64_t t3 = plat_time_us();
+    save_flush(L, t3, 0);
     last_update_us = (uint32_t)(t1 - t0);
     last_draw_us = (uint32_t)(t2 - t1);
     last_gc_us = (uint32_t)(t3 - t2);
@@ -488,7 +495,8 @@ int vm_scan(const char *src, size_t len, const vm_opts_t *opts, vm_meta_t *m)
     lua_gc(L, LUA_GCGEN, 0, 0);
     lua_sethook(L, hook, LUA_MASKCOUNT, HOOK_COUNT);
     L_ = L;
-    open_sandbox(L);
+    scanning = 1;
+    open_sandbox(L, NULL);
     int st = run_chunk(L, opts->prelude, opts->prelude_len, "=prelude");
     if (st == LUA_OK) st = run_chunk(L, src, len, "=game");
     int ok = 0;
@@ -505,6 +513,7 @@ int vm_scan(const char *src, size_t len, const vm_opts_t *opts, vm_meta_t *m)
     cb_start = plat_time_us();
     lua_close(L);
     L_ = NULL;
+    scanning = 0;
     engine_reset();
     stuck = 0;
     return ok ? 0 : -1;
@@ -513,6 +522,7 @@ int vm_scan(const char *src, size_t len, const vm_opts_t *opts, vm_meta_t *m)
 void vm_stop(void)
 {
     if (L_) {
+        save_flush(L_, plat_time_us(), 1);   // the last changes, even if the game stopped on an error
         cb_start = plat_time_us();   // finalizers run inside lua_close under the same watchdog
         lua_close(L_);
         L_ = NULL;

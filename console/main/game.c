@@ -8,6 +8,7 @@
 #include "vm.h"
 #include "display.h"
 #include "input.h"
+#include "platform.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -25,12 +26,13 @@ extern const char hello_lua_end[] asm("_binary_hello_lua_end");
 static SemaphoreHandle_t req_lock;
 static char *upload_src;
 static size_t upload_len;
+static char upload_id[32], play_id[32], delete_id[32];
+static volatile int list_req;
 static volatile int restart_req, hash_frames_req;
 static volatile uint32_t hash_seed_req;
 
-void game_load(const char *src, size_t len, const char *name)
+void game_load(const char *src, size_t len, const char *id)
 {
-    (void)name;
     char *copy = heap_caps_malloc(len + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!copy) { printf("{\"t\":\"error\",\"kind\":\"load\",\"msg\":\"no memory for cart\"}\n"); return; }
     memcpy(copy, src, len);
@@ -39,8 +41,25 @@ void game_load(const char *src, size_t len, const char *name)
     free(upload_src);
     upload_src = copy;
     upload_len = len;
+    snprintf(upload_id, sizeof upload_id, "%s", id);
     xSemaphoreGive(req_lock);
 }
+
+void game_play(const char *id)
+{
+    xSemaphoreTake(req_lock, portMAX_DELAY);
+    snprintf(play_id, sizeof play_id, "%s", id);
+    xSemaphoreGive(req_lock);
+}
+
+void game_delete(const char *id)
+{
+    xSemaphoreTake(req_lock, portMAX_DELAY);
+    snprintf(delete_id, sizeof delete_id, "%s", id);
+    xSemaphoreGive(req_lock);
+}
+
+void game_list(void) { list_req = 1; }
 
 void game_restart(void) { restart_req = 1; }
 
@@ -54,10 +73,19 @@ static void handle_requests(void)
 {
     char *src = NULL;
     size_t len = 0;
+    char up[32], play[32], del[32];
     xSemaphoreTake(req_lock, portMAX_DELAY);
     src = upload_src; len = upload_len; upload_src = NULL;
+    memcpy(up, upload_id, 32); memcpy(play, play_id, 32); memcpy(del, delete_id, 32);
+    play_id[0] = delete_id[0] = 0;
     xSemaphoreGive(req_lock);
-    if (src) { os_run_source(src, len); free(src); }
+    if (src) {
+        if (os_run_source(src, len, up) == 0) printf("{\"t\":\"stored\",\"id\":\"%s\",\"bytes\":%u}\n", up, (unsigned)len);
+        free(src);
+    }
+    if (play[0] && os_play(play) != 0) printf("{\"t\":\"error\",\"kind\":\"command\",\"msg\":\"no cart named %s\"}\n", play);
+    if (del[0]) printf("{\"t\":\"deleted\",\"id\":\"%s\",\"ok\":%d}\n", del, os_delete(del) == 0);
+    if (list_req) { list_req = 0; os_list(); }
     if (restart_req) { restart_req = 0; os_restart_game(); }
     if (hash_frames_req) { int n = hash_frames_req; hash_frames_req = 0; os_hash_game(n, hash_seed_req); }
 }
@@ -99,10 +127,12 @@ static void game_task(void *arg)
     vm_opts_t opts = {
         .prelude = prelude_lua_start, .prelude_len = (size_t)(prelude_lua_end - prelude_lua_start) - 1,
     };
+    plat_storage_init();
     os_init(&opts, safe_boot);
     // -1: embedded text carries a trailing NUL
-    os_add_cart(brick_lua_start, (size_t)(brick_lua_end - brick_lua_start) - 1, "Brick Bop");
-    os_add_cart(hello_lua_start, (size_t)(hello_lua_end - hello_lua_start) - 1, "Hello");
+    os_add_cart(brick_lua_start, (size_t)(brick_lua_end - brick_lua_start) - 1, "brick");
+    os_add_cart(hello_lua_start, (size_t)(hello_lua_end - hello_lua_start) - 1, "hello");
+    if (!safe_boot) os_scan_storage();   // safe mode shows only the built-in carts
 
     static uint32_t hist[HIST_MS];
     int64_t next = esp_timer_get_time(), window = next;

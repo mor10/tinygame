@@ -11,13 +11,14 @@
 #define ICON_MAX  16
 
 typedef struct {
-    char *src;              // owned copy (uploaded carts) or NULL when `csrc` is static
-    const char *csrc;
+    char id[32];            // save id, and the file name for stored carts
+    char *src;              // owned copy for an upload that couldn't be stored, else NULL
+    const char *csrc;       // built-in source compiled into the firmware, else NULL
+    int stored;             // source lives on the carts volume and is read at launch
     size_t len;
     char title[24], tagline[48];
     uint8_t icon[ICON_MAX * ICON_MAX];
     int icon_w, icon_h;     // 0 when the cart has no usable icon
-    int uploaded;
 } entry_t;
 
 static entry_t carts[MAX_CARTS];
@@ -76,10 +77,10 @@ static void decode_icon(entry_t *e, const char *art)   // same text-art rules as
     if (w > 0 && h > 0) { e->icon_w = w; e->icon_h = h; }
 }
 
-static void scan(entry_t *e, const char *fallback)
+static void scan(entry_t *e, const char *src, size_t len, const char *fallback)
 {
     vm_meta_t *m = plat_asset_alloc(sizeof *m);   // too big for a task stack
-    if (m && vm_scan(e->csrc, e->len, &base, m) == 0 && m->title[0]) {
+    if (m && src && vm_scan(src, len, &base, m) == 0 && m->title[0]) {
         snprintf(e->title, sizeof e->title, "%s", m->title);
         snprintf(e->tagline, sizeof e->tagline, "%s", m->tagline);
         decode_icon(e, m->icon);
@@ -91,16 +92,58 @@ static void scan(entry_t *e, const char *fallback)
     plat_asset_free(m);
 }
 
-int os_add_cart(const char *src, size_t len, const char *fallback_name)
+static void announce(int i)
+{
+    printf("{\"t\":\"shell\",\"cart\":%d,\"id\":\"%s\",\"title\":\"%s\",\"stored\":%d,\"icon\":%d}\n",
+           i, carts[i].id, carts[i].title, carts[i].stored, carts[i].icon_w > 0);
+}
+
+int os_add_cart(const char *src, size_t len, const char *id)
 {
     if (ncarts == MAX_CARTS) return -1;
     entry_t *e = &carts[ncarts];
     memset(e, 0, sizeof *e);
+    snprintf(e->id, sizeof e->id, "%s", id);
     e->csrc = src;
     e->len = len;
-    scan(e, fallback_name);
-    printf("{\"t\":\"shell\",\"cart\":%d,\"title\":\"%s\",\"icon\":%d}\n", ncarts, e->title, e->icon_w > 0);
+    scan(e, src, len, id);
+    announce(ncarts);
     return ncarts++;
+}
+
+static int find_id(const char *id)
+{
+    for (int i = 0; i < ncarts; i++) if (!strcmp(carts[i].id, id)) return i;
+    return -1;
+}
+
+// Adds (or refreshes) a cart from the carts volume. Returns its index, or -1.
+static int add_stored(const char *id)
+{
+    size_t len;
+    char *src = plat_cart_load(id, &len);
+    if (!src) return -1;
+    int i = find_id(id);
+    if (i < 0) {
+        if (ncarts == MAX_CARTS) { plat_asset_free(src); return -1; }
+        i = ncarts++;
+    } else plat_asset_free(carts[i].src);
+    entry_t *e = &carts[i];
+    memset(e, 0, sizeof *e);
+    snprintf(e->id, sizeof e->id, "%s", id);
+    e->stored = 1;
+    e->len = len;
+    scan(e, src, len, id);
+    plat_asset_free(src);
+    announce(i);
+    return i;
+}
+
+void os_scan_storage(void)
+{
+    static char ids[MAX_CARTS][32];
+    int n = plat_cart_list(ids, MAX_CARTS);
+    for (int i = 0; i < n; i++) add_stored(ids[i]);
 }
 
 // ---------- settings ----------
@@ -340,28 +383,44 @@ static void go(os_mode_t m, int f) { mode = m; focus = f; notch_acc = 0; }
 
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 
+static void stop_game(void);
+
 static void launch(int i)
 {
+    entry_t *e = &carts[i];
     last_game = i;
     pick = i;
     vm_opts_t o = base;
-    if (hash_left) { o.deterministic = 1; }
-    if (vm_start(carts[i].src ? carts[i].src : carts[i].csrc, carts[i].len, carts[i].title, &o) != 0) go(OS_ERROR, 1);
-    else go(OS_GAME, 1);
+    o.deterministic = hash_left > 0;
+    o.save_id = e->id;
+    const char *src = e->src ? e->src : e->csrc;
+    char *loaded = NULL;
+    size_t len = e->len;
+    if (e->stored) {
+        loaded = plat_cart_load(e->id, &len);
+        src = loaded;
+    }
+    if (!src) {
+        static const char *msg = "error('This game could not be read from storage')";
+        vm_start(msg, strlen(msg), e->title, &o);   // records the error for the error screen
+        go(OS_ERROR, 1);
+        return;
+    }
+    int ok = vm_start(src, len, e->title, &o) == 0;
+    plat_asset_free(loaded);   // Lua has compiled it; the text isn't needed any more
+    go(ok ? OS_GAME : OS_ERROR, 1);
 }
 
-static uint32_t hash_seed;
 
 void os_restart_game(void)
 {
-    if (mode == OS_GAME || mode == OS_PAUSED || mode == OS_ERROR) vm_stop();
+    stop_game();
     if (last_game >= 0) launch(last_game);
 }
 
 void os_hash_game(int frames, uint32_t seed)
 {
     hash_left = frames;
-    hash_seed = seed;
     base.seed = seed;
     os_restart_game();
     if (last_game < 0) hash_left = 0;
@@ -369,32 +428,81 @@ void os_hash_game(int frames, uint32_t seed)
 
 int os_hash_frames_left(void) { return hash_left; }
 
-void os_run_source(const char *src, size_t len)
+static int valid_id(const char *id)
+{
+    size_t n = strlen(id);
+    if (n < 1 || n > 31) return 0;
+    for (size_t i = 0; i < n; i++) {
+        char c = id[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-')) return 0;
+    }
+    return 1;
+}
+
+static void stop_game(void)
 {
     if (mode == OS_GAME || mode == OS_PAUSED || mode == OS_ERROR) vm_stop();
     mode = OS_GALLERY;
-    int idx = -1;
-    for (int i = 0; i < ncarts; i++) if (carts[i].uploaded) idx = i;
-    if (idx < 0) {
-        if (ncarts == MAX_CARTS) return;
-        memmove(&carts[1], &carts[0], sizeof carts[0] * ncarts);   // uploads go first in the gallery
-        ncarts++;
-        if (last_game >= 0) last_game++;
-        idx = 0;
-        memset(&carts[0], 0, sizeof carts[0]);
-    } else {
-        plat_asset_free(carts[idx].src);
+}
+
+int os_run_source(const char *src, size_t len, const char *id)
+{
+    if (!valid_id(id)) {
+        printf("{\"t\":\"error\",\"kind\":\"upload\",\"msg\":\"cart names are 1-31 of a-z 0-9 _ -\"}\n");
+        return -1;
     }
-    entry_t *e = &carts[idx];
-    e->src = plat_asset_alloc(len + 1);
-    if (!e->src) return;
-    memcpy(e->src, src, len);
-    e->src[len] = 0;
-    e->csrc = e->src;
-    e->len = len;
-    e->uploaded = 1;
-    scan(e, "Uploaded");
-    launch(idx);
+    stop_game();
+    int i;
+    if (plat_cart_store(id, src, len) == 0) {
+        i = add_stored(id);
+    } else {   // no storage (simulator without --storage): keep it in memory until the next reboot
+        i = find_id(id);
+        if (i < 0) {
+            if (ncarts == MAX_CARTS) return -1;
+            i = ncarts++;
+        } else plat_asset_free(carts[i].src);
+        entry_t *e = &carts[i];
+        memset(e, 0, sizeof *e);
+        snprintf(e->id, sizeof e->id, "%s", id);
+        e->src = plat_asset_alloc(len + 1);
+        if (!e->src) return -1;
+        memcpy(e->src, src, len);
+        e->src[len] = 0;
+        e->len = len;
+        scan(e, e->src, len, id);
+        announce(i);
+    }
+    if (i < 0) return -1;
+    launch(i);
+    return 0;
+}
+
+void os_list(void)
+{
+    for (int i = 0; i < ncarts; i++) announce(i);
+}
+
+int os_play(const char *id)
+{
+    int i = find_id(id);
+    if (i < 0) return -1;
+    stop_game();
+    launch(i);
+    return 0;
+}
+
+int os_delete(const char *id)
+{
+    int i = find_id(id);
+    if (i < 0 || !carts[i].stored) return -1;
+    if (last_game == i) { stop_game(); last_game = -1; }
+    if (plat_cart_delete(id) != 0) return -1;
+    plat_asset_free(carts[i].src);
+    memmove(&carts[i], &carts[i + 1], sizeof carts[0] * (ncarts - i - 1));
+    ncarts--;
+    if (last_game > i) last_game--;
+    if (pick >= ncarts) pick = ncarts - 1;
+    return 0;
 }
 
 int os_fps(void) { return mode == OS_GAME ? vm_fps() : 30; }

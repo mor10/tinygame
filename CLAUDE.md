@@ -29,7 +29,13 @@ Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
   - Settings persist in NVS. Holding the right knob at power-on boots safe mode, which ignores saved settings.
   - Still open: Resume relaunches the last game from the start (real resume needs saves, Phase 7). Games read both knobs directly and ignore the Hands setting. Carts can't have a hero image yet, so the game card draws the icon twice.
 
-**Next: Phase 7 (storage).** Roadmap: `docs/scope-v0.1.md` section 14.
+**Phase 7 (storage): done (2026-11-14).** `console/partitions.csv` has nvs, otadata, factory (2 MB), ota_0/ota_1 (3 MB each), carts (LittleFS, 7.5 MB), saves (LittleFS, 256 KB) and coredump.
+  - Uploaded carts are stored as `/carts/<id>.lua` and stay in the gallery after a reboot. Built-in carts stay compiled in.
+  - Games get `save.set(key, value)`, `save.get(key, default)` and `save.clear()`. Values are numbers, strings and booleans, up to 4 KB per cart. Saves are written at most once a second and when the game stops, via a temp file and an atomic rename, with a CRC; a damaged save is reported and reset.
+  - Torture test (`sim/torture.py`): 50 board resets with the save rewritten every frame left every save intact.
+  - Still open: a real power-cut run (USB unplugged mid-save). The `save_torture` cart shows SAVE OK or SAVE DAMAGED on screen for that.
+
+**Next: Phase 8 (audio).** It needs a MAX98357A I2S amp and a speaker wired to three free GPIOs. Roadmap: `docs/scope-v0.1.md` section 14.
 
 ### Screen lab notes (history)
 
@@ -69,8 +75,15 @@ Build and flash with `idf.py -C console -p /dev/cu.usbmodem* build flash`. The U
 - `components/tinygame/engine.c`: text-art sprites and tile maps (`docs/engine-v1.md`), decoded on first use or right after the cart file runs, kept outside the Lua cap with their own 512 KB cap.
 - `components/tinygame/prelude.lua`: Lua helpers every cart gets: `hit`, `group`, `clamp`, `lerp`, `dist`, `rnd`, `rnd_int`, `choose`.
 - `components/tinygame/os.c`: the OS shell around the vm. Carts declare `title`, `tagline` and a 16x16 text-art `icon` in their `cart` table; the shell reads them with `vm_scan` at boot.
-- `main/main.c`: the serial dev console. `cart <bytes>` followed by the source makes it the "Uploaded" cart (first in the gallery) and plays it. `hash <frames> [seed]` relaunches the last game deterministically and prints frame hashes. `restart` relaunches the last game, and `reboot` restarts the board.
-- `tools/send_cart.py PORT FILE.lua [--seconds N] [--timestamps]`: uploads a cart and prints its JSON output. Run it with the ESP-IDF Python environment.
+- `main/main.c`: the serial dev console.
+  - `cart <bytes> [id]` followed by the source stores it as `/carts/<id>.lua` (default id `uploaded`) and plays it. Ids are 1-31 characters of a-z, 0-9, `_` and `-`.
+  - `play <id>` launches a cart, `rm <id>` deletes a stored one, and `ls` lists the gallery.
+  - `saveflush <ms>` sets the save write interval (tests only).
+  - `hash <frames> [seed]` relaunches the last game deterministically and prints frame hashes.
+  - `restart` relaunches the last game, and `reboot` restarts the board.
+- `main/platform_esp.c` mounts `/carts` and `/saves` (LittleFS, from the `joltwallet/littlefs` managed component; `idf.py` fetches it on the first build).
+- `components/tinygame/save.c`: the save store.
+- `tools/send_cart.py PORT FILE.lua [--seconds N] [--timestamps]`: uploads a cart (as `uploaded`) and prints its JSON output. Run it with the ESP-IDF Python environment.
 - `carts/brick.lua` and `carts/hello.lua` are built into the gallery. `carts/tests/*.lua` are failure tests: stuck, stuck inside pcall, bug, out of memory (also inside pcall), the sandbox probe, a cart without a `cart` table, bad sprite and map art, and `engine_selftest.lua` (22 checks). `brick_autoplay_patch.lua` is appended to `brick.lua` for unattended frame-time runs.
 
 ## Simulator: `sim/`
@@ -82,6 +95,8 @@ Build it with `cmake -S sim -B sim/build && cmake --build sim/build`.
   - It writes a PNG of the final frame, or of the error screen if the cart failed.
   - Exit status: 0 when the cart ran every frame, 1 after an error, 2 for usage problems.
 - `sim/build/tinygame-sim --shell CART.lua... [--frames N] [--press ...] [--turn ...] [--chord pause|exit@frame] [--png FILE]` runs the OS shell with those carts in the gallery and prints a `mode` line at each screen change.
+- `--storage DIR` keeps carts and saves in `DIR/carts` and `DIR/saves` (without it, saves last one run). `--runs R` plays a cart R times in a row to test saves across runs.
+- `sim/torture.py PORT [--cycles N]` resets the board at random moments while `save_torture` rewrites its save, and checks that every save survives.
 - Runs are deterministic: `math.random` is seeded, `sys.time()` follows the frame count, and input comes only from `--press` and `--turn`.
 - Browser build: Emscripten lives in `~/emsdk` (`source ~/emsdk/emsdk_env.sh`). Build with `emcmake cmake -S sim -B sim/build-web && cmake --build sim/build-web`. Then serve the repository root over HTTP (`python3 -m http.server 8766`) and open `/sim/web/`. The page runs carts live with keyboard (A/D/S and J/L/K), mouse or touch knobs, and takes dropped `.lua` files. WASM can't load from `file://`.
 - `node sim/web/hash_node.cjs CART.lua [frames] [seed]` prints the WASM engine's frame hashes for comparison with `tinygame-sim`.

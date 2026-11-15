@@ -1,7 +1,11 @@
 // tinygame-sim: runs a cart headless with the console's own engine and prints the same JSON lines.
 //
 //   tinygame-sim CART.lua [--frames N] [--seed S] [--png FILE] [--scale K] [--press SIDE@FRAME ...]
-//                         [--turn SIDE@FRAME:NOTCHES ...]
+//                         [--turn SIDE@FRAME:NOTCHES ...] [--storage DIR] [--runs R]
+//   tinygame-sim --shell CART.lua... [same options] [--chord pause|exit@FRAME]
+//
+// --storage DIR keeps carts and saves in DIR/carts and DIR/saves (otherwise saves last one run).
+// --runs R plays the cart R times in a row (only the last prints hashes) to test saves across runs.
 //
 // Runs are deterministic: math.random is seeded with S (default 0), sys.time() follows the frame
 // count, and input comes only from --press/--turn. Frame hashes (FNV-1a of the 8-bit framebuffer)
@@ -16,6 +20,7 @@
 #include "sim.h"
 #include "os.h"
 
+extern const char *sim_storage_dir;
 extern const char prelude_lua[];
 extern const unsigned prelude_lua_len;
 
@@ -28,7 +33,8 @@ static int usage(void)
 {
     fprintf(stderr, "usage: tinygame-sim CART.lua [--frames N] [--seed S] [--png FILE] [--scale K]\n"
                     "                    [--press left|right@FRAME] [--turn left|right@FRAME:NOTCHES]\n"
-                    "       tinygame-sim --shell CART.lua... [same options] [--chord pause|exit@FRAME]\n");
+                    "       tinygame-sim --shell CART.lua... [same options] [--chord pause|exit@FRAME]\n"
+                    "       options: [--storage DIR] [--runs R]\n");
     return 2;
 }
 
@@ -75,14 +81,18 @@ static int run_shell(const char **paths, int n, int frames, const char *png, int
     if (frames < 1 || scale < 1 || scale > 8) return usage();
     gfx_init_palette();
     vm_opts_t opts = { .prelude = prelude_lua, .prelude_len = prelude_lua_len };
+    plat_storage_init();
     os_init(&opts, 0);
     for (int i = 0; i < n; i++) {
         size_t len;
         char *src = read_file(paths[i], &len);   // kept for the whole run; the shell points into it
         if (!src) { fprintf(stderr, "can't read %s\n", paths[i]); return 2; }
-        const char *name = strrchr(paths[i], '/') ? strrchr(paths[i], '/') + 1 : paths[i];
-        os_add_cart(src, len, name);
+        char id[32];
+        const char *base = strrchr(paths[i], '/') ? strrchr(paths[i], '/') + 1 : paths[i];
+        snprintf(id, sizeof id, "%.*s", (int)strcspn(base, "."), base);
+        os_add_cart(src, len, id);
     }
+    os_scan_storage();
     static const char *modes[] = { "welcome", "gallery", "card", "settings", "level", "game", "paused", "error" };
     os_mode_t last = os_mode();
     for (int f = 1; f <= frames; f++) {
@@ -112,7 +122,7 @@ int main(int argc, char **argv)
 {
     const char *cart = NULL, *png = NULL;
     const char *shell_carts[32];
-    int shell = 0, nshell = 0;
+    int shell = 0, nshell = 0, runs = 1;
     int frames = 300, scale = 2;
     unsigned long seed = 0;
     for (int i = 1; i < argc; i++) {
@@ -125,6 +135,8 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--press") && more) { if (parse_event(argv[++i], 0)) return usage(); }
         else if (!strcmp(a, "--turn") && more) { if (parse_event(argv[++i], 1)) return usage(); }
         else if (!strcmp(a, "--shell")) shell = 1;
+        else if (!strcmp(a, "--storage") && more) sim_storage_dir = argv[++i];
+        else if (!strcmp(a, "--runs") && more) runs = atoi(argv[++i]);
         else if (!strcmp(a, "--chord") && more) { if (parse_chord(argv[++i])) return usage(); }
         else if (a[0] != '-' && shell && nshell < 32) shell_carts[nshell++] = a;
         else if (a[0] != '-' && !cart) cart = a;
@@ -139,7 +151,19 @@ int main(int argc, char **argv)
     const char *name = strrchr(cart, '/') ? strrchr(cart, '/') + 1 : cart;
 
     gfx_init_palette();
-    vm_opts_t opts = { .prelude = prelude_lua, .prelude_len = prelude_lua_len, .deterministic = 1, .seed = (uint32_t)seed };
+    plat_storage_init();
+    char save_id[32];
+    snprintf(save_id, sizeof save_id, "%.*s", (int)strcspn(name, "."), name);
+    vm_opts_t opts = { .prelude = prelude_lua, .prelude_len = prelude_lua_len, .deterministic = 1, .seed = (uint32_t)seed,
+                       .save_id = save_id };
+    for (int r = 1; r < runs; r++) {   // earlier runs: play all frames and stop, so saves carry over
+        if (vm_start(src, len, name, &opts) == 0) {
+            vm_input_t none;
+            memset(&none, 0, sizeof none);
+            for (int f = 0; f < frames && vm_frame(&none) == 0; f++) { }
+        }
+        vm_stop();
+    }
     int ok = vm_start(src, len, name, &opts) == 0;
     int n = 0;
     while (ok && n < frames) {

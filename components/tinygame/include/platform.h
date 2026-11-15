@@ -25,3 +25,16 @@ void  plat_asset_free(void *ptr);
 void plat_backlight(int percent);
 int  plat_settings_load(void *buf, size_t n);        // 0 when n bytes were read
 void plat_settings_save(const void *buf, size_t n);
+
+void  plat_storage_init(void);   // mount the volumes (board) or pick a directory (simulator)
+
+// Stored carts (the carts volume). An id is a file name without ".lua": 1-31 of a-z 0-9 _ -.
+int   plat_cart_list(char ids[][32], int max);                 // returns how many, sorted by id
+char *plat_cart_load(const char *id, size_t *len);             // NUL-terminated; free with plat_asset_free
+int   plat_cart_store(const char *id, const char *src, size_t len);   // 0 on success; replaces atomically
+int   plat_cart_delete(const char *id);
+
+// Saves (the saves volume): one blob per cart id, replaced atomically so a power cut leaves
+// either the old save or the new one, never a mix.
+int   plat_save_read(const char *id, void *buf, size_t max);   // bytes read, or -1 if there's none
+int   plat_save_write(const char *id, const void *buf, size_t n);   // 0 on success
