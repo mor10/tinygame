@@ -58,6 +58,11 @@ profiles:
         frctrl2: 0x00                  # ~119 Hz nominal; fastest refresh tested best
         porch_lines: 1                 # back and front porch (B2); twisting either knob from here got worse
         backlight_pwm_hz: 20000        # 1 kHz banded in phone slow-motion
+      colour_correction:               # console display pipeline (console/main/display.c), set 2026-11-14
+        exponents: {r: 0.90, g: 0.65, b: 0.80}   # out = in^exp per channel; 1.0 = none, lower = brighter mid-tones
+        why: panel crushes green (and a little blue) in the mid-tones, so yellows read orange and the screen looks dark and red
+        method: phone photo of the home screen, patches measured against known colours after a white reference; approved by eye on the board
+        tune: serial command `gamma <r> <g> <b>` (live, not saved)
         physical_scan_direction: "left_to_right on the landscape screen (portrait row 0 to 319, MADCTL ML=0)"   # filmed slow-mo of a full-screen flip at frctrl 0x1F; matches sw write order
         residual: "occasional tear glitches on a fast full-width line (no TE pin); not eliminated"
         flush_ms_full_frame: {40mhz: 23.2, 80mhz: 12.2}

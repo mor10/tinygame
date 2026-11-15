@@ -28,6 +28,7 @@ Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
 **Phase 6 (OS shell): done (2026-11-14).** `components/tinygame/os.c` has Welcome, Cartridges, Game Card, Settings (light, hands), Paused and the error state, matching `docs/ref-designs`. It was checked by hand on the board.
   - It is written in C, not as a Lua system cart, so the launcher can't hit a Lua error and needs no special API. The reviewed mock, `console/carts/system/launcher_mock.lua`, stays as the design reference.
   - Controls: right-handed (the default) turns the right knob to scroll and adjust; left-handed turns the left knob. A click on either knob selects. Back is the scrollable "<" on the gallery and game card, and the BACK row in Settings. In a game, clicking both knobs pauses and holding both for 3 s leaves the game.
+  - Panel colours: the board's panel crushes green in the mid-tones, so the display pipeline lifts each channel (R 0.90, G 0.65, B 0.80). The simulator shows exact colours, so it looks yellower and brighter than the glass; judge colour on the board, not the simulator PNGs. This also applies to games.
   - Look (2026-11-14, "Sun Yellow"): a flat sun-yellow field, one solid pink button per screen with a plum drop-edge, plain text lists with a pointer and underline, notched cartridges with a window 25% brighter than the body, a bobbing isometric block hero, and anti-aliased Space Grotesk type (`components/tinygame/fonts/`, regenerate with `gen_font.py`). OS colours are palette slots 16-25, block tones 56-64, cartridge windows 65-69 and blended text edges from 72 (`gfx.h`, `gfx.c`); the game palette 0-15 is unchanged. `docs/ref-designs` shows the old cream look and is out of date.
   - Settings persist in NVS. Holding the right knob at power-on boots safe mode, which ignores saved settings.
   - Still open: Resume relaunches the last game from the start (real resume needs saves, Phase 7). Games read both knobs directly and ignore the Hands setting. Carts can't have a hero image yet, so the game card draws the icon twice.
@@ -97,6 +98,7 @@ Build and flash with `idf.py -C console -p /dev/cu.usbmodem* build flash`. The U
   - `cart <bytes> [id]` followed by the source stores it as `/carts/<id>.lua` (default id `uploaded`) and plays it. Ids are 1-31 characters of a-z, 0-9, `_` and `-`.
   - `play <id>` launches a cart, `rm <id>` deletes a stored one, and `ls` lists the gallery.
   - `saveflush <ms>` sets the save write interval (tests only).
+  - `gamma <r> <g> <b>` retunes the panel colour correction live (exponents, 1.0 = none, lower = brighter). Not saved; the defaults are in `console/main/display.c` and `hardware.yaml` (`colour_correction`).
   - `hash <frames> [seed]` relaunches the last game deterministically and prints frame hashes.
   - `restart` relaunches the last game, and `reboot` restarts the board.
 - `main/platform_esp.c` mounts `/carts` and `/saves` (LittleFS, from the `joltwallet/littlefs` managed component; `idf.py` fetches it on the first build).
