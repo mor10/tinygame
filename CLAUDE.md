@@ -23,7 +23,7 @@ Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
 
 **Phase 5 (simulator + CLI): done (2026-11-14).** `sim/` builds the same engine natively and to WebAssembly. Board, native simulator and browser engine produce identical frame hashes on `hello`, `engine_selftest`, `determinism` (600 frames of random numbers, trig and moving objects) and Brick Breaker on autoplay (900 frames). In the browser the engine takes about 0.1 ms per frame.
 
-**Phase 6 (OS shell): done (2026-11-14).** `components/tinygame/os.c` has Welcome, Cartridges, Game Card, Settings (sound, light, hands), Paused and the error state, matching `docs/ref-designs`. It was checked by hand on the board.
+**Phase 6 (OS shell): done (2026-11-14).** `components/tinygame/os.c` has Welcome, Cartridges, Game Card, Settings (light, hands), Paused and the error state, matching `docs/ref-designs`. It was checked by hand on the board.
   - It is written in C, not as a Lua system cart, so the launcher can't hit a Lua error and needs no special API. The reviewed mock, `console/carts/system/launcher_mock.lua`, stays as the design reference.
   - Controls: right-handed (the default) turns the right knob to scroll and adjust; left-handed turns the left knob. A click on either knob selects. Back is the scrollable "<" on the gallery and game card, and the BACK row in Settings. In a game, clicking both knobs pauses and holding both for 3 s leaves the game.
   - Settings persist in NVS. Holding the right knob at power-on boots safe mode, which ignores saved settings.
@@ -35,7 +35,12 @@ Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
   - Torture test (`sim/torture.py`): 50 board resets with the save rewritten every frame left every save intact.
   - Still open: a real power-cut run (USB unplugged mid-save). The `save_torture` cart shows SAVE OK or SAVE DAMAGED on screen for that.
 
-**Next: Phase 8 (audio).** It needs a MAX98357A I2S amp and a speaker wired to three free GPIOs. Roadmap: `docs/scope-v0.1.md` section 14.
+**Phase 8 (audio): not planned.** Audio is a hypothetical future feature, not something to build on the 1.47 or 1.69 boards in their current configuration. There is no `sfx`/`music` API and no Sound setting.
+
+**Phase 9 (WebSerial uploader): done (2026-11-14).** `uploader/` is a static page for Chrome or Edge. It checks a cart for three seconds in the WASM engine with a live preview, shows errors with the code around the line, and copies a ready-made request for an AI helper. It then sends the cart over Web Serial with the console's own commands (`cart <bytes> <id>`, `play`, `rm`, `ls`). Connect, send and play were tested by hand on the board.
+  - Serve the repository root over HTTP and open `/uploader/`. It loads `sim/build-web/tinygame.js`, so build the WASM engine first.
+
+**Next: Phase 10 (AI kit).** Roadmap: `docs/scope-v0.1.md` section 14.
 
 ### Screen lab notes (history)
 

@@ -33,13 +33,13 @@ static int pick;                      // gallery selection; -1 is the "<" back i
 static int last_game = -1;            // index of the game playing or last played
 static int settings_row = 1;
 static os_mode_t settings_from = OS_WELCOME;
-static int level_kind;                // 1 = sound, 2 = light
 static int notch_acc;
 static uint8_t *frozen;               // the game frame behind the pause menu
 static int hash_left;
 
-static const char *SETTINGS_ROWS[] = { "SOUND", "LIGHT", "HANDS", "BACK" };
-#define NSETTINGS 4
+// No SOUND row: this hardware has no audio, and a control that does nothing would confuse kids.
+static const char *SETTINGS_ROWS[] = { "LIGHT", "HANDS", "BACK" };
+enum { ROW_LIGHT = 1, ROW_HANDS, ROW_BACK, NSETTINGS = ROW_BACK };
 
 // ---------- carts ----------
 static int hexval(char c)
@@ -341,24 +341,22 @@ static void draw_settings(void)
         int y = 34 + (i - 1) * 22, on = settings_row == i;
         if (on) gfx_text(">", 14, y + 3, OS_CORAL, 1);
         gfx_text(SETTINGS_ROWS[i - 1], 26, y, on ? OS_CORAL : OS_NAVY, 2);
-        if (i == 1) bars(240, y + 4, set.sound);
-        else if (i == 2) bars(240, y + 4, set.light);
-        else if (i == 3) gfx_text(set.left_handed ? "LEFT" : "RIGHT", 240, y, OS_NAVY, 2);
+        if (i == ROW_LIGHT) bars(240, y + 4, set.light);
+        else if (i == ROW_HANDS) gfx_text(set.left_handed ? "LEFT" : "RIGHT", 240, y, OS_NAVY, 2);
     }
-    footer("Browse", settings_row == 3 ? "Switch" : "Edit", 0);
+    footer("Browse", settings_row == ROW_HANDS ? "Switch" : "Edit", 0);
 }
 
 static void draw_level(void)
 {
-    int v = level_kind == 1 ? set.sound : set.light;
+    int v = set.light;
     gfx_clear(OS_CREAM);
-    gfx_text(level_kind == 1 ? "SOUND" : "LIGHT", 12, 10, OS_NAVY, 2);
+    gfx_text("LIGHT", 12, 10, OS_NAVY, 2);
     char pct[8];
     snprintf(pct, sizeof pct, "%d%%", v * 10);
     centre_text(pct, SCREEN_W / 2, 46, OS_NAVY, 1);
     for (int i = 1; i <= 10; i++) gfx_fill_rect(70 + (i - 1) * 18, 76, 14, 14, i <= v ? OS_TEAL : OS_MINT);
     centre_text(set.left_handed ? "TURN THE LEFT KNOB TO ADJUST" : "TURN THE RIGHT KNOB TO ADJUST", SCREEN_W / 2, 104, OS_GREY, 0);
-    if (level_kind == 1) centre_text("(no speaker fitted yet)", SCREEN_W / 2, 118, OS_GREY, 0);
     footer("Level", "Done", 0);
 }
 
@@ -539,14 +537,14 @@ void os_frame(const os_input_t *oi)
     case OS_SETTINGS:
         settings_row = clampi(settings_row + notches, 1, NSETTINGS);
         if (select) {
-            if (settings_row <= 2) { level_kind = settings_row; go(OS_LEVEL, 1); }
-            else if (settings_row == 3) { set.left_handed = !set.left_handed; notch_acc = 0; save_settings(); }
+            if (settings_row == ROW_LIGHT) go(OS_LEVEL, 1);
+            else if (settings_row == ROW_HANDS) { set.left_handed = !set.left_handed; notch_acc = 0; save_settings(); }
             else { save_settings(); go(settings_from, settings_from == OS_PAUSED ? 2 : 3); }
         }
         break;
     case OS_LEVEL:
-        if (level_kind == 1) set.sound = (uint8_t)clampi(set.sound + notches, 0, 10);
-        else { set.light = (uint8_t)clampi(set.light + notches, 1, 10); if (notches) apply_settings(); }
+        set.light = (uint8_t)clampi(set.light + notches, 1, 10);
+        if (notches) apply_settings();
         if (select) { save_settings(); go(OS_SETTINGS, 1); }
         break;
     case OS_GAME:

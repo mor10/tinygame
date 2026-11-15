@@ -232,15 +232,19 @@ static int floordiv(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b);
 
 static int l_sprite(lua_State *L)
 {
+    // Read every argument before pushing anything: a pushed value would sit in the slot of a
+    // missing optional argument (lua_toboolean(L, 4) would then see the sprite index as flip_x).
     luaL_checkstring(L, 1);
+    int x = arg_int(L, 2), y = arg_int(L, 3), fx = lua_toboolean(L, 4), fy = lua_toboolean(L, 5);
+    int scale = opt_int(L, 6, 1);
+    if (scale != 1 && scale != 2) return luaL_error(L, "sprite scale must be 1 or 2");
     engine_load_assets(L);
+    lua_settop(L, 1);
     lua_pushvalue(L, 1);
     lua_rawget(L, lua_upvalueindex(1));
     if (!lua_isinteger(L, -1)) return luaL_error(L, "there's no sprite named '%s'", lua_tostring(L, 1));
     sprite_t *s = &spr[lua_tointeger(L, -1)];
-    int scale = opt_int(L, 6, 1);
-    if (scale != 1 && scale != 2) return luaL_error(L, "sprite scale must be 1 or 2");
-    gfx_blit(s->px, s->w, s->h, arg_int(L, 2), arg_int(L, 3), lua_toboolean(L, 4), lua_toboolean(L, 5), scale);
+    gfx_blit(s->px, s->w, s->h, x, y, fx, fy, scale);
     return 0;
 }
 

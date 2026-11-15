@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TinyGame Uploader</title>
+<style>
+  :root {
+    --bg: #e9ecf2; --panel: #f7f0dc; --ink: #1e2340; --muted: #5a6072; --coral: #e8604c; --red: #c0392b;
+    --teal: #3fa89a; --mint: #9fd8cb; --line: #d8cfb6; --field: #fffaf0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14172a; --panel: #1e2340; --ink: #f7f0dc; --muted: #a8adbd; --line: #343a5c; --field: #161a30; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  h1 span { color: var(--coral); }
+  .grow { flex: 1; }
+  .pill { font-size: 13px; padding: 4px 10px; border-radius: 99px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); }
+  .pill.on { color: #fff; background: var(--teal); border-color: var(--teal); }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  section, aside { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 10px; }
+  button, label.file { font: inherit; padding: 8px 14px; border-radius: 9px; border: 1px solid var(--line);
+         background: var(--field); color: var(--ink); cursor: pointer; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button.primary { background: var(--coral); border-color: var(--coral); color: #fff; font-weight: 600; }
+  button.small { padding: 4px 9px; font-size: 13px; }
+  label.file input { display: none; }
+  textarea { width: 100%; min-height: 220px; resize: vertical; border: 1px solid var(--line); border-radius: 9px;
+             background: var(--field); color: var(--ink); padding: 10px; font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  input[type=text] { font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); color: var(--ink); width: 14em; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 12px 0 0; }
+  .cart-head { display: flex; gap: 14px; align-items: center; margin-bottom: 12px; }
+  canvas { image-rendering: pixelated; background: #000; border-radius: 6px; display: block; }
+  #icon { width: 48px; height: 48px; background: var(--field); border: 1px solid var(--line); }
+  #preview { width: 100%; aspect-ratio: 320 / 172; border: 5px solid #1e2340; }
+  .title { font-weight: 700; font-size: 17px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .check { margin-top: 12px; padding: 10px 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--field); font-size: 14px; }
+  .check.ok { border-color: var(--teal); }
+  .check.bad { border-color: var(--coral); }
+  .check pre { white-space: pre-wrap; margin: 6px 0 0; font: 12px ui-monospace, monospace; color: var(--muted); }
+  ul.games { list-style: none; margin: 0 0 14px; padding: 0; }
+  ul.games li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  ul.games li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  ul.games li small { color: var(--muted); }
+  #log { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+  #log .error { color: var(--coral); }
+  #log .log { color: var(--teal); }
+  .drop { outline: 3px dashed var(--teal); outline-offset: 4px; }
+  .warn { background: var(--coral); color: #fff; padding: 10px 14px; border-radius: 10px; margin-bottom: 16px; display: none; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Tiny<span>Game</span> uploader</h1>
+    <span class="grow"></span>
+    <span class="pill" id="conn">Not connected</span>
+    <button id="connect" class="primary">Connect TinyGame</button>
+  </header>
+  <div class="warn" id="nosupport">This browser can't talk to USB devices. Open this page in Chrome or Edge on a computer.</div>
+  <div class="layout">
+    <section id="cartpane">
+      <div class="cart-head">
+        <canvas id="icon" width="16" height="16"></canvas>
+        <div>
+          <div class="title" id="title">No game loaded</div>
+          <div class="muted" id="tagline">Drop a .lua file here, open one, or paste the code below.</div>
+        </div>
+      </div>
+      <textarea id="src" spellcheck="false" placeholder="-- paste a TinyGame cart here"></textarea>
+      <div class="row">
+        <label class="file">Open .lua…<input type="file" id="file" accept=".lua,text/plain"></label>
+        <label class="muted">Name on the TinyGame <input type="text" id="id" maxlength="31" placeholder="my-game"></label>
+      </div>
+      <div class="check" id="check">Load a game and it will be checked here before it goes to the TinyGame.</div>
+      <div class="row">
+        <button id="send" class="primary" disabled>Send to TinyGame</button>
+        <button id="copy" disabled>Copy error for AI helper</button>
+        <span class="muted" id="sendstatus"></span>
+      </div>
+    </section>
+    <aside>
+      <h2>Preview</h2>
+      <canvas id="preview" width="320" height="172"></canvas>
+      <p class="muted">The first three seconds of the game, run by the same engine as the TinyGame.</p>
+      <h2>Games on the TinyGame</h2>
+      <ul class="games" id="games"><li><span class="muted">Connect to see them.</span></li></ul>
+      <h2>TinyGame says</h2>
+      <div id="log"></div>
+    </aside>
+  </div>
+</main>
+<script src="../sim/build-web/tinygame.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

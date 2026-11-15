@@ -12,7 +12,7 @@
 #include "vm.h"
 
 typedef struct {
-    uint8_t sound;    // 0-10 (no audio hardware yet; stored for Phase 8)
+    uint8_t sound;    // unused: this hardware has no audio (kept so stored settings keep their layout)
     uint8_t light;    // 1-10, backlight in tens of percent
     uint8_t left_handed;
     uint8_t version;
