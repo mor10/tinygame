@@ -46,7 +46,8 @@ Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
   - `sim/build/tinygame-sim --check` is the checker: a dialect lint, cart-table checks, and two 300-frame strict runs.
   - The cart API gained `tilt.x/y/shake/zero` and `gfx.circle`/`gfx.fill_circle`.
   - `ai/eval/run_eval.py` measures how many kid-style prompts (`ai/eval/prompts.txt`) pass on the first try. It needs the `anthropic` package (in `ai/eval/.venv`) and `ANTHROPIC_API_KEY`, which lives in `~/.zshrc`, so run it via `zsh -ic`. A run costs a few dollars.
-  - First run, 2026-11-14 (`claude-opus-5-5`, effort medium): 15/20 under the original checker. Four of the five failures were the checker wrongly rejecting `if not x then` reads of unset globals, so the strict mode now rejects only foreign names (`btn`, `spr`, ...). A malformed icon is now a warning. Re-checked, the same 20 answers pass 20/20 (one with an icon warning). A fresh run would confirm this on a new sample.
+  - First run, 2026-11-14 (`claude-opus-5-5`, effort medium): 15/20 under the original checker. Four of the five failures were the checker wrongly rejecting `if not x then` reads of unset globals, so the strict mode now rejects only foreign names (`btn`, `spr`, ...). A malformed icon is now a warning. Re-checked, the same 20 answers pass 20/20 (one with an icon warning).
+  - Fresh run, 2026-11-14, same settings: **20/20 passed first try, 0 warnings** (about 74k output tokens, 34 s per answer). The first run cost $1.86. Spot-checked games, including a space shooter and Tetris with a ghost piece, are coherent and show their controls.
 
 ### Screen lab notes (history)
 
