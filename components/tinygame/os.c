@@ -1,4 +1,4 @@
-// OS shell: the screens from docs/ref-designs (Welcome, Cartridges, Game Card, Settings, Paused)
+// OS shell: the screens in docs/ref-designs/design-OS.png (Welcome, Cartridges, Game Card, Settings, Paused)
 // and the game/error states around the vm. Layout follows console/carts/system/launcher_mock.lua,
 // the reviewed mock.
 #include <stdio.h>
