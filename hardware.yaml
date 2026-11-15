@@ -58,11 +58,6 @@ profiles:
         frctrl2: 0x00                  # ~119 Hz nominal; fastest refresh tested best
         porch_lines: 1                 # back and front porch (B2); twisting either knob from here got worse
         backlight_pwm_hz: 20000        # 1 kHz banded in phone slow-motion
-      colour_correction:               # console display pipeline (console/main/display.c), set 2026-11-14
-        exponents: {r: 0.40, g: 0.60, b: 0.60}   # out = in^exp per channel; 1.0 = none, lower = brighter mid-tones
-        why: panel crushes the mid-tones, red most of all, so yellows read orange and the screen looks dark and muddy
-        method: first estimated from a phone photo (0.90/0.65/0.80), then tuned by eye on the board with the Colour Card (0.40/0.60/0.60); SMPTE bars and ramps look right
-        tune: the Colour Card game (Tune page) or serial command `gamma <r> <g> <b>` (live, not saved)
         physical_scan_direction: "left_to_right on the landscape screen (portrait row 0 to 319, MADCTL ML=0)"   # filmed slow-mo of a full-screen flip at frctrl 0x1F; matches sw write order
         residual: "occasional tear glitches on a fast full-width line (no TE pin); not eliminated"
         flush_ms_full_frame: {40mhz: 23.2, 80mhz: 12.2}
@@ -74,6 +69,12 @@ profiles:
         rain_page_speed8: "still clean by eye at up to 8 px/frame; diff flush 5.6/6.5/7.3 ms"
         rain_page_speed4: "looks clean by eye; diff flush 6.0/6.7/7.2 ms (min/avg/max), 34 KB per frame, 0 late frames"
         fps60: "much worse (wide diagonal waves); stays opt-in only"
+      # Colour correction applied by the console display pipeline, after the lab result above.
+      colour_correction:               # console display pipeline (console/main/display.c), tuned 2026-11-15
+          exponents: {r: 0.40, g: 0.60, b: 0.60}   # out = in^exp per channel; 1.0 = none, lower = brighter mid-tones
+          why: panel crushes the mid-tones, red most of all, so yellows read orange and the screen looks dark and muddy
+          method: tuned by eye on the board with the Colour Card (SMPTE bars and ramps); started from a phone-photo estimate
+          tune: the Colour Card game (Tune page) or serial command `gamma <r> <g> <b>` (live, not saved)
     knobs:
       left: {a: 9, b: 8, click: 7}
       right: {a: 4, b: 5, click: 6}

@@ -1,5 +1,5 @@
-// OS shell: the screens in docs/ref-designs/design-OS.png (Welcome, Cartridges, Game Card, Settings, Paused)
-// and the game/error states around the vm. Look and layout: docs/ref-designs.
+// OS shell: Welcome, the game shelf, Game Card, Settings, Paused, the Colour Card and the game/error
+// states around the vm. Look and layout: docs/ref-designs (design-OS.png, design-system.png).
 #include <stdio.h>
 #include <string.h>
 #include <math.h>

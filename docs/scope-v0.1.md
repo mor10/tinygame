@@ -1,5 +1,11 @@
 # TinyGame Scope Document v0.1: Platform, OS, Engine and AI-Authoring Kit for the Waveshare ESP32-S3-LCD-1.47B
 
+> **Historical planning document.** It records the early plan and is no longer a description of the product.
+> Where it differs from the code, the code and `CLAUDE.md` win. In particular the OS shell (launcher, game
+> card, settings, pause) was built in C in `components/tinygame/os.c`, not as a privileged Lua system cart,
+> and its look is documented in `docs/ref-designs/`.
+
+
 > **Status:** reference, not doctrine. Written 2026-11-13 from desk research before any bench work. Where it conflicts with `hardware.yaml` or with measurements, the yaml and the measurements win.
 >
 > **Updates since writing (2026-11-13 evening):**
