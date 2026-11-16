@@ -57,8 +57,12 @@ With `./tg serve` running:
 
 Hold the board with the screen facing you. By default the right knob scrolls and either knob
 selects; Settings > Hands swaps sides for left-handed players. In a game, clicking both knobs
-pauses, and holding both for 3 seconds leaves the game. Holding the right knob while powering on
-starts safe mode.
+pauses (the menu has Continue, Settings, Sleep and Exit game), and holding both for 3 seconds
+leaves the game; outside a game the same hold puts the console to sleep. Any click wakes it, back
+into the paused game if one was running. On battery it sleeps by itself after 3, 5 (default) or
+10 minutes of no use (Settings > Sleep after); it never does that while plugged into USB. A
+battery icon shows on the main screens when a battery is connected. Holding the right knob while
+powering on starts safe mode.
 
 To build and flash the firmware, install ESP-IDF v5.5 in `~/esp/esp-idf` (see the Espressif
 getting-started guide), plug in the board, and run `./tg flash`.

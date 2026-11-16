@@ -650,10 +650,10 @@ static void draw_stats_sidebar(const entry_t *e)
     text_l(t, x0 + 16, 58, ink, font);
     // the stats: one line each, the label small on the left and the value on the right
     for (int i = 0; i < pause_stat_n; i++) {
-        int y = 84 + i * 18;
-        if (i) gfx_fill_rect(x0 + 16, y - 5, w - 30, 1, sh);
+        int y = 80 + i * 16;
+        if (i) gfx_fill_rect(x0 + 16, y - 2, w - 30, 1, sh);
         text_l(pause_stats[i].label, x0 + 16, y + 2, ink, FONT_S);
-        text_r(pause_stats[i].value, x0 + w - 14, y, ink, FONT_M);
+        text_r(pause_stats[i].value, x0 + w - 14, y, ink, FONT_M);   // 4 rows end at y 140, above the footer bar at 150
     }
 }
 
@@ -949,7 +949,7 @@ static void watch_power(const os_input_t *oi)
     power_ms += ms;
     if (power_ms >= 1000) { power_ms = 0; poll_power(); }
     // Auto-sleep only runs on battery. On USB, only a manual sleep sleeps.
-    if (usb_power) idle_ms = 0;
+    if (usb_power || hash_left > 0) idle_ms = 0;   // hash runs have no input and must not sleep
     else if (SLEEP_MIN[set.sleep] > 0 && idle_ms >= SLEEP_MIN[set.sleep] * 60000) want_sleep = 1;
 }
 

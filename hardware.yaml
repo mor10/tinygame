@@ -81,6 +81,12 @@ profiles:
     imu_pins: {sda: 48, scl: 47}
     imu_map: "screen x = -PCB Y, screen y = -PCB X (tilting an edge down rolls the ball toward it); confirmed on the tilt page 2026-11-13"
     rgb_led_gpio: 38
+    power:                         # added 2026-11-16, checked on the board: ~4.15 V on a charged cell, steady
+      battery_adc: {gpio: 1, adc: "ADC1 ch0", divider: 3, note: "pin sees a third of the battery voltage; no fuel gauge, so level is a voltage table"}
+      charger: "onboard charge manager (ETA6098 per the scope doc); its charge-status line is not known to reach a GPIO"
+      usb_detect: "USB-Serial-JTAG connected (host frames only). A plain charger shows as unplugged. No VBUS sense pin known."
+      battery_bars_mv: {on: [3550, 3680, 3800, 3950], hysteresis: 40, no_battery_below: 2500}
+      sleep: "deep sleep; wake on either encoder click (GPIO 6 and 7, ext1 any-low); a wake is a reboot"
   "169":
     board: Waveshare ESP32-S3-LCD-1.69 non-Touch
     display:
