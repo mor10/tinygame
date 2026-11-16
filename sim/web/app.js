@@ -99,14 +99,31 @@
     nextFrame = performance.now();
   }
 
-  async function loadUrl(url) {
-    const r = await fetch(url);
-    if (!r.ok) { log(`{"t":"error","msg":"couldn't fetch ${url}"}`); return; }
-    load(await r.text(), url.split("/").pop());
+  async function readUrl(url) {
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) throw new Error(`Couldn't fetch ${url} (HTTP ${r.status})`);
+    return r.text();
+  }
+
+  let stopWatching = () => {};
+  async function loadUrl(url, live = false) {
+    stopWatching();
+    if (live) {
+      stopWatching = TinyGamePreview.watch(url, {
+        read: readUrl, load, report: (msg) => log(JSON.stringify({ t: "error", msg })),
+      });
+      return;
+    }
+    try {
+      load(await readUrl(url), url.split("/").pop());
+    } catch (error) {
+      log(JSON.stringify({ t: "error", msg: error.message }));
+    }
   }
 
   function loadFile(file) {
     if (!file) return;
+    stopWatching();
     file.text().then((t) => load(t, file.name));
   }
 
@@ -149,6 +166,15 @@
     }
   }
 
-  await loadUrl(document.getElementById("builtin").value);
+  const builtin = document.getElementById("builtin");
+  try {
+    const cartUrl = TinyGamePreview.cartUrl(location.search, location.href);
+    if (cartUrl) {
+      builtin.add(new Option(cartUrl.split("/").pop(), cartUrl, true, true));
+    }
+    await loadUrl(builtin.value, new URLSearchParams(location.search).get("live") === "1");
+  } catch (error) {
+    log(JSON.stringify({ t: "error", msg: error.message }));
+  }
   requestAnimationFrame(tick);
 })();

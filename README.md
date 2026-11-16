@@ -55,6 +55,45 @@ With `./tg serve` running:
 | `docs/scope-v0.1.md` | the original plan |
 | `CLAUDE.md` | the developer notes: hardware, firmware, measurements |
 
+## Copilot and local checks
+
+Copilot reads `.github/copilot-instructions.md`, which points to the shared cart and developer
+guidance rather than maintaining another copy. The Copilot app configuration in
+`.github/github-app.yml` provides manual **Set up simulator** and **Browser simulator** commands.
+Review and trust that configuration when prompted; neither command accesses hardware.
+`.github/workflows/copilot-setup-steps.yml` prepares Node.js and the native simulator for
+Copilot cloud agent sessions once the workflow is on the default branch.
+
+The repository extension in `.github/extensions/tinygame-preview/` adds a **TinyGame live preview**
+Canvas in compatible Copilot app/CLI versions. Ask Copilot to open it for
+`{"cart":"games/brickbreaker.lua"}` (the default cart). The Canvas serves the existing browser
+simulator and committed WASM engine on an automatically selected loopback port, so there is no
+extra package install, build, or `./tg serve` process to manage. Saved edits to the selected Lua
+cart reload within about a second and restart the game; selecting or dropping another cart stops
+that live reload. Use a new Canvas instance to preview a different cart. The `status` action
+reports the original selected cart and URL. Closing the Canvas closes its server.
+
+If extension support is unavailable, run `./tg serve` and open
+<http://localhost:8766/sim/web/?cart=/games/brickbreaker.lua&live=1>. Without the query parameters,
+the existing browser simulator behaves as before. Live reload watches Lua source only; engine
+changes still require `./tg web-build` and a page reload.
+
+GitHub Actions runs the hardware-free checks below on pushes and pull requests (CMake, a C
+compiler, Python 3 and Node.js 22+ are needed). Cart screenshots are kept as workflow artifacts.
+
+```bash
+./tg setup
+for cart in games/*.lua; do ./tg check "$cart" || exit; done
+node --check .github/extensions/tinygame-preview/extension.mjs
+node --check sim/web/app.js
+node --test .github/extensions/tinygame-preview/server.test.mjs sim/web/preview.test.mjs sim/web/parity.test.mjs
+```
+
+The Node tests cover preview routing/live reload and compare 300 frames of each cart between
+the native simulator and the committed browser engine. A parity failure after an engine change
+means the browser assets need rebuilding with `./tg web-build`. These checks never flash,
+upload to, or open a serial connection to the console.
+
 ## The console
 
 Hold the board with the screen facing you. By default the right knob scrolls and either knob

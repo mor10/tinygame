@@ -1,0 +1,42 @@
+name: Simulator checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: simulator-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build native simulator and check template
+        run: ./tg setup
+      - name: Check all carts
+        shell: bash
+        run: |
+          for cart in games/*.lua; do
+            ./tg check "$cart"
+          done
+      - name: Check preview support and browser engine
+        run: |
+          node --check .github/extensions/tinygame-preview/extension.mjs
+          node --check sim/web/app.js
+          node --test .github/extensions/tinygame-preview/server.test.mjs sim/web/preview.test.mjs sim/web/parity.test.mjs
+      - name: Keep cart screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cart-screenshots
+          path: out/*.png
+          if-no-files-found: ignore

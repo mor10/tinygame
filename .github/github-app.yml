@@ -1,0 +1,9 @@
+instructions: |
+  Follow AGENTS.md for carts and .github/copilot-instructions.md for developer entry points.
+scripts:
+  - name: Set up simulator
+    command: ./tg setup
+  - name: Browser simulator
+    command: ./tg serve
+server_ready_pattern: 'Browser simulator:\s+(http://localhost:[0-9]+/sim/web/)'
+auto_open_in_browser: true
