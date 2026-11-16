@@ -8,15 +8,30 @@ and a tilt sensor. Games ("carts") are single Lua files.
 
 > This is a full rebuild. The earlier version lives on the [`legacy`](https://github.com/mor10/tinygame/tree/legacy) branch and the `legacy-v0` tag.
 
-## Make a game with an AI coding agent
+## Make a game with GitHub Copilot
 
-Open this folder in your coding agent (Claude Code, Codex, Cursor, or any other) and ask for a
-game, for example: *"Make a game where a cat catches falling fish."*
+GitHub Copilot is the default development path. Open this repository in the **GitHub Copilot
+app**, review and trust its repository configuration when prompted, then run **Set up simulator**
+to build the native simulator and check the template. You need CMake and a C compiler, as
+described below; no console is needed for local development.
 
-The agent finds its instructions in `AGENTS.md` (Claude Code also gets the `make-a-tinygame`
-skill). It writes the game into `games/`, checks it in the simulator, looks at a screenshot,
-fixes problems, and can send it to the console. In testing, 20 out of 20 kid-style requests
-produced a working game on the first try.
+Ask Copilot for a game, for example: *"Make a game where a cat catches falling fish."* Copilot
+uses the shared `make-a-tinygame` skill and `AGENTS.md` to write the cart into `games/`, check
+it in the simulator, inspect its screenshot and fix problems. Ask it to open the **TinyGame
+live preview** Canvas for the cart to play it alongside the conversation; saved Lua edits
+reload automatically. Uploading or flashing the console requires an explicit request.
+
+Copilot CLI and supported IDE agent modes can use the same skill and local checks. If Canvas
+support is unavailable, use the browser simulator described below. Earlier AI cart-generation
+testing produced working games for 20 out of 20 kid-style requests on the first try; the
+[development notes](docs/development.md) record that evaluation history.
+
+### Other coding agents (fallback)
+
+Claude Code, Codex and Cursor can use the same repository and shared skill if you are not using
+Copilot. Follow the [agent support details](#agent-support-and-local-checks) below rather than
+maintaining a separate workflow. Root [`CLAUDE.md`](CLAUDE.md) is only a Claude Code compatibility
+entry point; the shared developer reference is [docs/development.md](docs/development.md).
 
 ## Do it yourself
 
@@ -53,9 +68,30 @@ With `./tg serve` running:
 | `web-engine/` | the engine compiled for browsers (rebuilt with `./tg web-build`) |
 | `firmware/` | the screen lab used to tune the display |
 | `docs/scope-v0.1.md` | the original plan |
-| `CLAUDE.md` | the developer notes: hardware, firmware, measurements |
+| `docs/development.md` | shared architecture, engine, simulators, tooling, firmware and history |
 
-## Copilot and local checks
+## Agent support and local checks
+
+The canonical [make-a-tinygame skill](.agents/skills/make-a-tinygame/SKILL.md) follows the
+[Agent Skills format](https://agentskills.io/specification). Its description makes it eligible
+for automatic selection on game creation, modification and bug-fix requests, not unrelated
+engine or tooling work. `AGENTS.md`, Copilot's repository instructions and the Claude Code
+compatibility entry point explicitly direct agents to use it for those tasks. Detailed
+game-making guidance stays in `AGENTS.md`; the skill and entry points do not maintain separate
+copies of the workflow.
+
+| Agent | Project skill discovery |
+|---|---|
+| [GitHub Copilot](https://docs.github.com/en/copilot/concepts/customizations/agent-skills) | `.agents/skills/` in supported app, CLI, cloud and IDE agent versions |
+| [Codex](https://developers.openai.com/codex/skills/) | `.agents/skills/` |
+| [Cursor](https://cursor.com/docs/skills) | `.agents/skills/` |
+| [Claude Code](https://code.claude.com/docs/en/skills) | `.claude/skills/make-a-tinygame` symlinks to the canonical skill |
+
+Use a checkout that preserves symlinks for Claude Code's native skill discovery. Agents without
+skill support can follow the same workflow by reading the skill file through `AGENTS.md` (or
+`llms.txt`). Automatic discovery and selection depend on the agent version, enabled skills and
+trusted repository instructions; this is not universal auto-loading for every coding agent.
+Refresh skills or start a new agent session after changing discovery paths.
 
 Copilot reads `.github/copilot-instructions.md`, which points to the shared cart and developer
 guidance rather than maintaining another copy. The Copilot app configuration in

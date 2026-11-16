@@ -1,7 +1,7 @@
 # TinyGame Scope Document v0.1: Platform, OS, Engine and AI-Authoring Kit for the Waveshare ESP32-S3-LCD-1.47B
 
 > **Historical planning document.** It records the early plan and is no longer a description of the product.
-> Where it differs from the code, the code and `CLAUDE.md` win. In particular the OS shell (launcher, game
+> Where it differs from the code, the code and the [development notes](development.md) win. In particular the OS shell (launcher, game
 > card, settings, pause) was built in C in `components/tinygame/os.c`, not as a privileged Lua system cart,
 > and its look is documented in `docs/ref-designs/`.
 
@@ -13,7 +13,7 @@
 >   - IMU SDA=GPIO48, SCL=GPIO47, WHO_AM_I 0x05.
 >   - Encoders on GPIO4–9: left A9/B8/click7, right A4/B5/click6. These are undetented, 80 transitions per turn.
 >   - The panel runs at 80 MHz, mode 0, with row offset 34 under MADCTL 0x70.
-> - **Earlier experiments** showed "pixel waves" on scrolling horizontal lines under controller rotation (MADCTL 0x70). The screen lab (`firmware/`) tests software rotation in native portrait as the fix. See `CLAUDE.md`.
+> - **Earlier experiments** showed "pixel waves" on scrolling horizontal lines under controller rotation (MADCTL 0x70). The screen lab (`firmware/`) tests software rotation in native portrait as the fix. See the [development notes](development.md).
 > - **Changes from this document:**
 >   - The build is now screen-lab-first. The "software factory"/CI rig idea is dropped in favour of one board on the desk.
 >   - USB-Serial-JTAG over TinyUSB CDC during development.

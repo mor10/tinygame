@@ -1,5 +1,10 @@
 # Making TinyGame games: instructions for coding agents
 
+For every request to create, fix or change a TinyGame game, automatically invoke
+`make-a-tinygame` from `.agents/skills/make-a-tinygame/SKILL.md` if it is not already active.
+If your agent has no skill invocation mechanism, read that file and follow it directly.
+This file remains the shared source of game-making guidance; the skill routes here.
+
 TinyGame is a pocket game console: a 320x172 screen, two endless clicky knobs, and a tilt
 sensor. A game ("cart") is one Lua 5.4 file. Your job here is usually to write or change a cart
 in `games/`, check it in the simulator, look at it, and send it to the console.
@@ -28,9 +33,12 @@ in `games/`, check it in the simulator, look at it, and send it to the console.
    and look at `out/<name>-play.png`. `--turn side@frame:notches`, `--press side@frame`,
    `--tilt x,y@frame` (holds from that frame), `--frames N` (default 150). Add `sys.log(...)`
    calls to print values while debugging; they show up in the output. Remove them when done.
-5. Send it to a TinyGame on USB: `./tg send games/<name>.lua`. It is stored on the console and
-   starts playing. Without a USB-capable agent, tell the person to run `./tg serve` and use the
-   uploader page in Chrome.
+5. Only when the user explicitly requests it, send it to a TinyGame on USB:
+   `./tg send games/<name>.lua`. It is stored on the console and starts playing.
+   If sending is requested but the agent has no USB access, tell the person to run `./tg serve`
+   and use the uploader page in Chrome. Otherwise, stop after local checks and previews.
+
+Hardware access (`send`, `flash` and serial commands) always requires an explicit user request.
 
 Run commands from the repository root. Don't edit the engine (`components/`, `console/`, `sim/`)
 to make a game work: if the API can't do something, say so.
@@ -54,5 +62,5 @@ to make a game work: if the API can't do something, say so.
 
 ## Other parts of the repository
 
-The console firmware, simulator and tools have their own notes in `CLAUDE.md`. You don't need
-them to make games.
+The console firmware, simulator and tools have their own notes in
+[docs/development.md](docs/development.md). You don't need them to make games.
