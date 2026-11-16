@@ -12,7 +12,7 @@
 #include "vm.h"
 
 typedef struct {
-    uint8_t sound;    // unused: this hardware has no audio (kept so stored settings keep their layout)
+    uint8_t sleep;    // Sleep after: 0 = 3 min, 1 = 5 min (default), 2 = 10 min, 3 = off (version 1 stored an unused sound byte here)
     uint8_t light;    // 1-10, backlight in tens of percent
     uint8_t left_handed;
     uint8_t version;
@@ -40,4 +40,9 @@ int  os_delete(const char *id);    // remove a stored cart
 void os_list(void);                // print every gallery entry as a {"t":"shell"} line
 void os_restart_game(void);                        // relaunch the last game
 void os_hash_game(int frames, uint32_t seed);      // relaunch deterministically for a hash run
+// Sleep. The shell asks for it (idle timeout, Sleep in the pause menu, both knobs held outside a game);
+// the platform then calls os_sleep_prepare() and powers down. After the next boot it calls os_wake().
+int  os_sleep_wanted(void);                        // 1 once the shell wants the platform to sleep
+void os_sleep_prepare(char *resume_id, size_t n);  // stops the game (saves flush); resume_id = game to resume, or ""
+void os_wake(const char *resume_id);               // after a wake: swallow the wake click, resume that game paused
 int  os_hash_frames_left(void);                    // >0 while a hash run is active

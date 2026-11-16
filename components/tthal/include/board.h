@@ -51,5 +51,14 @@
 #define BOARD_IMU_SY_AXIS     0
 #define BOARD_IMU_SY_SIGN     -1
 
+// Battery sense: GPIO1 (ADC1 channel 0) behind a divider that makes the pin see one third of the battery
+// voltage. Reported by a Waveshare notes source, not yet checked with a meter on this board. Battery
+// readings are voltage only (no fuel gauge).
+#define BOARD_BAT_ADC_GPIO    1
+#define BOARD_BAT_DIV         3
+// USB power sense GPIO, or -1 to use USB-Serial-JTAG: the host's frames count as "plugged in". A charger
+// with no host (no data) is NOT seen that way, so set a VBUS sense pin here once one is known.
+#define BOARD_USB_SENSE_GPIO  -1
+
 // BOOT button doubles as "next page" in the lab
 #define BOARD_BOOT_BTN        0

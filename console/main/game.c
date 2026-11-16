@@ -138,6 +138,7 @@ static void game_task(void *arg)
     // -1: embedded text carries a trailing NUL
     ADD(colorcard);   // the only built-in entry: games are uploaded
     if (!safe_boot) os_scan_storage();   // safe mode shows only the built-in carts
+    if (plat_woke_from_sleep()) os_wake(plat_wake_resume_id());   // back into the game that was running, paused
 
     static uint32_t hist[HIST_MS];
     int64_t next = esp_timer_get_time(), window = next;
@@ -169,6 +170,11 @@ static void game_task(void *arg)
             if (s.gc_us > gc_max) gc_max = s.gc_us;
         }
         display_present();
+        if (os_sleep_wanted()) {   // idle timeout, Sleep in the pause menu, or both knobs held outside a game
+            char resume[32];
+            os_sleep_prepare(resume, sizeof resume);
+            plat_deep_sleep(resume);
+        }
         int work_ms = (int)((esp_timer_get_time() - t0) / 1000);
         hist[work_ms < HIST_MS ? work_ms : HIST_MS - 1]++;
         frames++;
@@ -182,12 +188,12 @@ static void game_task(void *arg)
             static const char *modes[] = { "welcome", "gallery", "card", "settings", "level", "game", "paused", "error", "colourcard", "diagnostics" };
             printf("{\"t\":\"stats\",\"mode\":\"%s\",\"cart\":\"%s\",\"fps\":%.1f,\"late\":%d,\"update_us_max\":%u,"
                    "\"draw_us_max\":%u,\"gc_us_max\":%u,\"flush_us_avg\":%u,\"flush_us_max\":%u,\"kb_per_frame\":%.1f,"
-                   "\"lua_kb\":%u,\"lua_int_kb\":%u,\"lua_peak_kb\":%u,\"assets_kb\":%u,\"frame_ms_p99\":%d,\"heap_int\":%u}\n",
+                   "\"lua_kb\":%u,\"lua_int_kb\":%u,\"lua_peak_kb\":%u,\"assets_kb\":%u,\"frame_ms_p99\":%d,\"heap_int\":%u,\"bat_mv\":%d,\"usb\":%d}\n",
                    modes[m], os_game_name(), fps, late, (unsigned)upd_max, (unsigned)draw_max, (unsigned)gc_max,
                    ds.flushes ? (unsigned)(ds.flush_us_sum / ds.flushes) : 0, (unsigned)ds.flush_us_max,
                    ds.flushes ? ds.bytes_sum / (float)ds.flushes / 1024.f : 0.f,
                    (unsigned)(s.lua_bytes / 1024), (unsigned)(s.lua_fast_bytes / 1024), (unsigned)(s.lua_peak_bytes / 1024),
-                   s.asset_bytes / 1024, p99_ms(hist), (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+                   s.asset_bytes / 1024, p99_ms(hist), (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), plat_battery_mv(), plat_usb_powered());
             window = now; frames = 0; late = 0; upd_max = draw_max = gc_max = 0;
         }
         next += 1000000 / os_fps();

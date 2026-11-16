@@ -29,6 +29,9 @@ void  plat_asset_free(void *ptr) { free(ptr); }
 
 int  sim_backlight = 100;
 void plat_backlight(int percent) { sim_backlight = percent; }
+int  sim_battery_mv = -1, sim_usb = 0;   // --battery MV and --usb 0|1
+int  plat_battery_mv(void) { return sim_battery_mv; }
+int  plat_usb_powered(void) { return sim_usb; }
 int  plat_settings_load(void *buf, size_t n) { (void)buf; (void)n; return -1; }
 void plat_settings_save(const void *buf, size_t n) { (void)buf; (void)n; }
 

@@ -70,6 +70,15 @@ Tagline: "Tiny screen. Twisty knobs. Real games, built by you."
     - Icons only accept `.` and `0-9a-f`; sprites may use `a-v`.
     - `--left-handed` on `tinygame-sim` tests mirrored controls.
 
+**Phase 12 (battery + sleep): built (2026-11-16), not yet tried on the board.**
+  - Battery: GPIO1 (ADC1 ch0) behind a x3 divider (`BOARD_BAT_ADC_GPIO`/`BOARD_BAT_DIV` in `board.h`; the pin and ratio come from a Waveshare note and are unverified, so check them with a meter). `plat_battery_mv()` takes the median of 9 calibrated reads. The shell reads it once a second, smooths it and shows 4 bars with 40 mV hysteresis (on at 3.55/3.68/3.80/3.95 V). No fuel gauge, so the bars are a rough guide. Below 3.55 V the icon is red. Under 2.5 V it counts as "no battery" and the icon is hidden. The icon is on Welcome, the Games shelf, Settings and the pause card; a yellow bolt beside it means USB power.
+  - USB: `plat_usb_powered()` uses `usb_serial_jtag_is_connected()` unless `BOARD_USB_SENSE_GPIO` names a VBUS pin. A charger with no data host does not show up that way, so a console on a plain wall charger will still auto-sleep until a VBUS pin is set.
+  - Sleep: deep sleep (`plat_deep_sleep` in `platform_esp.c`): backlight off and held, panel SLPIN, wake on either click (GPIO 6/7, ext1 any-low with RTC pull-ups). It waits for the clicks to be released before sleeping, since both are held for the gesture. A wake is a reboot: the wake click is not safe mode and is swallowed by `os_wake()`, which relaunches the game that was running and shows it paused (its save is flushed by `os_sleep_prepare`). Wake from Welcome or the shelf goes to Welcome.
+  - Triggers: idle timeout (no knob turn, click or tilt for the Settings > Sleep after time; 3, 5 (default), 10 min or Off; never while USB powered), Sleep in the pause menu, and holding both knobs for 3 s outside a game (in a game that gesture still leaves the game). The shell sets `os_sleep_wanted()`; the platform acts on it.
+  - Settings layout is now version 2: the old unused `sound` byte became `sleep`; version 1 data is migrated with the default.
+  - Simulator: `--battery MV`, `--usb 0|1`, `--wake ID`; a sleep request prints `{"t":"sleep","frame":N,"resume":"id"}` and ends the run.
+  - Not done: low-battery power-down near 3.3 V, putting the IMU to sleep, measuring sleep current, and wake-from-sleep on the real board.
+
 ### Screen lab notes (history)
 
 Getting the display right was the main blocker in earlier experiments. The symptom: horizontal lines scrolling down showed "pixel waves".

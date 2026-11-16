@@ -174,3 +174,12 @@ void lcd_send(uint16_t *buf, int pixels, bool cont)
 {
     esp_lcd_panel_io_tx_color(s_io, cont ? 0x3C : 0x2C, buf, pixels * 2);
 }
+
+// Display off and the controller asleep, ahead of deep sleep. The next boot's lcd_init resets the panel.
+void lcd_sleep(void)
+{
+    lcd_wait_idle();
+    lcd_cmd(0x28, NULL, 0);   // DISPOFF
+    lcd_cmd(0x10, NULL, 0);   // SLPIN
+    vTaskDelay(pdMS_TO_TICKS(120));
+}

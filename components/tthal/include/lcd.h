@@ -15,3 +15,4 @@ uint16_t *lcd_get_buf(void);                                 // blocks until a D
 void      lcd_send(uint16_t *buf, int pixels, bool cont);    // queue RAMWR (or RAMWRC when cont)
 void      lcd_wait_idle(void);                               // wait for all queued strips
 void      lcd_backlight(int percent);
+void      lcd_sleep(void);                                   // DISPOFF + SLPIN before deep sleep

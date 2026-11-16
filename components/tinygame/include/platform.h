@@ -25,6 +25,8 @@ void  plat_asset_free(void *ptr);
 void plat_backlight(int percent);
 void plat_set_gamma(float r, float g, float b);   // per-channel panel correction exponents (1.0 = none); board only
 void plat_get_gamma(float *r, float *g, float *b);
+int  plat_battery_mv(void);      // battery voltage in millivolts, or -1 when there is no battery or no reading
+int  plat_usb_powered(void);     // 1 while USB power is present (the console then never sleeps by itself)
 int  plat_settings_load(void *buf, size_t n);        // 0 when n bytes were read
 void plat_settings_save(const void *buf, size_t n);
 

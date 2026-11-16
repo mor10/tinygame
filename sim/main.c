@@ -202,6 +202,9 @@ static int run_check(const char *path, int frames, const char *png, int scale)
 }
 
 // --shell: the OS shell with the given carts in the gallery, driven by the scripted input.
+extern int sim_battery_mv, sim_usb;
+static const char *wake_id;   // --wake ID: start as if the console had just woken from sleep, resuming this game
+
 static int run_shell(const char **paths, int n, int frames, const char *png, int scale)
 {
     if (frames < 1 || scale < 1 || scale > 8) return usage();
@@ -219,6 +222,7 @@ static int run_shell(const char **paths, int n, int frames, const char *png, int
         os_add_cart(src, len, id);
     }
     os_scan_storage();
+    if (wake_id) os_wake(wake_id);
     static const char *modes[] = { "welcome", "gallery", "card", "settings", "level", "game", "paused", "error", "colourcard", "diagnostics" };
     os_mode_t last = os_mode();
     for (int f = 1; f <= frames; f++) {
@@ -229,6 +233,12 @@ static int run_shell(const char **paths, int n, int frames, const char *png, int
         if (os_mode() != last) {
             last = os_mode();
             printf("{\"t\":\"mode\",\"frame\":%d,\"mode\":\"%s\",\"game\":\"%s\"}\n", f, modes[last], os_game_name());
+        }
+        if (os_sleep_wanted()) {   // the board would power down here
+            char resume[32];
+            os_sleep_prepare(resume, sizeof resume);
+            printf("{\"t\":\"sleep\",\"frame\":%d,\"resume\":\"%s\"}\n", f, resume);
+            break;
         }
     }
     if (png && png_write(png, sim_fb, sim_palette, SCREEN_W, SCREEN_H, scale) != 0) {
@@ -255,6 +265,9 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--press") && more) { if (parse_event(argv[++i], 0)) return usage(); }
         else if (!strcmp(a, "--turn") && more) { if (parse_event(argv[++i], 1)) return usage(); }
         else if (!strcmp(a, "--shell")) shell = 1;
+        else if (!strcmp(a, "--battery") && more) sim_battery_mv = atoi(argv[++i]);
+        else if (!strcmp(a, "--usb") && more) sim_usb = atoi(argv[++i]);
+        else if (!strcmp(a, "--wake") && more) wake_id = argv[++i];
         else if (!strcmp(a, "--left-handed")) vm_set_left_handed(1);
         else if (!strcmp(a, "--check")) checking = 1;
         else if (!strcmp(a, "--storage") && more) sim_storage_dir = argv[++i];

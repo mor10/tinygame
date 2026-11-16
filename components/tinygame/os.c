@@ -27,7 +27,7 @@ typedef struct {
 static entry_t carts[MAX_CARTS];
 static int ncarts;
 static vm_opts_t base;
-static os_settings_t set = { 6, 8, 0, 1 };
+static os_settings_t set = { 1, 8, 0, 2 };
 static int safe;
 
 static os_mode_t mode = OS_WELCOME;
@@ -43,11 +43,16 @@ static uint8_t *frozen;               // the game frame behind the pause menu
 static int hash_left;
 
 // No SOUND row: this hardware has no audio, and a control that does nothing would confuse kids.
-static const char *SETTINGS_ROWS[] = { "Light", "Hands", "Diagnostics", "Back" };
-enum { ROW_LIGHT = 1, ROW_HANDS, ROW_DIAG, ROW_BACK };
+static const char *SETTINGS_ROWS[] = { "Light", "Hands", "Sleep after", "Diagnostics", "Back" };
+enum { ROW_LIGHT = 1, ROW_HANDS, ROW_SLEEP, ROW_DIAG, ROW_BACK };
 // Diagnostics is only offered from the Welcome screen, not from a game's pause menu.
-static int srows(void) { return settings_from == OS_PAUSED ? 3 : 4; }
-static int srow(int i) { return settings_from == OS_PAUSED && i == 3 ? ROW_BACK : i; }
+static int srows(void) { return settings_from == OS_PAUSED ? 4 : 5; }
+static int srow(int i) { return settings_from == OS_PAUSED && i == 4 ? ROW_BACK : i; }
+
+// Sleep after: idle minutes for each setting (0 = never). Index 1 (5 min) is the default.
+static const int SLEEP_MIN[] = { 3, 5, 10, 0 };
+static const char *const SLEEP_LABEL[] = { "3 min", "5 min", "10 min", "Off" };
+#define SLEEP_N 4
 
 // ---------- carts ----------
 static int hexval(char c)
@@ -187,8 +192,11 @@ void os_init(const vm_opts_t *opts, int safe_mode)
     base.deterministic = 0;
     safe = safe_mode;
     os_settings_t s;
-    if (!safe && plat_settings_load(&s, sizeof s) == 0 && s.version == 1 && s.sound <= 10
-        && s.light >= 1 && s.light <= 10 && s.left_handed <= 1) set = s;
+    if (!safe && plat_settings_load(&s, sizeof s) == 0 && (s.version == 1 || s.version == 2)
+        && s.light >= 1 && s.light <= 10 && s.left_handed <= 1) {
+        if (s.version == 1) s.sleep = 1;   // version 1 stored an unused "sound" byte here
+        if (s.sleep < SLEEP_N) { s.version = 2; set = s; }
+    }
     if (!frozen) frozen = plat_asset_alloc(SCREEN_W * SCREEN_H);
     apply_settings();
 }
@@ -351,11 +359,46 @@ static void logo(int x, int y)   // three small blocks in a row
     gfx_fill_rect(x + 18, y, 7, 7, OS_GREEN);
 }
 
-static void battery(int x, int y)
+// ---------- power: battery level, USB, idle sleep ----------
+// The battery is read as a voltage only (no fuel gauge), so the icon shows four bars with hysteresis.
+// No icon at all when there is no battery. A lightning bolt beside the icon means USB power.
+static int bat_mv = -1;      // smoothed millivolts; -1 = no battery
+static int bat_bars;         // 0-4
+static int usb_power;
+static int power_ms = 1000;  // time since the last reading; starts due, so the first frame reads
+static int idle_ms;          // time since the last input
+static int want_sleep, wake_pause, swallow;
+static float tilt_ref[2];
+
+static void poll_power(void)
 {
-    gfx_rect(x, y, 22, 11, OS_WHITE);
-    gfx_fill_rect(x + 22, y + 3, 2, 5, OS_WHITE);
-    for (int i = 0; i < 3; i++) gfx_fill_rect(x + 2 + i * 6, y + 2, 5, 7, OS_WHITE);
+    static const int up[4] = { 3550, 3680, 3800, 3950 };   // millivolts where bar 1..4 turn on; they turn off 40 mV lower
+    usb_power = plat_usb_powered();
+    int mv = plat_battery_mv();
+    if (mv < 2500) { bat_mv = -1; return; }   // nothing connected, or a floating pin
+    int first = bat_mv < 0;
+    bat_mv = first ? mv : bat_mv + (mv - bat_mv) / 4;
+    if (first) bat_bars = 0;
+    while (bat_bars < 4 && bat_mv >= up[bat_bars]) bat_bars++;
+    while (bat_bars > 0 && bat_mv < up[bat_bars - 1] - 40) bat_bars--;
+}
+
+static const char *const ICON_BOLT[11] = {
+    "....##", "...##.", "..##..", ".##...", "######", "..###.", "..##..", ".##...", ".#....", "......", "......",
+};
+
+// The battery icon, 24 x 11, drawn in colour c with its left edge at x. Draws nothing without a battery.
+static void battery(int x, int y, int c)
+{
+    if (bat_mv < 0) return;
+    int low = bat_bars == 0;
+    gfx_rect(x, y, 26, 11, low ? OS_RED : c);
+    gfx_fill_rect(x + 26, y + 3, 2, 5, low ? OS_RED : c);
+    for (int i = 0; i < (low ? 1 : bat_bars); i++) gfx_fill_rect(x + 2 + i * 6, y + 2, 5, 7, low ? OS_RED : c);
+    if (usb_power)
+        for (int r = 0; r < 9; r++)
+            for (int k = 0; k < 6; k++)
+                if (ICON_BOLT[r][k] == '#') gfx_pixel(x - 10 + k, y + 1 + r, OS_YELLOW);
 }
 
 // The control icon language, 13 x 13: a ring with an arrowhead means TURN the knob, an arrow pressing
@@ -441,7 +484,7 @@ static void draw_welcome(void)
     sky();
     logo(12, 11);
     text_l("TinyGame", 44, 9, OS_WHITE, FONT_M);
-    battery(SCREEN_W - 34, 10);
+    battery(SCREEN_W - 40, 10, OS_WHITE);
     hero_blocks(86, 96);
     if (focus == 1) {
         pointer(150, 51, OS_WHITE);
@@ -475,6 +518,7 @@ static void draw_gallery(void)
     char n[16];
     snprintf(n, sizeof n, "%d / %d", (pick < 0 ? 0 : pick) + 1, ngl);
     text_r(n, SCREEN_W - 12, 15, OS_WHITE, FONT_S);
+    battery(SCREEN_W - 12 - gfx_aa_width(n, FONT_S) - 12 - 28, 10, OS_WHITE);
     int p = pick < 0 ? 0 : pick;
     int base = 118;   // bottom edge shared by all cartridges
     int sel_x = (SCREEN_W - SHELF_SEL_W) / 2;
@@ -518,9 +562,9 @@ static void draw_settings(void)
     sky();
     back_arrow(0);
     text_l("Settings", 44, 12, OS_WHITE, FONT_L);
-    battery(SCREEN_W - 34, 10);
+    battery(SCREEN_W - 40, 10, OS_WHITE);
     for (int i = 1; i <= srows(); i++) {
-        int y = 44 + (i - 1) * 30, on = settings_row == i;
+        int y = 34 + (i - 1) * 22, on = settings_row == i;
         const char *t = SETTINGS_ROWS[srow(i) - 1];
         text_l(t, 50, y, OS_WHITE, FONT_L);
         if (on) { pointer(30, y + 3, OS_WHITE); underline(50, y + 22, gfx_aa_width(t, FONT_L), OS_YELLOW); }
@@ -528,9 +572,14 @@ static void draw_settings(void)
             for (int k = 0; k < 5; k++)
                 gfx_fill_rect(176 + k * 26, y + 3, 20, 12, k < (set.light + 1) / 2 ? OS_YELLOW : OS_INK);
         else if (srow(i) == ROW_HANDS) text_r(set.left_handed ? "<  Left  >" : "<  Right  >", 300, y + 2, OS_WHITE, FONT_M);
+        else if (srow(i) == ROW_SLEEP) {
+            char v[24];
+            snprintf(v, sizeof v, "<  %s  >", SLEEP_LABEL[set.sleep]);
+            text_r(v, 300, y + 2, OS_WHITE, FONT_M);
+        }
     }
     if (srow(settings_row) == ROW_BACK) back_arrow(1);
-    footer("Browse", srow(settings_row) == ROW_HANDS ? "Switch" : "Edit", OS_WHITE);
+    footer("Browse", srow(settings_row) == ROW_HANDS || srow(settings_row) == ROW_SLEEP ? "Switch" : "Edit", OS_WHITE);
 }
 
 // Settings > Diagnostics: the colour card and test carts, kept off the Games shelf so nobody takes
@@ -616,25 +665,26 @@ static void draw_paused(void)
     entry_t *e = &carts[last_game >= 0 && last_game < ncarts ? last_game : 0];
     style_entry(e, last_game >= 0 ? last_game : 0);
     int ink = ink_on(e->win), sh = OS_SHADE + shade_slot(e->body);
-    int cx = 48, cw = 224;   // the menu card; with stats it makes room for the sidebar on the left
+    int cx = 48, cw = 224, ch = 136;   // the menu card; with stats it makes room for the sidebar on the left
     if (pause_stat_n) { cx = 140; cw = 168; draw_stats_sidebar(e); }
-    gfx_fill_rect(cx + SHADOW, 8 + SHADOW, cw, 132, sh);
-    gfx_fill_rect(cx, 8, cw, 132, e->win);
+    gfx_fill_rect(cx + SHADOW, 8 + SHADOW, cw, ch, sh);
+    gfx_fill_rect(cx, 8, cw, ch, e->win);
     text_l("Paused", cx + 18, 18, ink, FONT_L);
+    battery(cx + cw - 46, 20, ink);
     if (!pause_stat_n) {   // no sidebar: the card says which game is paused
         char t[24];
         snprintf(t, sizeof t, "%s", e->title);
         while (strlen(t) > 4 && gfx_aa_width(t, FONT_S) > cw - 36) { size_t n = strlen(t); t[n - 3] = t[n - 2] = '.'; t[n - 1] = 0; }
         text_l(t, cx + 18, 40, ink, FONT_S);
     }
-    static const char *items[] = { "Continue", "Settings", "Exit game" };
-    for (int i = 1; i <= 3; i++) {
-        int y = 54 + (i - 1) * 28, on = focus == i;
+    static const char *items[] = { "Continue", "Settings", "Sleep", "Exit game" };
+    for (int i = 1; i <= 4; i++) {
+        int y = 52 + (i - 1) * 22, on = focus == i;
         if (on) {   // the chosen row is a block in the game's colour, like the OS's yellow buttons
-            gfx_fill_rect(cx + 14 + 3, y + 3, cw - 28, 24, sh);
-            gfx_fill_rect(cx + 14, y, cw - 28, 24, e->body);
+            gfx_fill_rect(cx + 14 + 3, y + 3, cw - 28, 20, sh);
+            gfx_fill_rect(cx + 14, y, cw - 28, 20, e->body);
         }
-        text_l(items[i - 1], cx + 26, y + 5, on ? ink_on(e->body) : ink, FONT_M);
+        text_l(items[i - 1], cx + 26, y + 3, on ? ink_on(e->body) : ink, FONT_M);
     }
     gfx_fill_rect(0, SCREEN_H - 22, SCREEN_W, 22, OS_INK);
     footer("Browse", "Select", OS_WHITE);
@@ -856,9 +906,72 @@ int os_fps(void) { return mode == OS_GAME ? vm_fps() : 30; }
 os_mode_t os_mode(void) { return mode; }
 const char *os_game_name(void) { return last_game >= 0 ? carts[last_game].title : ""; }
 
-void os_frame(const os_input_t *oi)
+int os_sleep_wanted(void) { return want_sleep; }
+
+void os_sleep_prepare(char *resume_id, size_t n)
+{
+    snprintf(resume_id, n, "%s", (mode == OS_GAME || mode == OS_PAUSED) && last_game >= 0 ? carts[last_game].id : "");
+    if (mode == OS_GAME || mode == OS_PAUSED) vm_stop();   // flushes the game's save
+    want_sleep = 0;
+    idle_ms = 0;
+}
+
+void os_wake(const char *resume_id)
+{
+    swallow = 1;   // the click that woke the console is not a command
+    idle_ms = 0;
+    int i = resume_id && *resume_id ? find_id(resume_id) : -1;
+    if (i < 0) return;
+    launch(i);
+    if (mode == OS_GAME) wake_pause = 1;   // run one frame, then show the pause menu over it
+}
+
+static void enter_pause(void)
+{
+    memcpy(frozen, plat_framebuffer(), SCREEN_W * SCREEN_H);
+    pause_stat_n = vm_pause_stats(pause_stats, PAUSE_STATS_MAX);
+    pause_t = 0;
+    go(OS_PAUSED, 1);
+}
+
+// Idle and power bookkeeping, once per frame. Anything the player does counts as use.
+static void watch_power(const os_input_t *oi)
+{
+    const vm_input_t *in = &oi->in;
+    int ms = 1000 / os_fps();
+    int active = in->delta[0] || in->delta[1] || in->down[0] || in->down[1] || in->pressed[0] || in->pressed[1]
+                 || in->shake;
+    for (int a = 0; a < 2; a++) {
+        float d = in->tilt[a] - tilt_ref[a];
+        if (d > 0.15f || d < -0.15f) { active = 1; tilt_ref[a] = in->tilt[a]; }
+    }
+    if (active) idle_ms = 0; else idle_ms += ms;
+    power_ms += ms;
+    if (power_ms >= 1000) { power_ms = 0; poll_power(); }
+    // Auto-sleep only runs on battery. On USB, only a manual sleep sleeps.
+    if (usb_power) idle_ms = 0;
+    else if (SLEEP_MIN[set.sleep] > 0 && idle_ms >= SLEEP_MIN[set.sleep] * 60000) want_sleep = 1;
+}
+
+void os_frame(const os_input_t *oi_in)
 {
     tick++;
+    os_input_t clean;
+    const os_input_t *oi = oi_in;
+    if (swallow) {   // after a wake, ignore the knobs until the click that woke us is let go
+        if (oi->in.down[0] || oi->in.down[1]) {
+            clean = *oi;
+            memset(clean.in.delta, 0, sizeof clean.in.delta);
+            memset(clean.in.pressed, 0, sizeof clean.in.pressed);
+            memset(clean.in.released, 0, sizeof clean.in.released);
+            memset(clean.in.long_press, 0, sizeof clean.in.long_press);
+            clean.chord_pause = clean.chord_exit = 0;
+            oi = &clean;
+        } else swallow = 0;
+    }
+    watch_power(oi);
+    // Holding both knobs 3 s: in a game it leaves the game; everywhere else in the OS it sleeps.
+    if (oi->chord_exit && mode != OS_GAME && mode != OS_PAUSED && mode != OS_COLOURCARD && mode != OS_ERROR) want_sleep = 1;
     const vm_input_t *in = &oi->in;
     int side = set.left_handed ? VM_LEFT : VM_RIGHT;
     notch_acc += in->delta[side];
@@ -888,6 +1001,7 @@ void os_frame(const os_input_t *oi)
         settings_row = clampi(settings_row + notches, 1, srows());
         if (select) {
             if (srow(settings_row) == ROW_LIGHT) go(OS_LEVEL, 1);
+            else if (srow(settings_row) == ROW_SLEEP) { set.sleep = (uint8_t)((set.sleep + 1) % SLEEP_N); notch_acc = 0; idle_ms = 0; save_settings(); }
             else if (srow(settings_row) == ROW_DIAG) { diag_sel = ndl > 0 ? 0 : -1; go(OS_DIAG, 1); }
             else if (srow(settings_row) == ROW_HANDS) { set.left_handed = !set.left_handed; notch_acc = 0; save_settings(); }
             else { save_settings(); go(settings_from, settings_from == OS_PAUSED ? 2 : 3); }
@@ -915,18 +1029,13 @@ void os_frame(const os_input_t *oi)
             return;            // the game drew this frame
         }
         if (oi->chord_exit) { vm_stop(); go(home_mode(), 1); break; }
-        if (oi->chord_pause) {
-            memcpy(frozen, plat_framebuffer(), SCREEN_W * SCREEN_H);
-            pause_stat_n = vm_pause_stats(pause_stats, PAUSE_STATS_MAX);
-            pause_t = 0;
-            go(OS_PAUSED, 1);
-            break;
-        }
+        if (oi->chord_pause) { enter_pause(); break; }
         vm_set_left_handed(set.left_handed);
-        if (vm_frame(in) != 0) go(OS_ERROR, 1);
+        if (vm_frame(in) != 0) { go(OS_ERROR, 1); return; }
+        if (wake_pause) { wake_pause = 0; enter_pause(); break; }   // woke into a game: show it paused
         return;                // the game drew this frame
     case OS_PAUSED:
-        focus = clampi(focus + notches, 1, 3);
+        focus = clampi(focus + notches, 1, 4);
         if (oi->chord_exit) { vm_stop(); go(home_mode(), 1); break; }
         if (select) {
             if (focus == 1) {
@@ -935,6 +1044,7 @@ void os_frame(const os_input_t *oi)
                 return;
             }
             if (focus == 2) { settings_from = OS_PAUSED; settings_row = 1; go(OS_SETTINGS, 1); }
+            else if (focus == 3) want_sleep = 1;
             else { vm_stop(); go(home_mode(), 1); }
         }
         break;

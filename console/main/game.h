@@ -3,6 +3,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// Deep sleep (platform_esp.c). plat_deep_sleep never returns: the next wake is a reboot, and the
+// click that woke it starts the boot. resume is the game to bring back paused, or "".
+void plat_deep_sleep(const char *resume);
+int  plat_woke_from_sleep(void);
+const char *plat_wake_resume_id(void);
+void plat_release_sleep_holds(void);
+
 void game_start(int safe_mode);   // scans the built-in carts and starts the shell
 // Queue an uploaded cart: it is stored as /carts/<id>.lua (replacing any cart with that id) and
 // starts playing. The source is copied.

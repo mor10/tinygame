@@ -108,6 +108,7 @@ void app_main(void)
            BOARD_NAME, esp_get_idf_version(), (int)esp_reset_reason(),
            (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 
+    plat_release_sleep_holds();   // after a deep sleep the backlight pin is still held off
     display_init();
     gfx_init_palette();
     if (imu_init() != ESP_OK) printf("{\"t\":\"error\",\"kind\":\"boot\",\"msg\":\"imu_init failed\"}\n");
@@ -118,7 +119,7 @@ void app_main(void)
     vTaskDelay(pdMS_TO_TICKS(30));   // let the click debounce settle
     input_state_t boot_in;
     input_snapshot(&boot_in);
-    int safe = boot_in.down[KNOB_RIGHT];
+    int safe = !plat_woke_from_sleep() && boot_in.down[KNOB_RIGHT];   // the click that woke from sleep isn't safe mode
     if (safe) printf("{\"t\":\"boot\",\"safe_mode\":1}\n");
 
     game_start(safe);
