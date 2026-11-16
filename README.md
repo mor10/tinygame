@@ -6,6 +6,8 @@ TinyGame is a pocket game console for kids and parents to build, play and share 
 help. It's a Waveshare ESP32-S3-LCD-1.47B board with a 320x172 screen, two endless clicky knobs
 and a tilt sensor. Games ("carts") are single Lua files.
 
+> This is a full rebuild. The earlier version lives on the [`legacy`](https://github.com/mor10/tinygame/tree/legacy) branch and the `legacy-v0` tag.
+
 ## Make a game with an AI coding agent
 
 Open this folder in your coding agent (Claude Code, Codex, Cursor, or any other) and ask for a
